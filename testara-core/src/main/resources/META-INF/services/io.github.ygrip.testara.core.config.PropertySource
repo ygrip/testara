@@ -1,0 +1,3 @@
+io.github.ygrip.testara.core.config.PropertiesPropertySource
+io.github.ygrip.testara.core.config.EnvironmentPropertySource
+io.github.ygrip.testara.core.config.DefaultPropertySource

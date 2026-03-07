@@ -1,0 +1,2 @@
+io.github.ygrip.testara.api.interceptor.RequestLoggingInterceptor
+io.github.ygrip.testara.api.interceptor.FileRequestInterceptor

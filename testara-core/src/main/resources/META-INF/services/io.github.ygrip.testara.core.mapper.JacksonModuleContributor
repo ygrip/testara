@@ -1,0 +1,2 @@
+io.github.ygrip.testara.core.mapper.module.DuplicateJacksonContributor
+io.github.ygrip.testara.core.mapper.module.Jdk8JacksonContributor

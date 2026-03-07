@@ -1,0 +1,6 @@
+# Default InstancePostProcessor implementations for testara-core
+# Note: MethodInterceptionPostProcessor requires configuration before use
+# It is registered programmatically via RetryableMethodPostProcessor, not via ServiceLoader
+
+# Field injection for @Inject annotated fields
+io.github.ygrip.testara.core.factory.InjectFieldPostProcessor

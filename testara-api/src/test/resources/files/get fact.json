@@ -1,0 +1,26 @@
+{
+  "specification": "mock-api",
+  "httpMethod": "GET",
+  "url": "/fact",
+  "contentType": "application/json",
+  "cookies": [
+  ],
+  "queryParameters": {
+  },
+  "formParameters": {
+  },
+  "headers": {
+  },
+  "pathParameters": {
+  },
+  "multiPartData": {
+  },
+  "payload": null,
+  "requestLog": [
+    "ALL"
+  ],
+  "responseLog": [
+    "ALL"
+  ],
+  "autoCloseConnection": true
+}

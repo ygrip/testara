@@ -1,0 +1,3 @@
+# Auto-configuration for Spring Boot (if present)
+org.springframework.boot.autoconfigure.EnableAutoConfiguration=\
+  io.github.ygrip.testara.spring.config.AutomationConfiguration

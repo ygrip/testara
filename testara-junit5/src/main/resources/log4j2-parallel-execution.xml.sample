@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Recommended Log4j2 Configuration for Parallel Test Execution
+  
+  This configuration includes scenario identifiers in log output for easy debugging.
+  Copy this file to your test resources as log4j2.xml and adjust as needed.
+  
+  MDC variables available (set by LoggingExtension):
+  - %X{scenario}    : Short scenario name (max 50 chars)
+  - %X{scenarioId}  : 8-char unique ID for filtering
+  - %X{feature}     : Feature file name
+  
+  Example output:
+  12:34:56.789 INFO  [daily-quest] (a1b2c3d4) ApiBaseSteps - Sending GET request to /api/quests
+  12:34:56.790 INFO  [daily-quest] (a1b2c3d4) ApiBaseSteps - Response status: 200
+  
+  To filter logs for a specific scenario in IDE/terminal:
+  - Search for the scenarioId: "a1b2c3d4"
+  - Or search for the scenario name in brackets: "[daily-quest]"
+-->
+<Configuration status="WARN">
+    <Properties>
+        <!-- Pattern with scenario identifier for parallel execution -->
+        <Property name="PARALLEL_PATTERN">%d{HH:mm:ss.SSS} %-5level [%X{scenario:-no-scenario}] (%X{scenarioId:---------}) %c{1.} - %m%n</Property>
+        
+        <!-- Pattern with full details (thread, file, line) for debugging -->
+        <Property name="DEBUG_PATTERN">%d{HH:mm:ss.SSS} %-5level [%t] [%X{scenario:-no-scenario}] (%X{scenarioId:---------}) (%F:%L).%M - %m%n</Property>
+        
+        <!-- Compact pattern for cleaner output -->
+        <Property name="COMPACT_PATTERN">%d{HH:mm:ss.SSS} %-5level [%X{scenarioId:---------}] %m%n</Property>
+    </Properties>
+
+    <Appenders>
+        <Console name="Console" target="SYSTEM_OUT">
+            <!-- Use PARALLEL_PATTERN for easy scenario identification -->
+            <PatternLayout pattern="${PARALLEL_PATTERN}"/>
+        </Console>
+        
+        <!-- Optional: File appender for full logs -->
+        <RollingFile name="TestLogFile" 
+                     fileName="target/test-logs/test-execution.log"
+                     filePattern="target/test-logs/test-execution-%d{yyyy-MM-dd}-%i.log.gz">
+            <PatternLayout pattern="${DEBUG_PATTERN}"/>
+            <Policies>
+                <SizeBasedTriggeringPolicy size="10 MB"/>
+            </Policies>
+            <DefaultRolloverStrategy max="5"/>
+        </RollingFile>
+    </Appenders>
+
+    <Loggers>
+        <!-- Framework loggers at DEBUG for detailed execution tracking -->
+        <Logger name="io.github.ygrip.testara.engine" level="DEBUG" additivity="false">
+            <AppenderRef ref="Console"/>
+            <AppenderRef ref="TestLogFile"/>
+        </Logger>
+        
+        <!-- Application loggers -->
+        <Logger name="io.github.ygrip.testara" level="INFO" additivity="false">
+            <AppenderRef ref="Console"/>
+            <AppenderRef ref="TestLogFile"/>
+        </Logger>
+        
+        <!-- Cucumber at WARN to reduce noise -->
+        <Logger name="io.cucumber" level="WARN" additivity="false">
+            <AppenderRef ref="Console"/>
+        </Logger>
+        
+        <!-- Root logger -->
+        <Root level="WARN">
+            <AppenderRef ref="Console"/>
+        </Root>
+    </Loggers>
+</Configuration>

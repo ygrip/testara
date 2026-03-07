@@ -1,0 +1,1667 @@
+<!DOCTYPE html>
+<html lang="en" xmlns="https://www.w3.org/1999/xhtml"
+>
+<head>
+    <meta content="text/html; charset=UTF-8" http-equiv="Content-Type">
+    <meta content="telephone=no" name="format-detection">
+    <meta content="width=device-width; initial-scale=1.0; maximum-scale=1.0; user-scalable=no;"
+          name="viewport">
+    <meta content="width=device-width,initial-scale=1" name="viewport">
+    <meta name="x-apple-disable-message-reformatting">
+    <meta content="light dark" name="color-scheme">
+    <meta content="light dark" name="supported-color-schemes">
+    <meta content="IE=9; IE=8; IE=7; IE=EDGE" http-equiv="X-UA-Compatible">
+    <title data-th-text="${report.title}">Testara Reporter</title>
+
+    <!--[if mso]>
+    <style>
+        table {border-collapse:collapse;border-spacing:0;border:none;margin:0;}
+        div, td {padding:0;}
+        div {margin:0 !important;}
+
+
+
+
+
+    </style>
+    <noscript>
+        <xml>
+            <o:OfficeDocumentSettings>
+                <o:AllowPNG/>
+                <o:PixelsPerInch>96</o:PixelsPerInch>
+            </o:OfficeDocumentSettings>
+        </xml>
+    </noscript>
+    <![endif]-->
+    <style media="all" type="text/css">
+    /* RESET STYLES */ img{border: 0; height: auto; line-height: 100%; outline: none; text-decoration: none;} table{border-collapse: collapse !important;} body{height: 100% !important; margin: 0 !important; padding: 0 !important; width: 100% !important;} /* CLIENT-SPECIFIC STYLES */ /* Prevent WebKit and Windows mobile changing default text sizes */ body, table, td, a{-webkit-text-size-adjust: 100%; -ms-text-size-adjust: 100%;} /* Remove spacing between tables in Outlook 2007 and up */ table, td{mso-table-lspace: 0pt; mso-table-rspace: 0pt;} /* Allow smoother rendering of resized image in Internet Explorer */ img{-ms-interpolation-mode: bicubic;} /* iOS BLUE LINKS */ a[x-apple-data-detectors] { color: inherit !important; text-decoration: none !important; font-size: inherit !important; font-family: inherit !important; font-weight: inherit !important; line-height: inherit !important; } /* ANDROID CENTER FIX */ div[style*="margin: 16px 0;"] { margin: 0 !important; }
+
+
+
+
+
+    </style>
+    <style type="text/css">
+        table, td, div, h1, p {
+            font-family: Helvetica, arial, sans-serif;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        body {
+            font-family: Helvetica, arial, sans-serif;
+            -webkit-font-smoothing: antialiased;
+            word-spacing:normal;
+            background-color:#0095da;
+            font-size: 14px;
+            line-height: 1.4;
+            -ms-text-size-adjust: 100%;
+            -webkit-text-size-adjust: 100%;
+            margin: 0;
+            padding: 0;
+            width: 100%;
+        }
+
+        .overall-status {
+            width: 90%;
+            border-radius: 32px;
+            font-size: 1.2em;
+            font-weight: 600;
+            height: 50px;
+            background-size: 100% 100%;
+            background-repeat: no-repeat;
+            background-position: center top;
+            text-decoration: none;
+            -webkit-text-size-adjust: none;
+            padding-top:8px;
+            padding-bottom:8px;
+        }
+
+        .icon {
+            width: 24px;
+            height: 24px;
+        }
+
+        .result-bar {
+            width: 100%;
+        }
+
+        .result-bar td {
+            text-align: center;
+            font-size: 0.9em;
+        }
+
+        .bar-passed {
+            background-color: #61bd76;
+            color: white;
+        }
+
+        .bar-failed {
+            background-color: #f44336;
+            color: white;
+        }
+
+        .bar-error {
+            background-color: #FCB150;
+            color: white;
+        }
+
+        .bar-pending {
+            background-color: #92dcce;
+            color: white;
+        }
+
+        .bar-ignored {
+            background-color: #acb1b9;
+            color: white;
+        }
+
+        .inner-container {
+            border-radius: 16px;
+            box-shadow: 0 1px 5px 1px #e0e0e0, 0 1px 1px 1px #e0e0e0, 0 2px 2px 1px #e0e0e0;
+        }
+
+        .duration-container {
+            border-radius: 8px;
+            box-shadow: 0 1px 2px 1px #e0e0e0, 0 1px 1px 1px #e0e0e0, 0 1px 1px 1px #e0e0e0;
+            font-size: 0.9em;
+        }
+
+        .passing {
+            color: #61bd76;
+        }
+
+        .failure {
+            color: #f44336;
+        }
+
+        .error {
+            color: #FCB150;
+        }
+
+        .pending {
+            color: #92dcce;
+        }
+
+        .ignored {
+            color: #acb1b9;
+        }
+
+        .legend {
+            font-size: 1.0em;
+            font-weight: 600;
+        }
+
+        .for-passed {
+            background-color: #61bd76;
+        }
+
+        .for-failure {
+            background-color: #f44336;
+        }
+
+        .for-error {
+            background-color: #FCB150;
+        }
+
+        .for-pending {
+            background-color: #92dcce;
+        }
+
+        .for-ignored {
+            background-color: #acb1b9;
+        }
+
+        .count-badge {
+            border-radius: 4px;
+            padding: 2px;
+            padding-left: 4px;
+            padding-right: 4px;
+            color: white;
+            font-size: 0.9em;
+            font-weight: bold;
+        }
+
+        .legend-key {
+            font-weight: bold;
+            padding-left: 4px;
+        }
+
+        .legend-count {
+            font-weight: bold;
+            padding-left: 24px;
+        }
+
+        .legend-value {
+            color: #69727f;
+            float: right;
+            padding-right: 4px;
+        }
+
+        .overview {
+            font-weight: bold;
+            font-size: 1.2em;
+            color: white;
+            background-color: #69727f;
+            padding-bottom: 4px;
+            padding-top: 4px;
+            padding-left: 15px;
+        }
+
+        .environment {
+            border-style: solid;
+            border-width: 1px;
+            border-color: #acb1b9;
+        }
+
+        .environment td {
+            color: #69727f;
+            font-size: 0.9em;
+            text-align: center;
+        }
+
+        .duration-bar{
+            vertical-align:middle;
+            font-size:1.0em;
+            font-weight:600;
+            background-repeat:repeat-y;
+            background-position: bottom left;
+            border-radius: 8px;
+            border-bottom:1px solid #e0e0e0;
+            box-shadow: 0 1px 5px 1px #e0e0e0, 0 1px 1px 1px #e0e0e0, 0 2px 2px 1px #e0e0e0;
+            background-image:url('https://www.static-src.com/reward-catalog/storage/images/2022/09/1662734481_bar.png');
+        }
+
+
+
+
+
+    </style>
+</head>
+<body>
+<div aria-roledescription="email" lang="en" role="article"
+     style="text-size-adjust:100%;-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%;background-color:#0095da;">
+    <table bgcolor="#0095da" class="container" role="presentation"
+           style="width:100%;border:none;border-spacing:0;">
+        <tr>
+            <td align="center" style="padding:0;">
+                <!--[if mso]>
+                <table role="presentation" align="center" style="width:600px;" class="container"
+                       bgcolor="#0095da">
+                    <tr>
+                        <td>
+                <![endif]-->
+                <table bgcolor="#0095da"
+                       class="container"
+                       role="presentation"
+                       style="width:94%;max-width:600px;border:none;border-spacing:0;color:#363636;">
+                    <!--LOGO IMAGE-->
+                    <tr class="header">
+                        <td align="center" valign="middle">
+                            <table bgcolor="#0095da" height="71" width="160">
+                                <tbody>
+                                <tr>
+                                    <td height="71"
+                                        style="padding:50px 30px 30px 30px;text-align:center;font-size:24px;font-weight:bold;align:center;valign:middle;"
+                                        width="160">
+                                        <a href="https://github.com/ygrip/testara"
+                                           style="text-decoration:none;width:160px;height:71px;display:inline-block;">
+                                            <img alt="Testara"
+                                                 height="71"
+                                                 src="https://www.static-src.com/reward-catalog/storage/images/2022/08/1661247512_logo-testara-putih-d7d25f2.png"
+                                                 style="width:160px;height:71px;border:0;"
+                                                 width="160">
+                                        </a>
+                                    </td>
+                                </tr>
+                                </tbody>
+                            </table>
+                        </td>
+                    </tr>
+                    <!--MAIN CONTAINER-->
+                    <tr class="main-container">
+                        <td align="center" style="padding-bottom:0;border-radius:32px;">
+                            <table align="center"
+                                   border="0" cellpadding="0" cellspacing="0"
+                                   style="margin: 0;padding: 0;border-spacing: 0;overflow: hidden;"
+                                   width="100%">
+                                <tbody style="margin: 0;padding: 0;">
+                                <tr style="margin: 0;padding: 0;">
+                                    <!--[if mso]>
+                                    <td style="margin:0;padding:0;font-size:0;width:32px;height:32px;border-top-left-radius: 32px;">
+                                        <v:shape
+                                                style="width:32px;height:32px;position:relative;top:0.5px;left:0.5px;"
+                                                coordorigin="0 0" coordsize="2 2"
+                                                fillcolor="#ffffff" stroke="f" fill="true"
+                                                xmlns:v="urn:schemas-microsoft-com:vml"
+                                                xmlns:w="urn:schemas-microsoft-com:office:word">
+                                            <v:path v="m 0,2 c 0,1,1,0,2,0 l 2,2 x"/>
+                                        </v:shape>
+
+                                        <v:shape
+                                                style="width:32px;height:32px;position:relative;top:-0.5px;left:0.5px;"
+                                                coordorigin="0 0" coordsize="2 2" stroke="f"
+                                                fill="f" xmlns:v="urn:schemas-microsoft-com:vml"
+                                                xmlns:w="urn:schemas-microsoft-com:office:word">
+                                            <v:path v="m 0,2 c 0,1,1,0,2,0"/>
+                                        </v:shape>
+                                    </td>
+                                    <![endif]-->
+                                    <!--[if !mso]><!-->
+                                    <td style="font-size: 0;margin: 0;padding: 0;width: 32px;height: 32px;border-top-left-radius: 32px;background-color: #ffffff;">
+                                    </td>
+                                    <!--<![endif]-->
+
+                                    <td style="font-size: 0;margin: 0;padding: 0;background-color: #ffffff; height: 32px;">
+                                    </td>
+
+                                    <!--[if mso]>
+                                    <td style="margin:0;padding:0;font-size:0;width:32px;height:32px;border-top-right-radius: 32px;">
+                                        <v:shape
+                                                style="width:32px;height:32px;position:relative;top:0.5px;left:-0.5px;"
+                                                coordorigin="0 0" coordsize="2 2"
+                                                fillcolor="#ffffff" stroke="f" fill="true"
+                                                xmlns:v="urn:schemas-microsoft-com:vml"
+                                                xmlns:w="urn:schemas-microsoft-com:office:word">
+                                            <v:path v="m 0,0 c 1,0,2,1,2,2 l 0,2 x"/>
+                                        </v:shape>
+
+                                        <v:shape
+                                                style="width:32px;height:32px;position:relative;top:-0.5px;left:-0.5px;"
+                                                coordorigin="0 0" coordsize="2 2" stroke="f"
+                                                fill="f" xmlns:v="urn:schemas-microsoft-com:vml"
+                                                xmlns:w="urn:schemas-microsoft-com:office:word">
+                                            <v:path v="m 0,0 c 1,0,2,1,2,2"/>
+                                        </v:shape>
+                                    </td>
+                                    <![endif]-->
+                                    <!--[if !mso]><!-->
+                                    <td style="font-size: 0;margin: 0;padding: 0;width: 32px;height: 32px;border-top-right-radius: 32px;background-color: #ffffff;">
+                                    </td>
+                                    <!--<![endif]-->
+                                </tr>
+
+                                <tr style="margin: 0;padding: 0">
+                                    <td style="font-size: 0;margin: 0;padding: 0;padding-top: 8px;padding-bottom: 8px;background-color: #ffffff;"></td>
+
+                                    <td style="margin: 0;font-weight: normal;line-height: 24px;background-color: #ffffff">
+                                        <!--[CONTENT]-->
+                                        <table align="center" style="padding:0; margin:0;"
+                                               width="100%">
+                                            <tbody>
+                                            <!--OVERALL STATUS-->
+                                            <tr align="center" title="Overall Status">
+                                                <td class="overall-status">
+                                                    <table style="border-collapse:separate;border-spacing:1em;"
+                                                           width="100%">
+                                                        <tr align="center" data-th-block
+                                                            data-th-if="${report.overallStatus == 'PASSED'}"
+                                                            title="Success">
+                                                            <td style="border-radius: 32px;
+					padding: 16px;
+					background-size: 100% 100%;
+					background-repeat: no-repeat;
+					align: left;
+					text-align: left;
+					box-shadow: 0 2px 10px 1px #71a131, 0 3px 2px 2px #d0e9b1, 0 4px 5px 2px #dcedc1;
+					color:#71a131 !important;
+					background-color: #d0e9b1;
+					background-image: url(https://www.static-src.com/siva/asset//07_2020/info-bg-green-preview.png);">
+                                                                <table>
+                                                                    <tbody>
+                                                                    <tr>
+                                                                        <td align="center"
+                                                                            style="padding-top:4px;padding-right:4px;"
+                                                                            valign="top"
+                                                                            width="5%">
+                                                                            <i class="icon" style="display: inline-block;
+									vertical-align: top;
+									padding-right: 8px;">
+                                                                                <img class="icon"
+                                                                                     height="20"
+                                                                                     src="https://www.static-src.com/siva/asset//07_2020/icon-success.png"
+                                                                                     style="height:20px; width:20px;"
+                                                                                     width="20">
+                                                                            </i>
+                                                                        </td>
+                                                                        <td align="left"
+                                                                            valign="top"
+                                                                            width="95%">
+                                                                            <span data-th-text="'Test Report - ' + ${report.title}">Test Report - E2E Controls, Task Manager & COI Regression</span>
+                                                                        </td>
+                                                                    </tr>
+                                                                    </tbody>
+                                                                </table>
+                                                            </td>
+                                                        </tr>
+                                                        <tr align="center" data-th-block
+                                                            data-th-if="${report.overallStatus == 'FAILED'}"
+                                                            title="Failed">
+                                                            <td style="border-radius: 32px;
+				padding: 16px;
+				background-size: 100% 100%;
+				background-repeat: no-repeat;
+				box-shadow: 0 2px 10px 1px #c70f17, 0 3px 2px 2px #f9bbbe, 0 4px 5px 2px #f6a4aa;
+				color:#c70f17 !important;
+				background-color: #f9bbbe;
+				align: left;
+				text-align: left;
+				background-image: url(https://www.static-src.com/siva/asset//07_2020/info-bg-red-preview.png);">
+                                                                <table>
+                                                                    <tbody>
+                                                                    <tr>
+                                                                        <td align="center"
+                                                                            style="padding-top:4px;padding-right:4px;"
+                                                                            valign="top"
+                                                                            width="5%">
+                                                                            <i class="icon" style="display: inline-block;
+									vertical-align: top;
+									padding-right: 8px;">
+                                                                                <img class="icon"
+                                                                                     height="20"
+                                                                                     src="https://www.static-src.com/siva/asset//07_2020/icon-danger.png"
+                                                                                     style="height:20px; width:20px;"
+                                                                                     width="20">
+                                                                            </i>
+                                                                        </td>
+                                                                        <td align="left"
+                                                                            valign="top"
+                                                                            width="95%">
+                                                                            <span data-th-text="'Test Report - ' + ${report.title}">Test Report - E2E Controls, Task Manager & COI Regression</span>
+                                                                        </td>
+                                                                    </tr>
+                                                                    </tbody>
+                                                                </table>
+                                                            </td>
+                                                        </tr>
+                                                        <tr align="center" data-th-block
+                                                            data-th-if="${report.overallStatus == 'PENDING'}"
+                                                            title="Broken">
+                                                            <td style="border-radius: 32px;
+				padding: 16px;
+				background-size: 100% 100%;
+				background-repeat: no-repeat;
+				box-shadow: 0 2px 10px 1px #f4701b, 0 3px 2px 2px #fce4c3, 0 4px 5px 2px #fdd9ac;
+				color:#f4701b !important;
+				background-color: #fce4c3;
+				align: left;
+				text-align: left;
+				background-image: url(https://www.static-src.com/siva/asset//07_2020/info-bg-orange-preview.png);">
+                                                                <table>
+                                                                    <tbody>
+                                                                    <tr>
+                                                                        <td align="center"
+                                                                            style="padding-top:4px;padding-right:4px;"
+                                                                            valign="top"
+                                                                            width="5%">
+                                                                            <i class="icon" style="display: inline-block;
+									vertical-align: top;
+									padding-right: 8px;">
+                                                                                <img class="icon"
+                                                                                     height="20"
+                                                                                     src="https://www.static-src.com/siva/asset//07_2020/icon-warning.png"
+                                                                                     style="height:20px; width:20px;"
+                                                                                     width="20">
+                                                                            </i>
+                                                                        </td>
+                                                                        <td align="left"
+                                                                            valign="top"
+                                                                            width="95%">
+                                                                            <span data-th-text="'Test Report - ' + ${report.title}">Test Report - E2E Controls, Task Manager & COI Regression</span>
+                                                                        </td>
+                                                                    </tr>
+                                                                    </tbody>
+                                                                </table>
+                                                            </td>
+                                                        </tr>
+                                                    </table>
+                                                </td>
+                                            </tr>
+                                            <!--SPACE-->
+                                            <tr>
+                                                <td height="25">
+                                                    &nbsp;
+                                                </td>
+                                            </tr>
+                                            <!--BASIC-CHART-->
+                                            <tr title="Basic Chart">
+                                                <td align="center"
+                                                    style="padding-right:8px; padding-left:8px;">
+                                                    <table cellpadding="0" cellspacing="0"
+                                                           style="text-align:center;vertical-align:center;"
+                                                           width="100%">
+                                                        <tr>
+                                                            <td class="bar-passed"
+                                                                data-th-attr="width=${report.percentageByResult.Passed} + '%'"
+                                                                data-th-unless="${report.countByResult.Passed == 0}"
+                                                                height="30"
+                                                                style="text-align:center;vertical-align:middle;"
+                                                                title="Success tests"
+                                                                width="30%">
+                                                                        <span data-th-attr="title=${report.percentageByResult.Passed} + '% passing tests'"
+                                                                              data-th-text="${report.percentageByResult.Passed} + '%'"
+                                                                              data-th-unless="${report.countByResult.Passed == 0}">30</span>
+                                                            </td>
+                                                            <td class="bar-failed"
+                                                                data-th-attr="width=${report.percentageByResult.Failed} + '%'"
+                                                                data-th-unless="${report.countByResult.Failed == 0}"
+                                                                height="30"
+                                                                style="text-align:center;vertical-align:middle;"
+                                                                title="Failed tests"
+                                                                width="10%">
+                                                                        <span data-th-attr="title=${report.percentageByResult.Failed} + '% failed tests'"
+                                                                              data-th-text="${report.percentageByResult.Failed} + '%'"
+                                                                              data-th-unless="${report.countByResult.Failed == 0}"
+                                                                              title="Failing tests">10</span>
+                                                            </td>
+                                                            <td class="bar-pending"
+                                                                data-th-attr="width=${report.percentageByResult.Skipped} + '%'"
+                                                                data-th-unless="${report.countByResult.Skipped == 0}"
+                                                                height="30"
+                                                                style="text-align:center;vertical-align:middle;"
+                                                                title="Skipped tests"
+                                                                width="20%">
+                                                                        <span data-th-attr="title=${report.percentageByResult.Skipped} + '% pending tests'"
+                                                                              data-th-text="${report.percentageByResult.Skipped} + '%'"
+                                                                              data-th-unless="${report.countByResult.Skipped == 0}">20</span>
+                                                            </td>
+                                                            <td class="bar-ignored"
+                                                                data-th-attr="width=${report.percentageByResult.Pending} + '%'"
+                                                                data-th-unless="${report.countByResult.Pending == 0}"
+                                                                height="30"
+                                                                style="text-align:center;vertical-align:middle;"
+                                                                title="Pending tests"
+                                                                width="5%">
+                                                                        <span data-th-attr="title=${report.percentageByResult.Pending} + '% ignored tests'"
+                                                                              data-th-text="${report.percentageByResult.Pending} + '%'"
+                                                                              data-th-unless="${report.countByResult.Pending == 0}">5</span>
+                                                            </td>
+                                                            <td class="bar-error"
+                                                                data-th-attr="width=${report.percentageByResult.Undefined} + '%'"
+                                                                data-th-unless="${report.countByResult.Undefined == 0}"
+                                                                height="30"
+                                                                style="text-align:center;vertical-align:middle;"
+                                                                title="Broken tests" width="15%">
+                                                                        <span data-th-attr="title=${report.percentageByResult.Undefined} + '% broken tests'"
+                                                                              data-th-text="${report.percentageByResult.Undefined} + '%'"
+                                                                              data-th-unless="${report.countByResult.Undefined == 0}">15</span>
+                                                            </td>
+                                                        </tr>
+                                                    </table>
+                                                </td>
+                                            </tr>
+                                            <!--SPACE-->
+                                            <tr>
+                                                <td height="25">
+                                                    &nbsp;
+                                                </td>
+                                            </tr>
+                                            <!--DONUT CHART-->
+                                            <tr data-th-block
+                                                data-th-if="${!#strings.isEmpty(report.chartUrl)}"
+                                                title="Donut Chart">
+                                                <td align="center" class="inner-container"
+                                                    style="padding:16px;" valign="middle">
+                                                    <table align="center">
+                                                        <tbody>
+                                                        <tr>
+                                                            <td align="center"
+                                                                style="font-size:1.0em; color:#92989a; font-weight:600; padding-bottom:8px;">
+                                                                <span>Summary Report</span>
+                                                            </td>
+                                                        </tr>
+                                                        <tr>
+                                                            <td style="margin:0;padding:0;font-size:0;width:500px;height:300px;">
+                                                                <img alt="Summary Report"
+                                                                     data-th-src="${report.chartUrl}"
+                                                                     height="300"
+                                                                     src="https://quickchart.io/chart?c=%7B%0A%20%20type%3A%20%27doughnut%27%2C%0A%20%20data%3A%20%7B%0A%20%20%20%20datasets%3A%20%5B%0A%20%20%20%20%20%20%7B%0A%20%20%20%20%20%20%20%20data%3A%20%5B94%2C%2025%2C%2072%2C%2070%2C%2014%5D%2C%0A%20%20%20%20%20%20%20%20backgroundColor%3A%20%5B%0A%20%20%20%20%20%20%20%20%20%20%27rgb(97%2C%20189%2C%20118)%27%2C%0A%20%20%20%20%20%20%20%20%20%20%27rgb(243%2C%2052%2C%2070)%27%2C%0A%20%20%20%20%20%20%20%20%20%20%27rgb(172%2C%20177%2C%20185)%27%2C%0A%20%20%20%20%20%20%20%20%20%20%27rgb(146%2C%20220%2C%20206)%27%2C%0A%20%20%20%20%20%20%20%20%20%20%27rgb(252%2C%20177%2C%2080)%27%2C%0A%20%20%20%20%20%20%20%20%5D%2C%0A%20%20%20%20%20%20%7D%2C%0A%20%20%20%20%5D%2C%0A%20%20%7D%2C%0A%20%20format%3A%20%27png%27%0A%7D"
+                                                                     style="width:500px;height:300px;"
+                                                                     width="500"/>
+                                                            </td>
+                                                        </tr>
+                                                        </tbody>
+                                                    </table>
+                                                </td>
+                                            </tr>
+                                            <!--SPACE-->
+                                            <tr>
+                                                <td height="5" style="line-height:0;">
+                                                    &nbsp;
+                                                </td>
+                                            </tr>
+                                            <!--LEGENDS-->
+                                            <tr title="Chart Legends">
+                                                <td align="center"
+                                                    class="legend"
+                                                    style="margin: 0;line-height: 24px;background-color: #ffffff;">
+                                                    <table align="center">
+                                                        <tbody>
+                                                        <tr>
+                                                            <td align="center"
+                                                                class="inner-container"
+                                                                style="padding:16px;"
+                                                                width="50%">
+                                                                <table>
+                                                                    <tbody>
+                                                                    <tr>
+                                                                        <td align="left"
+                                                                            style="vertical-align:top;"
+                                                                            width="50%">
+                                                                            <table valign="top">
+                                                                                <tr>
+                                                                                    <td style="vertical-align:top;">
+                                                                                        <table style="padding-right:10px;"
+                                                                                               valign="top">
+                                                                                            <tr class="passing">
+                                                                                                <td class="legend-key"
+                                                                                                    style="width:67%">
+                                                                                                    Passed
+                                                                                                </td>
+                                                                                                <td class="legend-count"
+                                                                                                    style="padding-left:24px;">
+                                                                                                    <span class="count-badge for-passed"
+                                                                                                          data-th-text="${report.countByResult.Passed}"
+                                                                                                          style="background-color: #61bd76;">10</span>
+                                                                                                </td>
+                                                                                                <td class="legend-value"
+                                                                                                    data-th-text="'(' + ${report.percentageByResult.Passed} + '%)'">
+                                                                                                    (10%)
+                                                                                                </td>
+                                                                                            </tr>
+                                                                                            <tr class="failure">
+                                                                                                <td class="legend-key"
+                                                                                                    style="width:67%">
+                                                                                                    Failed
+                                                                                                </td>
+                                                                                                <td class="legend-count"
+                                                                                                    style="padding-left:24px;">
+                                                                                                    <span class="count-badge for-failure"
+                                                                                                          data-th-text="${report.countByResult.Failed}"
+                                                                                                          style="background-color: #f44336;">20</span>
+                                                                                                </td>
+                                                                                                <td class="legend-value"
+                                                                                                    data-th-text="'(' + ${report.percentageByResult.Failed} + '%)'">
+                                                                                                    (20%)
+                                                                                                </td>
+                                                                                            </tr>
+                                                                                            <tr class="ignored">
+                                                                                                <td class="legend-key"
+                                                                                                    style="width:67%">
+                                                                                                    Skipped
+                                                                                                </td>
+                                                                                                <td class="legend-count"
+                                                                                                    style="padding-left:24px;">
+                                                                                                    <span class="count-badge for-ignored"
+                                                                                                          data-th-text="${report.countByResult.Skipped}"
+                                                                                                          style="background-color: #acb1b9;">40</span>
+                                                                                                </td>
+                                                                                                <td class="legend-value"
+                                                                                                    data-th-text="'(' + ${report.percentageByResult.Skipped} + '%)'">
+                                                                                                    (40%)
+                                                                                                </td>
+                                                                                            </tr>
+                                                                                        </table>
+                                                                                    </td>
+                                                                                </tr>
+                                                                            </table>
+                                                                        </td>
+                                                                        <td align="left"
+                                                                            style="vertical-align:top;"
+                                                                            width="50%">
+                                                                            <table valign="top">
+                                                                                <tr>
+                                                                                    <td style="vertical-align:top;">
+                                                                                        <table style="padding-right:10px;"
+                                                                                               valign="top">
+                                                                                            <tr class="pending">
+                                                                                                <td class="legend-key"
+                                                                                                    style="width:67%">
+                                                                                                    Pending
+                                                                                                </td>
+                                                                                                <td class="legend-count"
+                                                                                                    style="padding-left:24px;">
+                                                                                                    <span class="count-badge for-pending"
+                                                                                                          data-th-text="${report.countByResult.Pending}"
+                                                                                                          style="background-color: #92dcce;">40</span>
+                                                                                                </td>
+                                                                                                <td class="legend-value"
+                                                                                                    data-th-text="'(' + ${report.percentageByResult.Pending} + '%)'">
+                                                                                                    (40%)
+                                                                                                </td>
+                                                                                            </tr>
+                                                                                            <tr class="error">
+                                                                                                <td class="legend-key"
+                                                                                                    style="width:67%">
+                                                                                                    Undefined
+                                                                                                </td>
+                                                                                                <td class="legend-count"
+                                                                                                    style="padding-left:24px;">
+                                                                                                    <span class="count-badge for-error"
+                                                                                                          data-th-text="${report.countByResult.Undefined}"
+                                                                                                          style="background-color: #FCB150;">30</span>
+                                                                                                </td>
+                                                                                                <td class="legend-value"
+                                                                                                    data-th-text="'(' + ${report.percentageByResult.Undefined} + '%)'">
+                                                                                                    (30%)
+                                                                                                </td>
+                                                                                            </tr>
+                                                                                        </table>
+                                                                                    </td>
+                                                                                </tr>
+                                                                            </table>
+                                                                        </td>
+                                                                    </tr>
+                                                                    </tbody>
+                                                                </table>
+                                                            </td>
+                                                        </tr>
+                                                        </tbody>
+                                                    </table>
+
+                                                </td>
+                                            </tr>
+                                            <!--SPACE-->
+                                            <tr>
+                                                <td height="5" style="line-height:0;">
+                                                    &nbsp;
+                                                </td>
+                                            </tr>
+                                            <!--KEY STATISTIC-->
+                                            <tr title="Key Statistic">
+                                                <td align="center">
+                                                    <table align="center" cellpadding="4"
+                                                           cellspacing="0" width="100%">
+                                                        <tbody>
+                                                        <tr>
+                                                            <td class="inner-container legend"
+                                                                style="padding:16px;">
+                                                                <table width="100%">
+                                                                    <tbody>
+                                                                    <tr>
+                                                                        <td class="overview"
+                                                                            colspan="3"
+                                                                            style="font-size:1.2em; width:100%; border-top-left-radius:16px; border-top-right-radius:16px;">
+                                                                            <img src="https://www.static-src.com/reward-catalog/storage/images/2022/09/1662615624_speedometer-24.png"
+                                                                                 style="height:20px; height:20px;padding-right:10px;align:center;vertical-align:middle;"/>
+                                                                            <span>Key Statistic</span>
+                                                                        </td>
+                                                                    </tr>
+                                                                    <tr style="border-collapse:separate;mso-table-lspace:0pt;mso-table-rspace:0pt;width:100%;border-style:solid;border-width:1px;border-color:#acb1b9;">
+                                                                        <td colspan="2"
+                                                                            style="padding-left:16px;font-size:1.0em;width:40%;background-color:#EBEBEB;">
+                                                                            <span>Total Scenarios</span>
+                                                                        </td>
+                                                                        <td colspan="1"
+                                                                            style="font-size:1.0em;width:60%;">
+                                                                                        <span data-th-text="${results.totalScenarios}">
+                                                                                        120</span>
+                                                                        </td>
+                                                                    </tr>
+                                                                    <tr style="border-collapse:separate;mso-table-lspace:0pt;mso-table-rspace:0pt;width:100%;border-style:solid;border-width:1px;border-color:#acb1b9;">
+                                                                        <td colspan="2"
+                                                                            style="padding-left:16px;font-size:1.0em;width:40%;background-color:#EBEBEB;">
+                                                                            <span>Total Steps</span>
+                                                                        </td>
+                                                                        <td colspan="1"
+                                                                            style="font-size:1.0em;width:60%;">
+                                                                                        <span data-th-text="${results.totalSteps}">
+                                                                                        120</span>
+                                                                        </td>
+                                                                    </tr>
+                                                                    <tr style="border-collapse:separate;mso-table-lspace:0pt;mso-table-rspace:0pt;width:100%;border-style:solid;border-width:1px;border-color:#acb1b9;">
+                                                                        <td colspan="2"
+                                                                            style="padding-left:16px;font-size:1.0em;width:40%;background-color:#EBEBEB;">
+                                                                            <span>Total Execution Time</span>
+                                                                        </td>
+                                                                        <td colspan="1"
+                                                                            style="font-size:1.0em;width:60%;">
+                                                                                        <span data-th-text="${results.totalExecutionTime}">
+                                                                                        120s</span>
+                                                                        </td>
+                                                                    </tr>
+                                                                    <tr style="border-collapse:separate;mso-table-lspace:0pt;mso-table-rspace:0pt;width:100%;border-style:solid;border-width:1px;border-color:#acb1b9;">
+                                                                        <td colspan="2"
+                                                                            style="padding-left:16px;font-size:1.0em;width:40%;background-color:#EBEBEB;">
+                                                                            <span>All Scenarios Duration</span>
+                                                                        </td>
+                                                                        <td colspan="1"
+                                                                            style="font-size:1.0em;width:60%;">
+                                                                                        <span data-th-text="${results.allScenariosDuration}">
+                                                                                        120s</span>
+                                                                        </td>
+                                                                    </tr>
+                                                                    <tr style="border-collapse:separate;mso-table-lspace:0pt;mso-table-rspace:0pt;width:100%;border-style:solid;border-width:1px;border-color:#acb1b9;">
+                                                                        <td colspan="2"
+                                                                            style="padding-left:16px;font-size:1.0em;width:40%;background-color:#EBEBEB;">
+                                                                            <span>Avg. Scenario Duration</span>
+                                                                        </td>
+                                                                        <td colspan="1"
+                                                                            style="font-size:1.0em;width:60%;">
+                                                                                        <span data-th-text="${results.averageExecutionTime}">
+                                                                                        120s</span>
+                                                                        </td>
+                                                                    </tr>
+                                                                    <tr style="border-collapse:separate;mso-table-lspace:0pt;mso-table-rspace:0pt;width:100%;border-style:solid;border-width:1px;border-color:#acb1b9;">
+                                                                        <td colspan="2"
+                                                                            style="padding-left:16px;font-size:1.0em;width:40%;background-color:#EBEBEB;">
+                                                                            <span>Fastest Scenario</span>
+                                                                        </td>
+                                                                        <td colspan="1"
+                                                                            style="font-size:1.0em;width:60%;">
+                                                                                        <span data-th-text="${results.fastestTest}">
+                                                                                        120s</span>
+                                                                        </td>
+                                                                    </tr>
+                                                                    <tr style="border-collapse:separate;mso-table-lspace:0pt;mso-table-rspace:0pt;width:100%;border-style:solid;border-width:1px;border-color:#acb1b9;">
+                                                                        <td colspan="2"
+                                                                            style="padding-left:16px;font-size:1.0em;width:40%;background-color:#EBEBEB;">
+                                                                            <span>Slowest Scenario</span>
+                                                                        </td>
+                                                                        <td colspan="1"
+                                                                            style="font-size:1.0em;width:60%;">
+                                                                                        <span data-th-text="${results.slowestTest}">
+                                                                                        120s</span>
+                                                                        </td>
+                                                                    </tr>
+                                                                    <tr style="border-collapse:separate;mso-table-lspace:0pt;mso-table-rspace:0pt;width:100%;border-style:solid;border-width:1px;border-color:#acb1b9;">
+                                                                        <td colspan="2"
+                                                                            style="padding-left:16px;font-size:1.0em;width:40%;background-color:#EBEBEB;">
+                                                                            <span>Executed at</span>
+                                                                        </td>
+                                                                        <td colspan="1"
+                                                                            style="font-size:1.0em;width:60%;">
+                                                                                        <span data-th-text="${#temporals.format(report.date, 'EEEE MMMM dd yyyy \'at\' HH:mm:ss')}">
+                                                                                        Tuesday May 27 at 17:24:30</span>
+                                                                        </td>
+                                                                    </tr>
+                                                                    <tr style="border-collapse:separate;mso-table-lspace:0pt;mso-table-rspace:0pt;width:100%;border-style:solid;border-width:1px;border-color:#acb1b9;">
+                                                                        <td colspan="2"
+                                                                            style="padding-left:16px;font-size:1.0em;width:40%;background-color:#EBEBEB;">
+                                                                            <span>Finished at</span>
+                                                                        </td>
+                                                                        <td colspan="1"
+                                                                            style="font-size:1.0em;width:60%;">
+                                                                                        <span data-th-text="${#temporals.format(report.endDate, 'EEEE MMMM dd yyyy \'at\' HH:mm:ss')}">
+                                                                                        Tuesday May 27 at 17:24:30</span>
+                                                                        </td>
+                                                                    </tr>
+                                                                    </tbody>
+                                                                </table>
+                                                            </td>
+                                                        </tr>
+                                                        </tbody>
+                                                    </table>
+                                                </td>
+                                            </tr>
+                                            <!--SPACE-->
+                                            <tr>
+                                                <td height="25" style="line-height:0;">
+                                                    &nbsp;
+                                                </td>
+                                            </tr>
+                                            <!--ADDITIONAL INFORMATION-->
+                                            <tr data-th-block
+                                                data-th-if="not ${customFields.isEmpty()}"
+                                                style="border-bottom:1px solid #e0e0e0">
+                                            </tr>
+                                            <tr title="Additional Information">
+                                                <td align="center">
+                                                    <table align="center" bgcolor="#ffffff"
+                                                           border="0" cellspacing="0"
+                                                           width="100%">
+                                                        <tbody>
+                                                        <tr data-th-block
+                                                            data-th-if="not ${customFields.isEmpty()}">
+                                                            <td style="padding-top: 26px; padding-bottom: 26px;">
+                                                                <table border="0" cellpadding="0"
+                                                                       cellspacing="0" width="100%">
+                                                                    <tbody>
+                                                                    <tr data-th-each="field : ${customFields}">
+                                                                        <td align="center"
+                                                                            style="padding-bottom:10px; padding-top:10px;"
+                                                                            width="100%">
+                                                                            <table class="environment"
+                                                                                   style="border-collapse:separate;mso-table-lspace:0pt;mso-table-rspace:0pt;width:100%;border-style:solid;border-width:1px;border-color:#acb1b9;"
+                                                                                   width="100%">
+                                                                                <tr style="background-color:#EBEBEB;border-collapse:separate;mso-table-lspace:0pt;mso-table-rspace:0pt;border-style:solid;border-width:1px;border-color:#acb1b9;">
+                                                                                    <th class="custom-title wrapper"
+                                                                                        data-th-each="entry : ${field}"
+                                                                                        data-th-text="${entry.key}"
+                                                                                        style="text-transform:capitalize;font-size:0.9em;">
+                                                                                        Environment
+                                                                                    </th>
+                                                                                </tr>
+                                                                                <tr>
+                                                                                    <td class="wrapper"
+                                                                                        data-th-each="entry : ${field}"
+                                                                                        data-th-text="${entry.value}"
+                                                                                        style="vertical-align:top;color:#69727f;font-size:0.9em;text-align:center;">
+                                                                                        NAV
+                                                                                        Automation
+                                                                                        INT6
+                                                                                    </td>
+                                                                                </tr>
+                                                                            </table>
+                                                                        </td>
+                                                                    </tr>
+                                                                    </tbody>
+                                                                </table>
+                                                            </td>
+                                                        </tr>
+                                                        </tbody>
+                                                    </table>
+                                                </td>
+                                            </tr>
+                                            <tr data-th-block
+                                                data-th-if="not ${customFields.isEmpty()}"
+                                                style="border-bottom:1px solid #e0e0e0"></tr>
+                                            <!--SPACE-->
+                                            <tr>
+                                                <td height="25" style="line-height:0;">
+                                                    &nbsp;
+                                                </td>
+                                            </tr>
+                                            <!--FUNCTIONAL COVERAGE-->
+                                            <tr title="Functional Coverage">
+                                                <td align="center" class="container">
+                                                    <table align="center" border="0"
+                                                           cellpadding="0" cellspacing="0"
+                                                           width="100%">
+                                                        <tbody>
+                                                        <tr data-th-block
+                                                            data-th-if="${#lists.size(coverage) > 0}">
+                                                            <td class="compact-wrapper"
+                                                                style="font-size:14px;vertical-align:top;box-sizing:border-box;padding-left:24px;padding-right:24px;padding-top:4px;padding-bottom:14px;">
+                                                                <h3 style="color:#222222;font-weight:400;line-height:1.4;margin-top:0;margin-bottom:0;margin-right:0;margin-left:0;font-size:20px;text-align:center;">
+                                                                    Functional Coverage</h3>
+                                                            </td>
+                                                        </tr>
+                                                        <tr>
+                                                            <td align="center"
+                                                                class="inner-container"
+                                                                style="padding:16px;">
+                                                                <table width="100%">
+                                                                    <tbdoy>
+                                                                        <tr data-th-each="tagCoverageByType : ${coverage}">
+
+                                                                            <td class="wrapper"
+                                                                                data-th-if="${#lists.size(tagCoverageByType.tagCoverage) > 0}"
+                                                                                style="padding-top:14px;">
+                                                                                <table width="100%">
+                                                                                    <tr>
+                                                                                        <td width="70%">
+                                                                                            <h4 class="tag-title"
+                                                                                                data-th-text="${tagCoverageByType.tagTitle}"
+                                                                                                style="margin-bottom:0px;margin-top:6px;border-bottom:1px solid #e0e0e0;font-size:1.1em;">
+                                                                                                Control
+                                                                                                Creation</h4>
+                                                                                        </td>
+                                                                                        <td width="30%" style="background-color:#f1f2f6;" class="duration-container" align="center">
+                                                                                            <span data-th-text=" ${tagCoverageByType.durationText} ">27s</span>
+                                                                                        </td>
+                                                                                    </tr>
+                                                                                </table>
+                                                                                <table cellpadding="3"
+                                                                                       class="compact-wrapper">
+                                                                                    <tr style="text-align:center;vertical-align:middle;font-size:0.9em;">
+                                                                                        <th></th>
+                                                                                        <th>Tests
+                                                                                        </th>
+                                                                                        <th>Pass
+                                                                                        </th>
+                                                                                        <th>
+                                                                                            Results
+                                                                                        </th>
+                                                                                    </tr>
+                                                                                    <tr data-th-each="tagCoverage : ${tagCoverageByType.tagCoverage}">
+                                                                                        <td
+                                                                                            style="padding-left:12px;border-bottom:1px solid #e0e0e0;"
+                                                                                            width="50%">
+                                                                                            <table>
+                                                                                                <tr>
+                                                                                                    <td style="font-size:1em;font-weight:600;">Feature :</td>
+                                                                                                </tr>
+                                                                                                <tr>
+                                                                                                    <td data-th-text="${tagCoverage.tagName}">ACO
+                                                                                                        Acknowledgement
+                                                                                                        - ICG
+                                                                                                        Debt</td>
+                                                                                                </tr>
+                                                                                                <tr>
+                                                                                                    <td style="font-size:1em;font-weight:600;">Duration :</td>
+                                                                                                </tr>
+                                                                                                <tr>
+                                                                                                    <td data-th-text="${tagCoverage.durationText}">
+                                                                                                        27s</td>
+                                                                                                </tr>
+                                                                                            </table>
+                                                                                        </td>
+                                                                                        <td align="center"
+                                                                                            data-th-text="${tagCoverage.testCount}"
+                                                                                            style="text-align:center;"
+                                                                                            width="8%">
+                                                                                            100
+                                                                                        </td>
+                                                                                        <td data-th-text="${tagCoverage.successRate}"
+                                                                                            width="7%">
+                                                                                            10%
+                                                                                        </td>
+                                                                                        <td width="35%">
+                                                                                            <table cellpadding="0"
+                                                                                                   cellspacing="0"
+                                                                                                   class="result-bar"
+                                                                                                   style="text-align:center;vertical-align:center;">
+                                                                                                <tr>
+                                                                                                    <td class="bar-passed"
+                                                                                                        data-th-attr="width=${tagCoverage.percentageByResult.Passed} + '%'"
+                                                                                                        data-th-unless="${tagCoverage.countByResult.Passed == 0}"
+                                                                                                        style="text-align:center;vertical-align:middle;"
+                                                                                                        title="Success tests"
+                                                                                                        width="30%">
+                                                                                                                <span data-th-attr="title=${tagCoverage.percentageByResult.Passed} + '% passing tests'"
+                                                                                                                      data-th-text="${tagCoverage.countByResult.Passed}"
+                                                                                                                      data-th-unless="${tagCoverage.countByResult.Passed == 0}">30</span>
+                                                                                                    </td>
+                                                                                                    <td class="bar-failed"
+                                                                                                        data-th-attr="width=${tagCoverage.percentageByResult.Failed} + '%'"
+                                                                                                        data-th-unless="${tagCoverage.countByResult.Failed == 0}"
+                                                                                                        style="text-align:center;vertical-align:middle;"
+                                                                                                        title="Failed tests"
+                                                                                                        width="10%">
+                                                                                                                <span data-th-attr="title=${tagCoverage.percentageByResult.Failed} + '% failed tests'"
+                                                                                                                      data-th-text="${tagCoverage.countByResult.Failed}"
+                                                                                                                      data-th-unless="${tagCoverage.countByResult.Failed == 0}"
+                                                                                                                      title="Failing tests">10</span>
+                                                                                                    </td>
+                                                                                                    <td class="bar-pending"
+                                                                                                        data-th-attr="width=${tagCoverage.percentageByResult.Skipped} + '%'"
+                                                                                                        data-th-unless="${tagCoverage.countByResult.Skipped == 0}"
+                                                                                                        style="text-align:center;vertical-align:middle;"
+                                                                                                        title="Skipped tests"
+                                                                                                        width="20%">
+                                                                                                                <span data-th-attr="title=${tagCoverage.percentageByResult.Skipped} + '% pending tests'"
+                                                                                                                      data-th-text="${tagCoverage.countByResult.Skipped}"
+                                                                                                                      data-th-unless="${tagCoverage.countByResult.Skipped == 0}">20</span>
+                                                                                                    </td>
+                                                                                                    <td class="bar-ignored"
+                                                                                                        data-th-attr="width=${tagCoverage.percentageByResult.Pending} + '%'"
+                                                                                                        data-th-unless="${tagCoverage.countByResult.Pending == 0}"
+                                                                                                        style="text-align:center;vertical-align:middle;"
+                                                                                                        title="Pending tests"
+                                                                                                        width="5%">
+                                                                                                                <span data-th-attr="title=${tagCoverage.percentageByResult.Pending} + '% ignored tests'"
+                                                                                                                      data-th-text="${tagCoverage.countByResult.Pending}"
+                                                                                                                      data-th-unless="${tagCoverage.countByResult.Pending == 0}">5</span>
+                                                                                                    </td>
+                                                                                                    <td class="bar-error"
+                                                                                                        data-th-attr="width=${tagCoverage.percentageByResult.Undefined} + '%'"
+                                                                                                        data-th-unless="${tagCoverage.countByResult.Undefined == 0}"
+                                                                                                        style="text-align:center;vertical-align:middle;"
+                                                                                                        title="Broken tests"
+                                                                                                        width="15%">
+                                                                                                                <span data-th-attr="title=${tagCoverage.percentageByResult.Undefined} + '% broken tests'"
+                                                                                                                      data-th-text="${tagCoverage.countByResult.Undefined}"
+                                                                                                                      data-th-unless="${tagCoverage.countByResult.Undefined == 0}">15</span>
+                                                                                                    </td>
+                                                                                                </tr>
+                                                                                            </table>
+                                                                                        </td>
+                                                                                    </tr>
+                                                                                </table>
+                                                                            </td>
+                                                                        </tr>
+                                                                    </tbdoy>
+                                                                </table>
+                                                            </td>
+                                                        </tr>
+                                                        </tbody>
+                                                    </table>
+                                                </td>
+                                            </tr>
+                                            <!--SPACE-->
+                                            <tr>
+                                                <td height="25" style="line-height:0;">
+                                                    &nbsp;
+                                                </td>
+                                            </tr>
+                                            <!--TEST FAILURE OVERVIEW-->
+                                            <tr data-th-if="${testFailuresPresent}"
+                                                title="Failure Overview">
+                                                <td align="center">
+                                                    <table align="center" bgcolor="#ffffff"
+                                                           border="0" cellspacing="0"
+                                                           width="100%">
+                                                        <tbody>
+                                                        <tr>
+                                                            <td style="padding-top: 26px; padding-bottom: 26px;"
+                                                                width="100%">
+                                                                <table border="0" cellpadding="0"
+                                                                       cellspacing="0" width="100%">
+                                                                    <tbody>
+
+                                                                    <tr data-th-if="${testFailuresPresent}">
+                                                                        <td class="compact-wrapper"
+                                                                            style="font-size:14px;vertical-align:top;box-sizing:border-box;padding-left:24px;padding-right:24px;padding-top:4px;padding-bottom:14px;">
+                                                                            <h3 style="color:#222222;font-weight:400;line-height:1.4;margin-top:0;margin-bottom:0;margin-right:0;margin-left:0;font-size:20px;text-align:center;">
+                                                                                Test Failure
+                                                                                Overview</h3></td>
+                                                                    </tr>
+                                                                    <tr data-th-if="${testFailuresPresent}">
+                                                                        <td width="100%">
+                                                                            <table align="center"
+                                                                                   style="border-collapse:separate;mso-table-lspace:0pt;mso-table-rspace:0pt;width:100%;">
+                                                                                <tr>
+                                                                                    <td class="content">
+                                                                                        <table class="failure-scoreboard"
+                                                                                               style="border-collapse:separate;mso-table-lspace:0pt;mso-table-rspace:0pt;"
+                                                                                               width="100%">
+                                                                                            <tr>
+                                                                                                <th colspan="2"
+                                                                                                    style="padding-bottom:10px;font-size:1.1em;font-weight:600;text-align:left;">
+                                                                                                    Most
+                                                                                                    Frequent
+                                                                                                    Failures
+                                                                                                </th>
+                                                                                            </tr>
+                                                                                            <tr data-th-each="frequentFailure : ${frequentFailures}">
+                                                                                                <td style="border:1px solid #e0e0e0;"
+                                                                                                    width="90%">
+                                                                                                    <table>
+                                                                                                        <tbody>
+                                                                                                        <tr>
+                                                                                                            <td class="failure"
+                                                                                                                data-th-attr="class=${frequentFailure.resultClass}"
+                                                                                                                data-th-text="${frequentFailure.name}"
+                                                                                                                style="vertical-align:middle;font-size:1.0em;padding-left:12px;font-weight:600;">
+                                                                                                                Web
+                                                                                                                Element
+                                                                                                                Not
+                                                                                                                Found
+                                                                                                            </td>
+                                                                                                        </tr>
+                                                                                                        <tr>
+                                                                                                            <td class="failure"
+                                                                                                                data-th-attr="class=${frequentFailure.resultClass}"
+                                                                                                                data-th-text="${frequentFailure.error}"
+                                                                                                                style="vertical-align:middle;font-size:0.9em;padding-left:18px;">
+                                                                                                                java.lang.Exception
+                                                                                                            </td>
+                                                                                                        </tr>
+                                                                                                        </tbody>
+                                                                                                    </table>
+                                                                                                </td>
+                                                                                                <td align="center"
+                                                                                                    style="border:1px solid #e0e0e0;"
+                                                                                                    valign="center"
+                                                                                                    width="10%">
+                                                    <span class="count-badge for-failure"
+                                                          data-th-attr="class='count-badge for-' + ${frequentFailure.resultClass}"
+                                                          data-th-text=" ${frequentFailure.count} "
+                                                          style="background-color: #f44336;">100</span>
+                                                                                                </td>
+                                                                                            </tr>
+                                                                                        </table>
+                                                                                    </td>
+                                                                                </tr>
+                                                                                <tr>
+                                                                                    <td height="20"
+                                                                                        style="font-family: Helvetica, arial, sans-serif;">
+                                                                                        &nbsp;
+                                                                                    </td>
+                                                                                </tr>
+                                                                                <tr>
+                                                                                    <td class="content">
+                                                                                        <table class="frequent-failures"
+                                                                                               width="100%">
+                                                                                            <tr>
+                                                                                                <th style="text-align:left; padding-bottom:10px; font-weight:600; font-size:1.1em;">
+                                                                                                    Most
+                                                                                                    Unstable
+                                                                                                    Features
+                                                                                                </th>
+                                                                                                <th style="text-align:center; padding-bottom:10px; font-weight:600; font-size:1.1em;">
+                                                                                                    Fails
+                                                                                                </th>
+                                                                                            </tr>
+                                                                                            <tr data-th-each="unstableFeature : ${unstableFeatures}"
+                                                                                                style="color:#f44336;">
+                                                                                                <td class="unstable-feature failure"
+                                                                                                    data-th-text="${unstableFeature.name}"
+                                                                                                    style="font-size:1.0em;padding-left:12px;border-bottom:1px solid #e0e0e0;font-weight:600;"
+                                                                                                    width="90%">
+                                                                                                    ACO
+                                                                                                    Acknowledgement
+                                                                                                </td>
+                                                                                                <td align="center"
+                                                                                                    valign="center"
+                                                                                                    width="10%">
+                                                    <span class='count-badge for-failure'
+                                                          data-th-text="${unstableFeature.failurePercentage + '%'}"
+                                                          style="background-color: #f44336;">100%</span>
+                                                                                                </td>
+                                                                                            </tr>
+                                                                                        </table>
+                                                                                    </td>
+                                                                                </tr>
+                                                                            </table>
+                                                                        </td>
+                                                                    </tr>
+                                                                    </tbody>
+                                                                </table>
+                                                            </td>
+                                                        </tr>
+                                                        </tbody>
+                                                    </table>
+                                                </td>
+                                            </tr>
+                                            <!--SPACE-->
+                                            <tr>
+                                                <td height="25" style="line-height:0;">
+                                                    &nbsp;
+                                                </td>
+                                            </tr>
+                                            <!--SLOWEST SCENARIOS-->
+                                            <tr title="Slowest Scenario">
+                                                <td align="center">
+                                                    <table align="center" border="0"
+                                                           cellpadding="0"
+                                                           cellspacing="0"
+                                                           style="border-collapse: collapse;"
+                                                           width="100%">
+                                                        <tbody>
+                                                        <tr>
+                                                            <td class="compact-wrapper"
+                                                                style="vertical-align:top;box-sizing:border-box;padding-top:4px;padding-bottom:14px;">
+                                                                <h3 data-th-text="'Top '+ ${#lists.size(longestScenarios)}+' Longest Running Scenarios'"
+                                                                    style="color:#222222;font-weight:400;line-height:1.4;margin-top:0;margin-bottom:0;margin-right:0;margin-left:0;font-size:20px;text-align:center;">
+                                                                    Top 10 Longest Running
+                                                                    Scenarios</h3></td>
+                                                        </tr>
+                                                        <tr>
+                                                            <td align="center" width="100%">
+                                                                <table align="center"
+                                                                       style="border-collapse:separate;mso-table-lspace:0pt;mso-table-rspace:0pt;border-spacing:1em;"
+                                                                       width="100%">
+                                                                    <tr>
+                                                                        <td style="font-size:0.9em;vertical-align:top;border-spacing:5em;">
+                                                                            <table style="border-collapse:separate;border-spacing:1em;"
+                                                                                   width="100%">
+                                                                                <tr>
+                                                                                    <th style="padding-bottom:6px;font-size:1.1em;text-align:left;"
+                                                                                        width="70%">
+                                                                                        <span style="text-align:left;">Scenario</span>
+                                                                                    </th>
+                                                                                    <th style="padding-bottom:6px;font-size:1.1em;text-align:right;"
+                                                                                        width="30%">
+                                                                                        <span style="text-align:right;">Duration</span>
+                                                                                    </th>
+                                                                                </tr>
+                                                                                <tr data-th-each="longestScenario : ${longestScenarios}">
+                                                                                    <td class="duration-bar"
+                                                                                        colspan="3"
+                                                                                        data-th-style="'background-size:'+ ${longestScenario.percentage} + '%;'"
+                                                                                        height="25"
+                                                                                        style="background-size:15%;"
+                                                                                        width="100%">
+                                                                                        <table width="100%">
+                                                                                            <tbody>
+                                                                                            <tr>
+                                                                                                <td width="70%">
+                                                                                                    <span data-th-text="${longestScenario.name}"
+                                                                                                          style="display:inline-block;padding-left:8px;">User open a webpage</span>
+                                                                                                </td>
+                                                                                                <td align="right"
+                                                                                                    width="30%">
+                                                                                                    <span data-th-text="${longestScenario.durationRange}"
+                                                                                                          style="font-weight:normal;padding-right:4px;display:inline-block;text-align:right;">27s</span>
+                                                                                                </td>
+                                                                                            </tr>
+                                                                                            </tbody>
+                                                                                        </table>
+                                                                                    </td>
+
+                                                                                </tr>
+                                                                            </table>
+                                                                        </td>
+                                                                    </tr>
+                                                                </table>
+                                                            </td>
+                                                        </tr>
+                                                        </tbody>
+                                                    </table>
+                                                </td>
+                                            </tr>
+                                            <!--SPACE-->
+                                            <tr>
+                                                <td height="25" style="line-height:0;">
+                                                    &nbsp;
+                                                </td>
+                                            </tr>
+                                            <!--SLOWEST TESTS-->
+                                            <tr title="Slowest Test">
+                                                <td align="center">
+                                                    <table align="center" border="0"
+                                                           cellpadding="0"
+                                                           cellspacing="0"
+                                                           style="border-collapse: collapse;"
+                                                           width="100%">
+                                                        <tbody>
+                                                        <tr>
+                                                            <td class="compact-wrapper"
+                                                                style="vertical-align:top;box-sizing:border-box;padding-top:4px;padding-bottom:14px;">
+                                                                <h3 data-th-text="'Top '+ ${#lists.size(longestSteps)}+' Longest Running Steps'"
+                                                                    style="color:#222222;font-weight:400;line-height:1.4;margin-top:0;margin-bottom:0;margin-right:0;margin-left:0;font-size:20px;text-align:center;">
+                                                                    Top 10 Longest Running
+                                                                    Steps</h3></td>
+                                                        </tr>
+                                                        <tr>
+                                                            <td align="center" width="100%">
+                                                                <table align="center"
+                                                                       style="border-collapse:separate;mso-table-lspace:0pt;mso-table-rspace:0pt;border-spacing:1em;"
+                                                                       width="100%">
+                                                                    <tr>
+                                                                        <td style="font-size:0.9em;vertical-align:top;border-spacing:5em;">
+                                                                            <table style="border-collapse:separate;border-spacing:1em;"
+                                                                                   width="100%">
+                                                                                <tr>
+                                                                                    <th style="padding-bottom:6px;font-size:1.1em;text-align:left;"
+                                                                                        width="65%">
+                                                                                        <span style="text-align:left;">Step</span>
+                                                                                    </th>
+                                                                                    <th style="padding-bottom:6px;font-size:1.1em;text-align:right;"
+                                                                                        width="7%">
+                                                                                        <span style="text-align:right;">Called</span>
+                                                                                    </th>
+                                                                                    <th style="padding-bottom:6px;font-size:1.1em;text-align:right;"
+                                                                                        width="28%">
+                                                                                        <span style="text-align:right;">Duration</span>
+                                                                                    </th>
+                                                                                </tr>
+                                                                                <tr data-th-each="longestStep : ${longestSteps}">
+                                                                                    <td class="duration-bar"
+                                                                                        colspan="3"
+                                                                                        data-th-style="'background-size:'+ ${longestStep.percentage} + '%;'"
+                                                                                        height="25"
+                                                                                        style="background-size:15%;"
+                                                                                        width="100%">
+                                                                                        <table width="100%">
+                                                                                            <tbody>
+                                                                                            <tr>
+                                                                                                <td width="65%">
+                                                                                                    <span data-th-text="${longestStep.name}"
+                                                                                                          style="display:inline-block;padding-left:8px;">User open a webpage</span>
+                                                                                                </td>
+                                                                                                <td align="center"
+                                                                                                    width="7%">
+                                                                                                    <span data-th-text="${longestStep.count}+'x'"
+                                                                                                          style="font-weight:normal;display:inline-block;text-align:center;">2x</span>
+                                                                                                </td>
+                                                                                                <td align="right"
+                                                                                                    width="28%">
+                                                                                                    <span data-th-text="${longestStep.durationRange}"
+                                                                                                          style="font-weight:normal;padding-right:4px;display:inline-block;text-align:right;">2ms - 27s</span>
+                                                                                                </td>
+                                                                                            </tr>
+                                                                                            </tbody>
+                                                                                        </table>
+                                                                                    </td>
+
+                                                                                </tr>
+                                                                            </table>
+                                                                        </td>
+                                                                    </tr>
+                                                                </table>
+                                                            </td>
+                                                        </tr>
+                                                        </tbody>
+                                                    </table>
+                                                </td>
+                                            </tr>
+                                            <!--SPACE-->
+                                            <tr>
+                                                <td height="25" style="line-height:0;">
+                                                    &nbsp;
+                                                </td>
+                                            </tr>
+                                            </tbody>
+                                        </table>
+                                    </td>
+
+                                    <td style="font-size: 0;margin: 0;padding: 0;padding-top: 8px;padding-bottom: 8px;background-color: #ffffff;"></td>
+                                </tr>
+
+                                <tr style="margin: 0;padding: 0">
+                                    <!--[if mso]>
+                                    <td style="margin:0;padding:0;font-size:0;width:32px;height:32px;border-bottom-left-radius: 32px;">
+                                        <v:shape
+                                                style="width:32px;height:32px;position:relative;top:-0.5px;left:0.5px;"
+                                                coordorigin="0 0" coordsize="2 2"
+                                                fillcolor="#ffffff" stroke="f" fill="true"
+                                                xmlns:v="urn:schemas-microsoft-com:vml"
+                                                xmlns:w="urn:schemas-microsoft-com:office:word">
+                                            <v:path v="m 2,2 c 1,2,0,1,0,0 l 2,0 x"/>
+                                        </v:shape>
+
+                                        <v:shape
+                                                style="width:32px;height:32px;position:relative;top:-0.5px;left:0.5px;"
+                                                coordorigin="0 0" coordsize="2 2" stroke="f"
+                                                fill="f" xmlns:v="urn:schemas-microsoft-com:vml"
+                                                xmlns:w="urn:schemas-microsoft-com:office:word">
+                                            <v:path v="m 2,2 c 1,2,0,1,0,0"/>
+                                        </v:shape>
+                                    </td>
+                                    <![endif]-->
+                                    <!--[if !mso]><!-->
+                                    <td style="font-size: 0;margin: 0;padding: 0;width: 32px;height: 32px;border-bottom-left-radius: 32px;background-color: #ffffff;">
+                                    </td>
+                                    <!--<![endif]-->
+
+                                    <td style="font-size: 0;margin: 0;padding: 0;background-color: #ffffff;">
+                                    </td>
+
+                                    <!--[if mso]>
+                                    <td style="margin:0;padding:0;font-size:0;width:32px;height:32px;border-bottom-right-radius: 32px;">
+                                        <v:shape
+                                                style="width:32px;height:32px;position:relative;top:-0.5px;left:-0.5px;"
+                                                coordorigin="0 0" coordsize="2 2"
+                                                fillcolor="#ffffff" stroke="f" fill="true"
+                                                xmlns:v="urn:schemas-microsoft-com:vml"
+                                                xmlns:w="urn:schemas-microsoft-com:office:word">
+                                            <v:path v="m 2,0 c 2,1,1,2,0,2 l 0,0 x"/>
+                                        </v:shape>
+
+                                        <v:shape
+                                                style="width:32px;height:32px;position:relative;top:-0.5px;left:-0.5px;"
+                                                coordorigin="0 0" coordsize="2 2" stroke="f"
+                                                fill="f" xmlns:v="urn:schemas-microsoft-com:vml"
+                                                xmlns:w="urn:schemas-microsoft-com:office:word">
+                                            <v:path v="m 2,0 c 2,1,1,2,0,2"/>
+                                        </v:shape>
+                                    </td>
+                                    <![endif]-->
+                                    <!--[if !mso]><!-->
+                                    <td style="font-size: 0;margin: 0;padding: 0;width: 32px;height: 32px;border-bottom-right-radius: 32px;background-color: #ffffff;">
+                                    </td>
+                                    <!--<![endif]-->
+                                </tr>
+                                </tbody>
+                            </table>
+                        </td>
+                    </tr>
+
+                    <!--FOOTER-->
+                    <tr class="footer">
+                        <td align="center" style="padding:0;">
+                            <table width="100%">
+                                <tbody>
+                                <tr>
+                                    <td style="padding-right:8%;padding-left:8%;padding-top:0;">
+                                        <table border="0"
+                                               cellpadding="0" cellspacing="0"
+                                               style="margin: 0;padding: 0;border-spacing: 0;overflow: hidden;"
+                                               width="100%">
+                                            <tbody style="margin: 0;padding: 0;">
+
+                                            <tr style="margin: 0;padding: 0">
+                                                <td style="font-size: 0;margin: 0;padding: 0;padding-top: 8px;padding-bottom: 8px;background-color: #daf3ff;"></td>
+
+                                                <td align="center"
+                                                    style="margin: 0;padding-top:15px;font-weight: normal;line-height: 24px;background-color: #daf3ff">
+                                                    <!--[FOOTER-CONTENT]-->
+                                                    <table border="0" cellpadding="0"
+                                                           cellspacing="0" width="100%">
+                                                        <tbody>
+                                                        <tr>
+                                                            <td align="center"
+                                                                style="line-height: 16px; mso-line-height-rule: exactly; opacity: 0.45; font-size: 85%; text-align:center;">
+                                                                <span data-th-text="'Report generated by Testara on ' + ${#temporals.format(report.reportDate, 'EEEE MMMM dd yyyy \'at\' HH:mm:ss')}">Report generated by Testara on Tuesday May 27 at 17:24:30</span>
+                                                            </td>
+                                                        </tr>
+                                                        <!--SPACE-->
+                                                        <tr>
+                                                            <td height="15" style="line-height:0;">
+                                                                &nbsp;
+                                                            </td>
+                                                        </tr>
+                                                        <tr data-th-block
+                                                            data-th-if="${!#strings.isEmpty(report.link)}"
+                                                            style="border-bottom:1px solid #e0e0e0"></tr>
+                                                        <!--SPACE-->
+                                                        <tr data-th-block
+                                                            data-th-if="${!#strings.isEmpty(report.link)}">
+                                                            <td height="15" style="line-height:0;">
+                                                                &nbsp;
+                                                            </td>
+                                                        </tr>
+                                                        <tr data-th-block
+                                                            data-th-if="${!#strings.isEmpty(report.link)}">
+                                                            <td style="padding-top:8px; line-height: 16px; mso-line-height-rule: exactly; font-size: 85%; text-align:center;">
+                                                                <div style="font-size: 100%;margin: 0;padding: 0;margin-top: 0">
+                                                                    <!--[if mso]>
+
+                                                                    <v:rect style="height:40px;width:0;" fill="f" stroke="f" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" />
+
+                                                                    <v:roundrect style="width:281px;height:55px;position:relative;top:0;left:-4px;" arcsize="50%" stroke="f" fill="true" xmlns:v=&quot;urn:schemas-microsoft-com:vml&quot; xmlns:w=&quot;urn:schemas-microsoft-com:office:word&quot;>
+                                                                        <v:fill type="gradientradial" color="transparent" color2="#F45C23" focus="0" focusposition=".05,0.23" focussize=".9,0.25" />
+                                                                    </v:roundrect>
+
+                                                                    <v:roundrect data-th-href="${report.link}" href="" style="width:273px;height:40px;position:relative;top:0;left:0;v-text-anchor:middle;" arcsize="50%" stroke="f" fillcolor="#f2711b" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word">
+                                                                        <w:anchorlock/>
+                                                                        <v:textbox inset="0,0,0,0">
+                                                                        <center>
+                                                                    <![endif]-->
+                                                                    <a data-th-href="${report.link}"
+                                                                       href=""
+                                                                       style="font-family: Helvetica, sans-serif;font-size: 14px;margin: 0;padding: 0 24px;color: #ffffff;margin-top: 0;font-weight: bold;line-height: 40px;letter-spacing: 0.1ch;text-transform: uppercase;background-color: #f2711b;border-radius: 5000px;box-shadow: 0 8px 14px 2px #f45c2324, 0 6px 20px 5px #f45c231f, 0 8px 10px -5px #f45c2333;display: inline-block;text-align: center;text-decoration: none;white-space: nowrap;-webkit-text-size-adjust: none">SEE
+                                                                        FULL REPORT</a>
+                                                                    <!--[if mso]>
+                                                                    </center>
+                                                                    </v:textbox>
+                                                                    </v:roundrect>
+                                                                    <![endif]-->
+                                                                </div>
+                                                            </td>
+                                                        </tr>
+                                                        </tbody>
+                                                    </table>
+
+                                                </td>
+
+                                                <td style="font-size: 0;margin: 0;padding: 0;padding-top: 8px;padding-bottom: 8px;background-color: #daf3ff;"></td>
+                                            </tr>
+
+                                            <tr style="margin: 0;padding: 0">
+                                                <!--[if mso]>
+                                                <td style="margin:0;padding:0;font-size:0;width:32px;height:32px;">
+                                                    <v:shape
+                                                            style="width:32px;height:32px;position:relative;top:-0.5px;left:0.5px;"
+                                                            coordorigin="0 0" coordsize="2 2"
+                                                            fillcolor="#daf3ff" stroke="f"
+                                                            fill="true"
+                                                            xmlns:v="urn:schemas-microsoft-com:vml"
+                                                            xmlns:w="urn:schemas-microsoft-com:office:word">
+                                                        <v:path v="m 2,2 c 1,2,0,1,0,0 l 2,0 x"/>
+                                                    </v:shape>
+
+                                                    <v:shape
+                                                            style="width:32px;height:32px;position:relative;top:-0.5px;left:0.5px;"
+                                                            coordorigin="0 0" coordsize="2 2"
+                                                            stroke="f" fill="f"
+                                                            xmlns:v="urn:schemas-microsoft-com:vml"
+                                                            xmlns:w="urn:schemas-microsoft-com:office:word">
+                                                        <v:path v="m 2,2 c 1,2,0,1,0,0"/>
+                                                    </v:shape>
+                                                </td>
+                                                <![endif]-->
+                                                <!--[if !mso]><!-->
+                                                <td style="font-size: 0;margin: 0;padding: 0;width: 32px;height: 32px;border-bottom-left-radius: 32px;background-color: #daf3ff;">
+                                                </td>
+                                                <!--<![endif]-->
+
+                                                <td style="font-size: 0;margin: 0;padding: 0;background-color: #daf3ff;">
+                                                </td>
+
+                                                <!--[if mso]>
+                                                <td style="margin:0;padding:0;font-size:0;width:32px;height:32px;">
+                                                    <v:shape
+                                                            style="width:32px;height:32px;position:relative;top:-0.5px;left:-0.5px;"
+                                                            coordorigin="0 0" coordsize="2 2"
+                                                            fillcolor="#daf3ff" stroke="f"
+                                                            fill="true"
+                                                            xmlns:v="urn:schemas-microsoft-com:vml"
+                                                            xmlns:w="urn:schemas-microsoft-com:office:word">
+                                                        <v:path v="m 2,0 c 2,1,1,2,0,2 l 0,0 x"/>
+                                                    </v:shape>
+
+                                                    <v:shape
+                                                            style="width:32px;height:32px;position:relative;top:-0.5px;left:-0.5px;"
+                                                            coordorigin="0 0" coordsize="2 2"
+                                                            stroke="f" fill="f"
+                                                            xmlns:v="urn:schemas-microsoft-com:vml"
+                                                            xmlns:w="urn:schemas-microsoft-com:office:word">
+                                                        <v:path v="m 2,0 c 2,1,1,2,0,2"/>
+                                                    </v:shape>
+                                                </td>
+                                                <![endif]-->
+                                                <!--[if !mso]><!-->
+                                                <td style="font-size: 0;margin: 0;padding: 0;width: 32px;height: 32px;border-bottom-right-radius: 32px;background-color: #daf3ff;">
+                                                </td>
+                                                <!--<![endif]-->
+                                            </tr>
+                                            </tbody>
+                                        </table>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td align="center" style="padding:10px;">
+                                        <table align="center" border="0" cellpadding="0"
+                                               cellspacing="0">
+                                            <tbody>
+                                            <tr>
+                                                <td align="center"
+                                                    style="font-family: Helvetica, arial, sans-serif; font-size: 12px; color: #ffffff;">
+                                                    This is an automated email. Please do not reply
+                                                    to this email.
+                                                </td>
+                                            </tr>
+                                            <tr>
+                                                <td height="10"
+                                                    style="font-family: Helvetica, arial, sans-serif;"></td>
+                                            </tr>
+                                            <tr>
+                                                <td align="center"
+                                                    style="font-family: Helvetica, arial, sans-serif; font-size: 12px; color: #ffffff;">
+                                                    <strong>Data protection and privacy</strong>
+                                                </td>
+                                            </tr>
+                                            <tr>
+                                                <td height="5"
+                                                    style="font-family: Helvetica, arial, sans-serif;"></td>
+                                            </tr>
+                                            <tr>
+                                                <td align="center"
+                                                    style="font-family: Helvetica, arial, sans-serif; font-size: 12px; color: #ffffff;">
+                                                    Please do not share this email. This email may
+                                                    contains
+                                                    sensitive data
+                                                </td>
+                                            </tr>
+                                            <!--SPACE-->
+                                            <tr>
+                                                <td height="25" style="line-height:0;">
+                                                    &nbsp;
+                                                </td>
+                                            </tr>
+                                            <tr>
+                                                <td align="center"
+                                                    data-th-text="'Testara &#169; '+ ${#dates.format(#dates.createNow(), 'yyyy')}"
+                                                    style="font-family: Helvetica, arial, sans-serif; font-size: 12px; color: #ffffff;">
+                                                    Testara &#169; 2022
+                                                </td>
+                                            </tr>
+                                            <!--SPACE-->
+                                            <tr>
+                                                <td height="35" style="line-height:0;">
+                                                    &nbsp;
+                                                </td>
+                                            </tr>
+                                            </tbody>
+                                        </table>
+                                    </td>
+                                </tr>
+                                </tbody>
+                            </table>
+                        </td>
+                    </tr>
+                </table>
+                <!--[if mso]>
+                </td>
+                </tr>
+                </table>
+                <![endif]-->
+            </td>
+        </tr>
+    </table>
+</div>
+</body>
+</html>

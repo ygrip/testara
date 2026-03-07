@@ -1,0 +1,3 @@
+io.github.ygrip.testara.api.interceptor.ResponseLoggingInterceptor
+io.github.ygrip.testara.api.interceptor.StoreResponseInterceptor
+io.github.ygrip.testara.api.interceptor.FileResponseInterceptor

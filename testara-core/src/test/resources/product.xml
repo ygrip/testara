@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<products>
+    <product>
+        <name>Dom quixote de La Mancha</name>
+        <quantity>12</quantity>
+        <category>Book</category>
+    </product>
+    <product>
+        <name>Hamlet</name>
+        <quantity>3</quantity>
+        <category>Book</category>
+    </product>
+    <product>
+        <name>War and Peace</name>
+        <quantity>7</quantity>
+        <category>Book</category>
+    </product>
+    <product>
+        <name>Moby Dick</name>
+        <quantity>14</quantity>
+        <category>Book</category>
+    </product>
+    <product>
+        <name>Forrest Gump</name>
+        <quantity>16</quantity>
+        <category>DVD</category>
+    </product>
+    <product>
+        <name>Taxi Driver</name>
+        <quantity>25</quantity>
+        <category>DVD</category>
+    </product>
+    <product>
+        <name>The Godfather</name>
+        <quantity>21</quantity>
+        <category>DVD</category>
+    </product>
+    <product>
+        <name>Star Wars: The Last Jedi</name>
+        <quantity>48</quantity>
+        <category>Blu Ray</category>
+    </product>
+    <product>
+        <name>Dunkirk</name>
+        <quantity>12</quantity>
+        <category>Blu Ray</category>
+    </product>
+    <product>
+        <name>Black Panther</name>
+        <quantity>21</quantity>
+        <category>Blu Ray</category>
+    </product>
+</products>

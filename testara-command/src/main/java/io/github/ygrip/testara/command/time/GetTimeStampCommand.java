@@ -1,0 +1,37 @@
+package io.github.ygrip.testara.command.time;
+
+import io.github.ygrip.testara.command.model.CommandLogic;
+import io.github.ygrip.testara.command.model.CommandTag;
+import io.github.ygrip.testara.core.time.DateHelper;
+import org.apache.commons.lang3.ObjectUtils;
+
+import java.util.List;
+
+/**
+ * <p>GetTimeStampCommand class.</p>
+ *
+ * @author yunaz.ramadhan on 10/4/2019
+ * @version $Id: $Id
+ */
+@CommandTag(command = "timestamp", alias = "epoch", overwrite = true)
+public class GetTimeStampCommand implements CommandLogic<Long> {
+  /**
+   * {@inheritDoc}
+   */
+  @Override
+  public boolean preProcessParameters() {
+    return true;
+  }
+
+  /**
+   * {@inheritDoc}
+   */
+  @Override
+  public Long execute(List<Object> parameters) {
+    return ObjectUtils.isEmpty(parameters) ?
+        DateHelper.getCurrentDateTimeEpoch() :
+        parameters.size() == 1 ?
+            DateHelper.convertToDateTimeEpoch(String.valueOf(parameters.get(0))) :
+            DateHelper.convertToDateTimeEpoch(String.valueOf(parameters.get(0)), String.valueOf(parameters.get(1)));
+  }
+}

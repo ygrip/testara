@@ -1,0 +1,2 @@
+io.github.ygrip.testara.properties.consul.ConsulPropertySource
+io.github.ygrip.testara.properties.vault.VaultPropertySource
