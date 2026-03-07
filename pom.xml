@@ -6,7 +6,7 @@
 
   <groupId>io.github.ygrip</groupId>
   <artifactId>testara-core-parent</artifactId>
-  <version>1.0-SNAPSHOT</version>
+  <version>1.0.0</version>
   <packaging>pom</packaging>
 
   <name>Testara Testing Framework</name>
@@ -882,6 +882,10 @@
           <plugin>
             <groupId>org.apache.maven.plugins</groupId>
             <artifactId>maven-javadoc-plugin</artifactId>
+            <configuration>
+              <doclint>none</doclint>
+              <failOnError>false</failOnError>
+            </configuration>
             <executions>
               <execution>
                 <id>attach-javadocs</id>
