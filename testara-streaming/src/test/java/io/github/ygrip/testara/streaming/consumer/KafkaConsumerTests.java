@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import io.github.ygrip.testara.core.BaseTests;
 import io.github.ygrip.testara.core.TestWith;
 import io.github.ygrip.testara.core.context.TestFramework;
+import io.github.ygrip.testara.streaming.KafkaContainerExtension;
 import io.github.ygrip.testara.core.registry.RootRegistry;
 import io.github.ygrip.testara.streaming.config.KafkaProperties;
 import io.github.ygrip.testara.streaming.model.KafkaMetaData;
@@ -11,6 +12,7 @@ import org.hamcrest.Matchers;
 import org.hamcrest.core.Is;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -20,6 +22,7 @@ import static org.hamcrest.CoreMatchers.notNullValue;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.equalTo;
 
+@ExtendWith(KafkaContainerExtension.class)
 @Tag("consumer")
 @Tag("kafka")
 @TestWith(properties = {"classpath:application.properties", "classpath:configuration.properties"})

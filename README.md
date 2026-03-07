@@ -39,7 +39,7 @@ Testara is a modular test automation framework built on Java 21 that provides a 
 | `testara-junit5` | JUnit 5 TestEngine | — |
 | `testara-spring` | Spring Boot auto-configuration | — |
 | `testara-properties` | External config from Consul and Vault | — |
-| `testara-reporter-plugin` | Maven plugin for HTML test reports | — |
+| `testara-reporter-plugin` | Maven plugin for HTML test reports | [Documentation](testara-reporter-plugin/README.md) |
 | `testara-bom` | Bill of Materials for version alignment | — |
 | `testara-*-cucumber` | Pre-built Cucumber step definitions for each module | — |
 
@@ -49,6 +49,7 @@ Testara is a modular test automation framework built on Java 21 that provides a 
 - **[Validation](testara-validation/README.md)** — All 40+ validators, usage patterns, and how to create custom validations
 - **[API Testing](testara-api/README.md)** — Service configuration, request building, load testing, and interceptors
 - **[UI Automation](testara-ui/README.md)** — Engine setup (Selenium/Playwright/Appium), interactions, observations, page objects, and extensibility
+- **[Reporter Plugin](testara-reporter-plugin/README.md)** — HTML report generation from Cucumber JSON, templates, customization, and CLI usage
 
 ## Requirements
 

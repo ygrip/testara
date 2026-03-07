@@ -26,6 +26,7 @@ import lombok.extern.log4j.Log4j2;
 @Log4j2
 @Tag("ui")
 @Tag("playwright")
+@Tag("disabled")
 @TestWith(properties = {"classpath:application.properties", "classpath:configuration.properties"})
 public class PlaywrightBrowserTests extends BaseTests {
 

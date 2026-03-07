@@ -3,10 +3,12 @@ package io.github.ygrip.testara.database.sql;
 import io.github.ygrip.testara.core.BaseTests;
 import io.github.ygrip.testara.core.TestWith;
 import io.github.ygrip.testara.core.context.TestFramework;
+import io.github.ygrip.testara.database.DatabaseContainerExtension;
 import io.github.ygrip.testara.database.config.DatabaseProperties;
 import io.github.ygrip.testara.database.context.TestDatabase;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 
 import java.net.UnknownServiceException;
 import java.util.List;
@@ -18,6 +20,7 @@ import static org.hamcrest.Matchers.notNullValue;
 import static org.hamcrest.core.Is.is;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
+@ExtendWith(DatabaseContainerExtension.class)
 @Tag("sql")
 @Tag("database")
 @TestWith(properties = {"classpath:application.properties", "classpath:configuration.properties"})

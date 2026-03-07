@@ -3,6 +3,7 @@ package io.github.ygrip.testara.streaming.publisher;
 import io.github.ygrip.testara.core.BaseTests;
 import io.github.ygrip.testara.core.TestWith;
 import io.github.ygrip.testara.core.context.TestFramework;
+import io.github.ygrip.testara.streaming.KafkaContainerExtension;
 import io.github.ygrip.testara.core.mapper.MapperHelper;
 import io.github.ygrip.testara.core.registry.RootRegistry;
 import io.github.ygrip.testara.streaming.config.KafkaProperties;
@@ -10,6 +11,7 @@ import org.hamcrest.Matchers;
 import org.hamcrest.core.Is;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -17,6 +19,7 @@ import java.util.Map;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.equalTo;
 
+@ExtendWith(KafkaContainerExtension.class)
 @Tag("publisher")
 @Tag("kafka")
 @TestWith(properties = {"classpath:application.properties", "classpath:configuration.properties"})

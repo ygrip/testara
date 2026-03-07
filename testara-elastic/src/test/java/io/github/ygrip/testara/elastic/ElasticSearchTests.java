@@ -11,6 +11,7 @@ import org.elasticsearch.search.sort.SortBuilders;
 import org.elasticsearch.search.sort.SortOrder;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -27,6 +28,7 @@ import static org.hamcrest.Matchers.lessThanOrEqualTo;
 import static org.hamcrest.Matchers.notNullValue;
 import static org.hamcrest.core.Is.is;
 
+@ExtendWith(ElasticContainerExtension.class)
 @Tag("elastic")
 @TestWith(properties = {"classpath:application.properties", "classpath:configuration.properties"})
 public class ElasticSearchTests extends BaseTests {

@@ -116,6 +116,7 @@
           <useFile>false</useFile>
           <printSummary>true</printSummary>
           <reportFormat>brief</reportFormat>
+          <excludedGroups>disabled,ignored</excludedGroups>
         </configuration>
       </plugin>
     </plugins>

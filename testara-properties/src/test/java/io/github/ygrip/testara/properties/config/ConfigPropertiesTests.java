@@ -4,10 +4,12 @@ import io.github.ygrip.testara.core.BaseTests;
 import io.github.ygrip.testara.core.TestWith;
 import io.github.ygrip.testara.core.config.PropertyResolver;
 import io.github.ygrip.testara.core.context.TestFramework;
+import io.github.ygrip.testara.properties.PropertiesContainerExtension;
 import io.github.ygrip.testara.properties.support.ConsulHelper;
 import io.github.ygrip.testara.properties.support.VaultHelper;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 
 import java.util.Map;
 import java.util.Optional;
@@ -18,6 +20,7 @@ import static org.hamcrest.Matchers.blankOrNullString;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.not;
 
+@ExtendWith(PropertiesContainerExtension.class)
 @Tag("properties")
 @TestWith(properties = {"classpath:application.properties", "classpath:configuration.properties"})
 public class ConfigPropertiesTests extends BaseTests {
