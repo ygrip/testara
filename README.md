@@ -112,29 +112,6 @@ cd testara
 mvn clean install
 ```
 
-## Releasing to Maven Central
-
-```bash
-mvn clean deploy -Prelease
-```
-
-This activates the `release` profile which attaches sources, javadoc, signs artifacts with GPG, and publishes to Maven Central via the Central Publishing Plugin.
-
-### Prerequisites for Release
-
-1. A GPG key for signing artifacts
-2. Maven `settings.xml` configured with your Central Portal credentials:
-
-```xml
-<servers>
-  <server>
-    <id>central</id>
-    <username>YOUR_TOKEN_USERNAME</username>
-    <password>YOUR_TOKEN_PASSWORD</password>
-  </server>
-</servers>
-```
-
 ## License
 
 This project is licensed under the [Apache License 2.0](LICENSE).
