@@ -9,6 +9,9 @@ import org.elasticsearch.client.core.CountResponse;
 import org.elasticsearch.search.sort.SortBuilder;
 import org.elasticsearch.search.sort.SortBuilders;
 import org.elasticsearch.search.sort.SortOrder;
+import io.github.ygrip.testara.elastic.testenv.ElasticModule;
+import io.github.ygrip.testara.testenv.TestEnvironmentExtension;
+import io.github.ygrip.testara.testenv.WithModules;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -28,7 +31,8 @@ import static org.hamcrest.Matchers.lessThanOrEqualTo;
 import static org.hamcrest.Matchers.notNullValue;
 import static org.hamcrest.core.Is.is;
 
-@ExtendWith(ElasticContainerExtension.class)
+@ExtendWith(TestEnvironmentExtension.class)
+@WithModules({ElasticModule.class})
 @Tag("elastic")
 @TestWith(properties = {"classpath:application.properties", "classpath:configuration.properties"})
 public class ElasticSearchTests extends BaseTests {

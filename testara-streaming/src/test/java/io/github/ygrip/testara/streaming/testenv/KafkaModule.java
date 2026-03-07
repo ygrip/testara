@@ -1,5 +1,6 @@
-package io.github.ygrip.testara.streaming;
+package io.github.ygrip.testara.streaming.testenv;
 
+import io.github.ygrip.testara.testenv.EnvironmentModule;
 import org.apache.kafka.clients.admin.AdminClient;
 import org.apache.kafka.clients.admin.AdminClientConfig;
 import org.apache.kafka.clients.admin.NewTopic;
@@ -7,23 +8,27 @@ import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.common.serialization.StringSerializer;
-import org.junit.jupiter.api.extension.BeforeAllCallback;
-import org.junit.jupiter.api.extension.ExtensionContext;
 import org.testcontainers.kafka.KafkaContainer;
 
 import java.util.List;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 
-public class KafkaContainerExtension implements BeforeAllCallback {
+/**
+ * Manages a single Kafka container (~512 MB expected memory).
+ * KAFKA_BROKER_OPTS caps the broker heap at 256 MB.
+ */
+public class KafkaModule implements EnvironmentModule {
 
-    private static final KafkaContainer KAFKA;
+    private KafkaContainer kafka;
 
-    static {
-        KAFKA = new KafkaContainer("apache/kafka:3.8.0");
-        KAFKA.start();
+    @Override
+    public void start() {
+        kafka = new KafkaContainer("apache/kafka:3.8.0")
+            .withEnv("KAFKA_BROKER_HEAP_OPTS", "-Xms128m -Xmx256m");
+        kafka.start();
 
-        String bootstrapServers = KAFKA.getBootstrapServers();
+        String bootstrapServers = kafka.getBootstrapServers();
         System.setProperty("KAFKA_SERVERS", bootstrapServers);
         System.setProperty("CONSUL_ENABLED", "false");
         System.setProperty("VAULT_ENABLED", "false");
@@ -32,11 +37,17 @@ public class KafkaContainerExtension implements BeforeAllCallback {
     }
 
     @Override
-    public void beforeAll(ExtensionContext context) {
-        // containers started in static initializer
+    public void stop() {
+        if (kafka != null && kafka.isRunning()) {
+            kafka.stop();
+        }
     }
 
-    private static void createTopicsAndSeedData(String bootstrapServers) {
+    public String getBootstrapServers() {
+        return kafka.getBootstrapServers();
+    }
+
+    private void createTopicsAndSeedData(String bootstrapServers) {
         Properties adminProps = new Properties();
         adminProps.put(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
 

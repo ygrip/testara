@@ -1,7 +1,7 @@
-package io.github.ygrip.testara.elastic;
+package io.github.ygrip.testara.elastic.testenv;
 
-import org.junit.jupiter.api.extension.BeforeAllCallback;
-import org.junit.jupiter.api.extension.ExtensionContext;
+import io.github.ygrip.testara.testenv.EnvironmentModule;
+import org.testcontainers.elasticsearch.ElasticsearchContainer;
 
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -9,43 +9,46 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 
 /**
- * Seeds test data into the locally running Elasticsearch instance.
- * Uses ELASTIC_HOSTS system/env property, or defaults to localhost:9200.
+ * Manages a single Elasticsearch 7.17 container (~512 MB expected memory).
+ * Heap is capped at 256 MB via ES_JAVA_OPTS.
+ * Seeds test index and documents after startup.
  */
-public class ElasticContainerExtension implements BeforeAllCallback {
+public class ElasticModule implements EnvironmentModule {
 
-    private static volatile boolean initialized = false;
+    private ElasticsearchContainer elasticsearch;
 
     @Override
-    public void beforeAll(ExtensionContext context) {
-        if (!initialized) {
-            synchronized (ElasticContainerExtension.class) {
-                if (!initialized) {
-                    System.setProperty("CONSUL_ENABLED", "false");
-                    System.setProperty("VAULT_ENABLED", "false");
-                    seedElasticData();
-                    initialized = true;
-                }
-            }
+    public void start() {
+        elasticsearch = new ElasticsearchContainer(
+            "docker.elastic.co/elasticsearch/elasticsearch:7.17.27")
+            .withEnv("ES_JAVA_OPTS", "-Xms256m -Xmx256m")
+            .withEnv("discovery.type", "single-node")
+            .withEnv("xpack.security.enabled", "false");
+        elasticsearch.start();
+
+        String httpHost = elasticsearch.getHttpHostAddress();
+
+        System.setProperty("ELASTIC_HOSTS", httpHost);
+        System.setProperty("CONSUL_ENABLED", "false");
+        System.setProperty("VAULT_ENABLED", "false");
+
+        seedElasticData(httpHost);
+    }
+
+    @Override
+    public void stop() {
+        if (elasticsearch != null && elasticsearch.isRunning()) {
+            elasticsearch.stop();
         }
     }
 
-    private static void seedElasticData() {
-        String esHosts = resolveProperty("ELASTIC_HOSTS", "localhost:9200");
+    public String getHttpHostAddress() {
+        return elasticsearch.getHttpHostAddress();
+    }
+
+    private void seedElasticData(String esHosts) {
         String baseUrl = "http://" + esHosts;
         HttpClient client = HttpClient.newHttpClient();
-
-        try {
-            HttpRequest checkIndex = HttpRequest.newBuilder()
-                .uri(URI.create(baseUrl + "/notification_inbox_notification_inboxes"))
-                .GET()
-                .build();
-            HttpResponse<String> resp = client.send(checkIndex, HttpResponse.BodyHandlers.ofString());
-            if (resp.statusCode() == 200) {
-                return;
-            }
-        } catch (Exception ignored) {
-        }
 
         try {
             HttpRequest createIndex = HttpRequest.newBuilder()
@@ -78,15 +81,7 @@ public class ElasticContainerExtension implements BeforeAllCallback {
                 .build();
             client.send(refresh, HttpResponse.BodyHandlers.ofString());
         } catch (Exception e) {
-            System.err.println("Warning: Failed to seed Elasticsearch data: " + e.getMessage());
+            throw new RuntimeException("Failed to seed Elasticsearch data", e);
         }
-    }
-
-    private static String resolveProperty(String key, String defaultValue) {
-        String val = System.getenv(key);
-        if (val != null && !val.isBlank()) return val;
-        val = System.getProperty(key);
-        if (val != null && !val.isBlank()) return val;
-        return defaultValue;
     }
 }

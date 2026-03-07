@@ -3,7 +3,10 @@ package io.github.ygrip.testara.properties.vault;
 import io.github.ygrip.testara.core.BaseTests;
 import io.github.ygrip.testara.core.TestWith;
 import io.github.ygrip.testara.core.context.TestFramework;
-import io.github.ygrip.testara.properties.PropertiesContainerExtension;
+import io.github.ygrip.testara.properties.testenv.ConsulModule;
+import io.github.ygrip.testara.properties.testenv.VaultModule;
+import io.github.ygrip.testara.testenv.TestEnvironmentExtension;
+import io.github.ygrip.testara.testenv.WithModules;
 import io.github.ygrip.testara.properties.support.VaultHelper;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -16,7 +19,8 @@ import static org.hamcrest.Matchers.anEmptyMap;
 import static org.hamcrest.Matchers.blankOrNullString;
 import static org.hamcrest.Matchers.not;
 
-@ExtendWith(PropertiesContainerExtension.class)
+@ExtendWith(TestEnvironmentExtension.class)
+@WithModules({ConsulModule.class, VaultModule.class})
 @Tag("properties")
 @TestWith(properties = {"classpath:application.properties", "classpath:configuration.properties"})
 public class VaultPropertiesTests extends BaseTests {

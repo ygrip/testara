@@ -4,7 +4,9 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import io.github.ygrip.testara.core.BaseTests;
 import io.github.ygrip.testara.core.TestWith;
 import io.github.ygrip.testara.core.context.TestFramework;
-import io.github.ygrip.testara.streaming.KafkaContainerExtension;
+import io.github.ygrip.testara.streaming.testenv.KafkaModule;
+import io.github.ygrip.testara.testenv.TestEnvironmentExtension;
+import io.github.ygrip.testara.testenv.WithModules;
 import io.github.ygrip.testara.core.registry.RootRegistry;
 import io.github.ygrip.testara.streaming.config.KafkaProperties;
 import io.github.ygrip.testara.streaming.model.KafkaMetaData;
@@ -22,7 +24,8 @@ import static org.hamcrest.CoreMatchers.notNullValue;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.equalTo;
 
-@ExtendWith(KafkaContainerExtension.class)
+@ExtendWith(TestEnvironmentExtension.class)
+@WithModules({KafkaModule.class})
 @Tag("consumer")
 @Tag("kafka")
 @TestWith(properties = {"classpath:application.properties", "classpath:configuration.properties"})

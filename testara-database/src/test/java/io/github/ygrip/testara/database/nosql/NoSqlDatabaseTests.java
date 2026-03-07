@@ -3,7 +3,10 @@ package io.github.ygrip.testara.database.nosql;
 import io.github.ygrip.testara.core.BaseTests;
 import io.github.ygrip.testara.core.TestWith;
 import io.github.ygrip.testara.core.context.TestFramework;
-import io.github.ygrip.testara.database.DatabaseContainerExtension;
+import io.github.ygrip.testara.database.testenv.MongoModule;
+import io.github.ygrip.testara.database.testenv.PostgresModule;
+import io.github.ygrip.testara.testenv.TestEnvironmentExtension;
+import io.github.ygrip.testara.testenv.WithModules;
 import io.github.ygrip.testara.database.config.MongoProperties;
 import io.github.ygrip.testara.database.context.TestDatabase;
 import io.github.ygrip.testara.database.model.MongoDbConnection;
@@ -20,7 +23,8 @@ import static org.hamcrest.Matchers.notNullValue;
 import static org.hamcrest.core.Is.is;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
-@ExtendWith(DatabaseContainerExtension.class)
+@ExtendWith(TestEnvironmentExtension.class)
+@WithModules({PostgresModule.class, MongoModule.class})
 @Tag("mongo")
 @Tag("database")
 @TestWith(properties = {"classpath:application.properties", "classpath:configuration.properties"})

@@ -36,3 +36,8 @@ build/
 
 ### Release credentials ###
 .mvn/release-settings.xml
+
+### Cursor / plan files ###
+**/cursor/
+**/plan/
+*.plan.md

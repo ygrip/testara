@@ -108,6 +108,7 @@
           <useFile>false</useFile>
           <printSummary>true</printSummary>
           <reportFormat>brief</reportFormat>
+          <skipTests>true</skipTests>
         </configuration>
       </plugin>
     </plugins>

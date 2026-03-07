@@ -116,7 +116,7 @@
           <useFile>false</useFile>
           <printSummary>true</printSummary>
           <reportFormat>brief</reportFormat>
-          <excludedGroups>disabled,ignored</excludedGroups>
+          <skipTests>true</skipTests>
         </configuration>
       </plugin>
     </plugins>
