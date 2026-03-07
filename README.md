@@ -21,27 +21,34 @@ Testara is a modular test automation framework built on Java 21 that provides a 
 
 ## Modules
 
-| Module | Description |
-|---|---|
-| `testara-core` | Foundation: config, JSON/CSV/Excel mapping, class scanning, SPI factories |
-| `testara-command` | Command parser and expression engine with data generators |
-| `testara-validation` | Assertion and validation framework |
-| `testara-api` | REST API testing (RestAssured) |
-| `testara-ui` | UI automation core (engine-agnostic) |
-| `testara-ui-selenium` | Selenium WebDriver engine |
-| `testara-ui-playwright` | Playwright engine |
-| `testara-ui-appium` | Appium engine for mobile testing |
-| `testara-database` | Database testing (MongoDB, PostgreSQL, MariaDB, MySQL) |
-| `testara-streaming` | Kafka streaming testing |
-| `testara-elastic` | Elasticsearch testing |
-| `testara-security` | SSH and remote execution |
-| `testara-cucumber` | Cucumber BDD integration |
-| `testara-junit5` | JUnit 5 TestEngine |
-| `testara-spring` | Spring Boot auto-configuration |
-| `testara-properties` | External config from Consul and Vault |
-| `testara-reporter-plugin` | Maven plugin for HTML test reports |
-| `testara-bom` | Bill of Materials for version alignment |
-| `testara-*-cucumber` | Pre-built Cucumber step definitions for each module |
+| Module | Description | Docs |
+|---|---|---|
+| `testara-core` | Foundation: config, JSON/CSV/Excel mapping, class scanning, SPI factories | — |
+| `testara-command` | Command parser and expression engine with data generators | [Documentation](testara-command/README.md) |
+| `testara-validation` | Assertion and validation framework | [Documentation](testara-validation/README.md) |
+| `testara-api` | REST API testing (RestAssured) | [Documentation](testara-api/README.md) |
+| `testara-ui` | UI automation core (engine-agnostic) | [Documentation](testara-ui/README.md) |
+| `testara-ui-selenium` | Selenium WebDriver engine | [UI Docs](testara-ui/README.md) |
+| `testara-ui-playwright` | Playwright engine | [UI Docs](testara-ui/README.md) |
+| `testara-ui-appium` | Appium engine for mobile testing | [UI Docs](testara-ui/README.md) |
+| `testara-database` | Database testing (MongoDB, PostgreSQL, MariaDB, MySQL) | — |
+| `testara-streaming` | Kafka streaming testing | — |
+| `testara-elastic` | Elasticsearch testing | — |
+| `testara-security` | SSH and remote execution | — |
+| `testara-cucumber` | Cucumber BDD integration | — |
+| `testara-junit5` | JUnit 5 TestEngine | — |
+| `testara-spring` | Spring Boot auto-configuration | — |
+| `testara-properties` | External config from Consul and Vault | — |
+| `testara-reporter-plugin` | Maven plugin for HTML test reports | — |
+| `testara-bom` | Bill of Materials for version alignment | — |
+| `testara-*-cucumber` | Pre-built Cucumber step definitions for each module | — |
+
+## Documentation
+
+- **[Command Engine](testara-command/README.md)** — All 50+ built-in commands, syntax reference, and how to create custom commands
+- **[Validation](testara-validation/README.md)** — All 40+ validators, usage patterns, and how to create custom validations
+- **[API Testing](testara-api/README.md)** — Service configuration, request building, load testing, and interceptors
+- **[UI Automation](testara-ui/README.md)** — Engine setup (Selenium/Playwright/Appium), interactions, observations, page objects, and extensibility
 
 ## Requirements
 
