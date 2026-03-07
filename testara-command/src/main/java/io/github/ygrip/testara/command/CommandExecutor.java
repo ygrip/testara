@@ -135,7 +135,7 @@ public final class CommandExecutor {
         Boolean.parseBoolean(System.getProperty("class.loader.enable-parallel-scanning", "false"));
     Set<String> rejectPackages = new HashSet<>(List.of(StringUtils.split(System.getProperty(
             "class.loader.reject-packages",
-            "org.*,com.sun.*,java.*,javax.*,io.netty.*,org.springframework.*,net.bytebuddy.*,com.fasterxml.*,org.apache.*,org.junit.*,org.hamcrest.*,org.mockito.*,com.google.*,org.slf4j.*,ch.qos.logback.*,org.seleniumhq.*,net.serenitybdd.*,io.restassured.*,com.browserup.*,org.json.*,org.yaml.*,com.jayway.*,org.objenesis.*,net.sf.*,org.w3c.*,org.xml.*,com.squareup.*,okhttp3.*,retrofit2.*,com.github.*,io.github.*,org.jetbrains.*,kotlin.*,kotlinx.*"),
+            "org.*,com.sun.*,java.*,javax.*,io.netty.*,org.springframework.*,net.bytebuddy.*,com.fasterxml.*,org.apache.*,org.junit.*,org.hamcrest.*,org.mockito.*,com.google.*,org.slf4j.*,ch.qos.logback.*,org.seleniumhq.*,net.serenitybdd.*,io.restassured.*,com.browserup.*,org.json.*,org.yaml.*,com.jayway.*,org.objenesis.*,net.sf.*,org.w3c.*,org.xml.*,com.squareup.*,okhttp3.*,retrofit2.*,com.github.*,io.github.classgraph.*,io.github.bonigarcia.*,org.jetbrains.*,kotlin.*,kotlinx.*"),
         ",")));
     Set<String> defaultLocations =
         new HashSet<>(List.of(StringUtils.split(System.getProperty("class.loader.default-scan-locations", "io.github.ygrip.testara"),
