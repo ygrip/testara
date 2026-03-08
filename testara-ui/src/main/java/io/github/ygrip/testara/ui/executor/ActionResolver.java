@@ -84,16 +84,16 @@ public class ActionResolver {
     var configType = Optional.ofNullable(session)
       .map(DriverSession::configType)
       .orElse(null);
-    AbstractDriverProperties config = ObjectUtils.isEmpty(configType) ?
+    AbstractDriverProperties config = ObjectUtils.isNotEmpty(configType) ?
       TestFramework.configuration()
         .get(configType) :
-      TestFramework.configuration()
-        .get(AbstractDriverProperties.class);
+      null;
     ClassScanner scanner = TestFramework.context()
       .get(ClassScanner.class);
 
-    CompletableFuture<List<Class<?>>> loaded =
-      scanner.scanOnPackages(UserAction.class, OnPage.class, config.getActionScanLocations());
+    CompletableFuture<List<Class<?>>> loaded = ObjectUtils.isNotEmpty(config) ?
+      scanner.scanOnPackages(UserAction.class, OnPage.class, config.getActionScanLocations()) :
+      scanner.scan(UserAction.class, OnPage.class);
     try {
       List<Class<?>> resolved = loaded.get(60, TimeUnit.SECONDS);
       for (Class<?> clazz : resolved) {
@@ -154,16 +154,13 @@ public class ActionResolver {
   }
 
   private static Object getInstance(Class<?> clazz) {
-    Object instance = null;
+    Object instance;
     try {
       instance = TestFramework.context()
         .get(clazz);
-      if (instance == null) {
-        instance = TestFramework.factory()
-          .getInstance(clazz);
-      }
     } catch (Exception ignored) {
-
+      instance = TestFramework.factory()
+        .getInstance(clazz);
     }
     return instance;
   }
@@ -207,14 +204,15 @@ public class ActionResolver {
     String pageName = CommonHelper.isBlank(currentPage) ? "anoymous" : currentPage.getSimpleName();
     boolean useAnonymousCall = CommonHelper.isBlank(currentPage);
     UserActionModel action = null;
-    Map<String, UserActionModel> actions = getAvailableActions().getOrDefault(currentPage, new HashMap<>());
+    final var allActions = getAvailableActions();
+    Map<String, UserActionModel> actions = allActions.getOrDefault(currentPage, new HashMap<>());
     if (!CommonHelper.isBlank(actions)) {
       action = matchingAction(identifier, actions, additionalParameter);
     }
 
     //fetch for action that allows anonymous call
     if (CommonHelper.isBlank(action) && !useAnonymousCall) {
-      actions = getAvailableActions().getOrDefault(null, new HashMap<>());
+      actions = allActions.getOrDefault(null, new HashMap<>());
       if (CommonHelper.isBlank(actions)) {
         throw new ActionNotFoundException("#ERROR Cannot find any user actions");
       } else {

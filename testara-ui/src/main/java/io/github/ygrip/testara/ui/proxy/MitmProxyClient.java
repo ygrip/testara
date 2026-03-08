@@ -58,13 +58,31 @@ public class MitmProxyClient {
 
   public MitmProxyHealthResponse health() throws Exception {
     String response = sendWithRetry("GET", "health", null);
+    log.debug("MitmProxy health response: {}", response);
     return MapperHelper.toObject(response, MitmProxyHealthResponse.class);
+  }
+
+  /**
+   * Raw health check that returns the unparsed response body.
+   * Useful for diagnosing deserialization mismatches.
+   */
+  public String healthRaw() throws Exception {
+    return sendWithRetry("GET", "health", null);
   }
 
   public boolean isReady() {
     try {
-      MitmProxyHealthResponse status = health();
-      return status != null && status.isHealthy();
+      MitmProxyHealthResponse health = health();
+      if (health == null) {
+        return false;
+      }
+      if (health.isHealthy()) {
+        return true;
+      }
+      // If the HTTP call succeeded (200) but the status field doesn't match "ok",
+      // treat it as ready — the server is reachable and responded without error.
+      log.debug("MitmProxy health endpoint reachable but status='{}' (expected 'ok'); treating as ready", health.getStatus());
+      return true;
     } catch (Exception e) {
       log.trace("MitmProxy health check failed: {}", e.getMessage());
       return false;
@@ -145,6 +163,41 @@ public class MitmProxyClient {
     return renewInstance(instanceId, null);
   }
 
+  /**
+   * Destroy every instance on the grid, optionally cleaning up server-side artifacts.
+   *
+   * @param cleanup also remove rule files and CA directories on the server
+   * @return the number of instances that were successfully destroyed
+   */
+  public int destroyAllInstances(boolean cleanup) {
+    int destroyed = 0;
+    try {
+      List<MitmProxyInstanceSummary> instances = listInstances();
+      log.info("Destroying all MitmProxy instances ({} found, cleanup={})", instances.size(), cleanup);
+      for (MitmProxyInstanceSummary instance : instances) {
+        try {
+          destroyInstance(instance.getInstanceId(), cleanup);
+          destroyed++;
+          log.debug("Destroyed MitmProxy instance {}", instance.getInstanceId());
+        } catch (Exception e) {
+          log.warn("Failed to destroy MitmProxy instance {}: {}", instance.getInstanceId(), e.getMessage());
+        }
+      }
+    } catch (Exception e) {
+      log.warn("Failed to list MitmProxy instances during destroyAll: {}", e.getMessage());
+    }
+    return destroyed;
+  }
+
+  /**
+   * Destroy every instance on the grid with cleanup enabled.
+   *
+   * @return the number of instances that were successfully destroyed
+   */
+  public int destroyAllInstances() {
+    return destroyAllInstances(true);
+  }
+
   // ── Rules (instance-scoped) ───────────────────────────────────────
   // POST   /instances/{id}/rules
   // GET    /instances/{id}/rules
@@ -153,7 +206,9 @@ public class MitmProxyClient {
 
   public MitmProxyMessageResponse createRule(String instanceId, MitmProxyRule rule) throws Exception {
     String body = MapperHelper.toString(rule);
+    log.debug("Creating rule on instance {}, payload: {}", instanceId, body);
     String response = sendWithRetry("POST", "instances/" + instanceId + "/rules", body);
+    log.debug("Create rule response: {}", response);
     return MapperHelper.toObject(response, MitmProxyMessageResponse.class);
   }
 

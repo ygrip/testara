@@ -5,8 +5,12 @@ import org.openqa.selenium.Proxy;
 
 import io.github.ygrip.testara.core.context.TestFramework;
 import io.github.ygrip.testara.core.data.DataHolder;
+import io.github.ygrip.testara.core.registry.RegistryScope;
+import io.github.ygrip.testara.core.registry.RootRegistry;
 import io.github.ygrip.testara.ui.factory.ProxyFactory;
 import io.github.ygrip.testara.ui.model.AvailableProxy;
+import io.github.ygrip.testara.ui.proxy.AbstractProxy;
+import io.github.ygrip.testara.ui.proxy.ProxyInstanceManager;
 import io.github.ygrip.testara.ui.selenium.proxy.SeleniumProxy;
 
 /**
@@ -33,7 +37,14 @@ public class AppiumProxy implements ProxyFactory<Proxy> {
     return seleniumProxy.create(proxyType);
   }
 
+  @SuppressWarnings("rawtypes")
   private Proxy createMitmProxy() {
+    AbstractProxy existing = ProxyInstanceManager.currentProxy();
+    if (existing instanceof MitmProxyAppiumUtility reusable && reusable.isStarted()) {
+      RootRegistry.instance().registerOverride(reusable, RegistryScope.TEST);
+      return reusable.getProxy();
+    }
+
     MitmProxyAppiumUtility proxyUtil = getOrCreateMitmProxyUtility();
     proxyUtil.setProxyType(AvailableProxy.MITMPROXY);
 
@@ -43,6 +54,10 @@ public class AppiumProxy implements ProxyFactory<Proxy> {
       proxyUtil.setRemoteProxyAddress(apiUrl.trim());
     }
     proxyUtil.start();
+
+    ProxyInstanceManager.setCurrentProxy(proxyUtil);
+    RootRegistry.instance().registerOverride(proxyUtil, RegistryScope.TEST);
+
     return proxyUtil.getProxy();
   }
 

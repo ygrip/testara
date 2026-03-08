@@ -12,6 +12,7 @@ import io.github.ygrip.testara.core.registry.RegistryScope;
 import io.github.ygrip.testara.core.registry.RootRegistry;
 import io.github.ygrip.testara.core.scan.ClassScanner;
 import io.github.ygrip.testara.core.scan.ClassScannerConfig;
+import io.github.ygrip.testara.core.context.ResourceShutdownRegistry;
 import io.github.ygrip.testara.engine.context.CucumberScopeContext;
 import lombok.extern.log4j.Log4j2;
 
@@ -80,6 +81,13 @@ public class TestaraFrameworkExtension implements TestaraExtension {
 
   @Override
   public void afterAll(TestaraExtensionContext context) throws Exception {
+    // Run all registered resource shutdown callbacks (proxies, clients, etc.)
+    try {
+      ResourceShutdownRegistry.shutdownAll();
+    } catch (Exception e) {
+      log.warn("Error during resource shutdown: {}", e.getMessage());
+    }
+
     // Clean up feature-level scope if set
     String featureScope = CucumberScopeContext.getCurrentFeature();
     if (featureScope != null) {

@@ -24,6 +24,6 @@ public class MitmProxyHealthResponse {
   private int defaultTtl;
 
   public boolean isHealthy() {
-    return "ok".equalsIgnoreCase(status);
+    return "up".equalsIgnoreCase(status);
   }
 }

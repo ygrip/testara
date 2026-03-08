@@ -1,5 +1,6 @@
 package io.github.ygrip.testara.engine.listener;
 
+import io.github.ygrip.testara.core.context.ResourceShutdownRegistry;
 import lombok.extern.log4j.Log4j2;
 import org.junit.platform.launcher.LauncherSession;
 import org.junit.platform.launcher.LauncherSessionListener;
@@ -18,9 +19,17 @@ public class ProcessCleanUpListener implements LauncherSessionListener {
   public void launcherSessionClosed(LauncherSession session) {
     log.debug("Test session finished — cleaning up resources...");
 
-    // Example cleanup logic
+    shutdownResources();
     shutdownForkJoinPoolSafely();
     detectLeakedThreads();
+  }
+
+  private void shutdownResources() {
+    try {
+      ResourceShutdownRegistry.shutdownAll();
+    } catch (Exception e) {
+      log.warn("Error during resource shutdown: {}", e.getMessage());
+    }
   }
 
   private void shutdownForkJoinPoolSafely() {

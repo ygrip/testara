@@ -9,8 +9,8 @@ import org.openqa.selenium.firefox.FirefoxDriver;
 import org.openqa.selenium.firefox.FirefoxOptions;
 import org.openqa.selenium.firefox.FirefoxProfile;
 
-import io.github.ygrip.testara.core.context.TestFramework;
 import io.github.ygrip.testara.ui.driver.AbstractDriver;
+import io.github.ygrip.testara.ui.registry.ProxyAutomationRegistry;
 import io.github.ygrip.testara.ui.selenium.engine.SeleniumEngine;
 import io.github.ygrip.testara.ui.model.TestaraProxyModel;
 import io.github.ygrip.testara.ui.model.DeviceType;
@@ -42,8 +42,7 @@ public class Firefox extends AbstractDriver<FirefoxDriver, FirefoxOptions> {
   @Override
   public FirefoxOptions proxyOptions() {
     FirefoxOptions options = new FirefoxOptions();
-    Proxy proxy = TestFramework.context()
-      .get(SeleniumProxy.class)
+    Proxy proxy = ProxyAutomationRegistry.forProxy(SeleniumProxy.class)
       .create(getProxyType());
     if (ObjectUtils.isNotEmpty(proxy)) {
       TestaraProxyModel proxyModel = new TestaraProxyModel(proxy.getHttpProxy());

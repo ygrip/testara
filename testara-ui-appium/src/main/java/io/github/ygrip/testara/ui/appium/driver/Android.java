@@ -6,13 +6,13 @@ import org.apache.commons.lang3.ObjectUtils;
 import org.openqa.selenium.Platform;
 import org.openqa.selenium.Proxy;
 
-import io.github.ygrip.testara.core.context.TestFramework;
 import io.github.ygrip.testara.ui.appium.engine.AppiumEngine;
 import io.github.ygrip.testara.ui.appium.proxy.AppiumProxy;
 import io.github.ygrip.testara.ui.driver.AbstractDriver;
 import io.github.ygrip.testara.ui.model.DeviceType;
 import io.github.ygrip.testara.ui.model.DriverMetadata;
 
+import io.github.ygrip.testara.ui.registry.ProxyAutomationRegistry;
 import lombok.extern.log4j.Log4j2;
 
 import io.appium.java_client.android.AndroidDriver;
@@ -34,9 +34,8 @@ public class Android extends AbstractDriver<AndroidDriver, UiAutomator2Options> 
   public UiAutomator2Options proxyOptions() {
     UiAutomator2Options options = defaultOptions();
     if (getProxyType() != null) {
-      Proxy proxy = TestFramework.context()
-          .get(AppiumProxy.class)
-          .create(getProxyType());
+      Proxy proxy = ProxyAutomationRegistry.forProxy(AppiumProxy.class)
+        .create(getProxyType());
       if (ObjectUtils.isNotEmpty(proxy)) {
         options.setCapability("proxy", proxy);
         log.debug("Android proxy configured via capability: {}", proxy.getHttpProxy());

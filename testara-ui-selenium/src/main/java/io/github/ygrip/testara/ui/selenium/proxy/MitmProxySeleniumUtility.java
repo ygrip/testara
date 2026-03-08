@@ -123,6 +123,28 @@ public class MitmProxySeleniumUtility extends AbstractProxy<Proxy> {
     return !CommonHelper.isBlank(getProxy()) && getPort() != null && instanceId != null;
   }
 
+  /**
+   * Clear rules and renew the TTL so the same instance can be reused by the next
+   * scenario on this thread.
+   */
+  @Override
+  public void afterScenario() {
+    if (!isStarted()) {
+      return;
+    }
+    try {
+      clearRules();
+    } catch (Exception e) {
+      log.warn("Failed to clear rules on instance {} after scenario: {}", instanceId, e.getMessage());
+    }
+    try {
+      getClient().renewInstance(instanceId, instanceTtl);
+      log.debug("Renewed MitmProxy instance {} for next scenario", instanceId);
+    } catch (Exception e) {
+      log.warn("Failed to renew instance {} after scenario: {}", instanceId, e.getMessage());
+    }
+  }
+
   // ── Network data ──────────────────────────────────────────────────
 
   @Override

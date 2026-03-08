@@ -5,7 +5,6 @@ import java.util.List;
 import org.apache.commons.lang3.ObjectUtils;
 import org.apache.commons.lang3.StringUtils;
 
-import io.github.ygrip.testara.core.context.TestFramework;
 import io.github.ygrip.testara.ui.driver.AbstractDriver;
 import io.github.ygrip.testara.ui.model.AvailableProxy;
 import io.github.ygrip.testara.ui.model.DeviceType;
@@ -16,6 +15,7 @@ import com.microsoft.playwright.Browser;
 import com.microsoft.playwright.BrowserType;
 import com.microsoft.playwright.options.Proxy;
 
+import io.github.ygrip.testara.ui.registry.ProxyAutomationRegistry;
 import lombok.extern.log4j.Log4j2;
 
 @Log4j2
@@ -35,9 +35,8 @@ public class Webkit extends AbstractDriver<Browser, BrowserType.LaunchOptions> i
   public BrowserType.LaunchOptions proxyOptions() {
     BrowserType.LaunchOptions options = defaultOptions();
     if (getProxyType() == AvailableProxy.MITMPROXY) {
-      String proxyAddr = TestFramework.context()
-          .get(PlaywrightProxy.class)
-          .create(getProxyType());
+      String proxyAddr = ProxyAutomationRegistry.forProxy(PlaywrightProxy.class)
+        .create(getProxyType());
       if (StringUtils.isNotBlank(proxyAddr)) {
         options.setProxy(new Proxy(proxyAddr));
       }

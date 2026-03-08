@@ -8,8 +8,8 @@ import org.openqa.selenium.Proxy;
 import org.openqa.selenium.edge.EdgeDriver;
 import org.openqa.selenium.edge.EdgeOptions;
 
-import io.github.ygrip.testara.core.context.TestFramework;
 import io.github.ygrip.testara.ui.driver.AbstractDriver;
+import io.github.ygrip.testara.ui.registry.ProxyAutomationRegistry;
 import io.github.ygrip.testara.ui.selenium.engine.SeleniumEngine;
 import io.github.ygrip.testara.ui.model.DeviceType;
 import io.github.ygrip.testara.ui.model.DriverMetadata;
@@ -32,8 +32,7 @@ public class Edge extends AbstractDriver<EdgeDriver, EdgeOptions> {
   @Override
   public EdgeOptions proxyOptions() {
     EdgeOptions options = new EdgeOptions();
-    Proxy proxy = TestFramework.context()
-      .get(SeleniumProxy.class)
+    Proxy proxy = ProxyAutomationRegistry.forProxy(SeleniumProxy.class)
       .create(getProxyType());
     if (ObjectUtils.isNotEmpty(proxy)) {
       options.setProxy(proxy);

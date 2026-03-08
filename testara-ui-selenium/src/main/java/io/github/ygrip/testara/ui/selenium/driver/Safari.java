@@ -6,8 +6,8 @@ import org.openqa.selenium.remote.DesiredCapabilities;
 import org.openqa.selenium.safari.SafariDriver;
 import org.openqa.selenium.safari.SafariOptions;
 
-import io.github.ygrip.testara.core.context.TestFramework;
 import io.github.ygrip.testara.ui.driver.AbstractDriver;
+import io.github.ygrip.testara.ui.registry.ProxyAutomationRegistry;
 import io.github.ygrip.testara.ui.selenium.engine.SeleniumEngine;
 import io.github.ygrip.testara.ui.model.DeviceType;
 import io.github.ygrip.testara.ui.model.DriverMetadata;
@@ -29,8 +29,7 @@ public class Safari extends AbstractDriver<SafariDriver, SafariOptions> {
   @Override
   public SafariOptions proxyOptions() {
     SafariOptions options = new SafariOptions();
-    Proxy proxy = TestFramework.context()
-      .get(SeleniumProxy.class)
+    Proxy proxy = ProxyAutomationRegistry.forProxy(SeleniumProxy.class)
       .create(getProxyType());
     if (ObjectUtils.isNotEmpty(proxy)) {
       options.setProxy(proxy);

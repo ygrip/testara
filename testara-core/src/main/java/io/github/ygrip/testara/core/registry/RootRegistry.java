@@ -121,6 +121,28 @@ public final class RootRegistry {
     providers.put(concreteClass, provider);
   }
 
+  /**
+   * Register a pre-created instance, overriding any existing abstract/interface
+   * mappings. Use when a specific concrete implementation must take precedence
+   * (e.g. {@code MitmProxySeleniumUtility} replacing {@code BrowserUpProxyUtility}
+   * as the active {@code AbstractProxy}).
+   */
+  public <T> void registerOverride(T instance, RegistryScope scope) {
+    Class<?> concreteClass = instance.getClass();
+    ScopedProvider<T> provider = new ScopedProvider<>(scope, () -> instance);
+
+    for (Class<?> iFace : concreteClass.getInterfaces()) {
+      mappedTypes.put(iFace, concreteClass);
+    }
+
+    Class<?> abstractClass = findAbstractSuperclass(concreteClass);
+    if (ObjectUtils.isNotEmpty(abstractClass)) {
+      mappedTypes.put(abstractClass, concreteClass);
+    }
+
+    providers.put(concreteClass, provider);
+  }
+
   Class<?> findAbstractSuperclass(Class<?> concrete) {
     Class<?> current = concrete.getSuperclass();
     while (current != null && current != Object.class) {

@@ -11,11 +11,11 @@ import org.openqa.selenium.Proxy;
 import org.openqa.selenium.chrome.ChromeDriver;
 import org.openqa.selenium.chrome.ChromeOptions;
 
-import io.github.ygrip.testara.core.context.TestFramework;
 import io.github.ygrip.testara.ui.driver.AbstractDriver;
-import io.github.ygrip.testara.ui.selenium.engine.SeleniumEngine;
 import io.github.ygrip.testara.ui.model.DeviceType;
 import io.github.ygrip.testara.ui.model.DriverMetadata;
+import io.github.ygrip.testara.ui.registry.ProxyAutomationRegistry;
+import io.github.ygrip.testara.ui.selenium.engine.SeleniumEngine;
 import io.github.ygrip.testara.ui.selenium.proxy.SeleniumProxy;
 
 @DriverMetadata(name = "chrome",
@@ -32,8 +32,7 @@ public class Chrome extends AbstractDriver<ChromeDriver, ChromeOptions> {
   @Override
   public ChromeOptions proxyOptions() {
     ChromeOptions options = new ChromeOptions();
-    Proxy proxy = TestFramework.context()
-      .get(SeleniumProxy.class)
+    Proxy proxy = ProxyAutomationRegistry.forProxy(SeleniumProxy.class)
       .create(getProxyType());
     if (ObjectUtils.isNotEmpty(proxy)) {
       options.setProxy(proxy);

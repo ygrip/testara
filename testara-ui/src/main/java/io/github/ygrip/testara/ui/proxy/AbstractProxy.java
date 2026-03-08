@@ -12,6 +12,7 @@ import io.github.ygrip.testara.ui.model.MitmProxyMessageResponse;
 import io.github.ygrip.testara.ui.model.MitmProxyRenewResponse;
 import io.github.ygrip.testara.ui.model.MitmProxyRule;
 import io.github.ygrip.testara.ui.model.MitmProxyRuleResponse;
+import io.github.ygrip.testara.ui.model.ProxyRuleCreation;
 
 import lombok.extern.log4j.Log4j2;
 
@@ -47,6 +48,18 @@ public abstract class AbstractProxy<P> {
   public abstract void stop();
 
   public abstract boolean isStarted();
+
+  /**
+   * Called after each scenario to reset per-test state while keeping the proxy alive
+   * for reuse by the next test on the same thread.
+   * <p>
+   * The default implementation calls {@link #stop()}, which is correct for proxies
+   * that are cheap to recreate (e.g. BrowserUp).  MitmProxy implementations override
+   * this to only clear rules and renew the TTL, leaving the remote instance running.
+   */
+  public void afterScenario() {
+    stop();
+  }
 
   // ── Core accessors ────────────────────────────────────────────────
 
@@ -105,6 +118,18 @@ public abstract class AbstractProxy<P> {
   }
 
   /**
+   * Create an interception rule from a {@link ProxyRuleCreation} specification.
+   * File-based body references are resolved relative to {@code baseFolder}.
+   *
+   * @param creation   the rule creation specification (typically deserialized from JSON)
+   * @param baseFolder absolute path prefix for file resolution
+   * @return status message from the API, or {@code null}
+   */
+  public MitmProxyMessageResponse createRule(ProxyRuleCreation creation, String baseFolder) {
+    return createRule(creation.toMitmProxyRule(baseFolder));
+  }
+
+  /**
    * List all rules on the current instance.
    */
   public List<MitmProxyRuleResponse> listRules() {
@@ -132,6 +157,27 @@ public abstract class AbstractProxy<P> {
    */
   public void clearRules() {
     log.debug("clearRules() is a no-op for {}", getClass().getSimpleName());
+  }
+
+  /**
+   * Add a high-priority rule that strips browser cache-negotiation headers from
+   * requests and prevents caching on responses.  Call this <b>before</b> navigating
+   * so that subsequent interception rules always see full {@code 200 OK} responses.
+   *
+   * @param urlContains substring the URL must contain ({@code ""} for all traffic)
+   * @return API response, or {@code null} if the proxy does not support rules
+   */
+  public MitmProxyMessageResponse disableCaching(String urlContains) {
+    return createRule(MitmProxyRule.disableCaching(urlContains));
+  }
+
+  /**
+   * Disable caching for all traffic.
+   *
+   * @see #disableCaching(String)
+   */
+  public MitmProxyMessageResponse disableCaching() {
+    return disableCaching("");
   }
 
   // ── Instance lifecycle (MitmProxy Grid) ───────────────────────────

@@ -114,6 +114,24 @@ public class MitmProxyPlaywrightUtility extends AbstractProxy<String> {
   }
 
   @Override
+  public void afterScenario() {
+    if (!isStarted()) {
+      return;
+    }
+    try {
+      clearRules();
+    } catch (Exception e) {
+      log.warn("Failed to clear rules on instance {} after scenario: {}", instanceId, e.getMessage());
+    }
+    try {
+      getClient().renewInstance(instanceId, instanceTtl);
+      log.debug("Renewed MitmProxy instance {} for next scenario", instanceId);
+    } catch (Exception e) {
+      log.warn("Failed to renew instance {} after scenario: {}", instanceId, e.getMessage());
+    }
+  }
+
+  @Override
   public List<?> getRequestData() {
     return Collections.emptyList();
   }

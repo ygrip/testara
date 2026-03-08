@@ -44,7 +44,7 @@ import lombok.extern.log4j.Log4j2;
  */
 @Log4j2
 @TestComponent(scope = RegistryScope.TEST)
-public class WebBaseSteps {
+public class UIBaseSteps {
 
   @Given("^(.+) using (\\w+) in (desktop|mobile|android|ios)$")
   public void actorNamedUsingDevice(String identifier, String application, String platform) throws Throwable {

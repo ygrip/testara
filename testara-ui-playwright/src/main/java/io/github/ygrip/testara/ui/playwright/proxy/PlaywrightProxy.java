@@ -4,8 +4,12 @@ import org.apache.commons.lang3.StringUtils;
 
 import io.github.ygrip.testara.core.context.TestFramework;
 import io.github.ygrip.testara.core.data.DataHolder;
+import io.github.ygrip.testara.core.registry.RegistryScope;
+import io.github.ygrip.testara.core.registry.RootRegistry;
 import io.github.ygrip.testara.ui.factory.ProxyFactory;
 import io.github.ygrip.testara.ui.model.AvailableProxy;
+import io.github.ygrip.testara.ui.proxy.AbstractProxy;
+import io.github.ygrip.testara.ui.proxy.ProxyInstanceManager;
 
 /**
  * Produces a proxy address string for Playwright driver options.
@@ -31,7 +35,14 @@ public class PlaywrightProxy implements ProxyFactory<String> {
     return null;
   }
 
+  @SuppressWarnings("rawtypes")
   private String createMitmProxy() {
+    AbstractProxy existing = ProxyInstanceManager.currentProxy();
+    if (existing instanceof MitmProxyPlaywrightUtility reusable && reusable.isStarted()) {
+      RootRegistry.instance().registerOverride(reusable, RegistryScope.TEST);
+      return reusable.getProxy();
+    }
+
     MitmProxyPlaywrightUtility proxyUtil = getOrCreateMitmProxyUtility();
     proxyUtil.setProxyType(AvailableProxy.MITMPROXY);
 
@@ -41,6 +52,10 @@ public class PlaywrightProxy implements ProxyFactory<String> {
       proxyUtil.setRemoteProxyAddress(apiUrl.trim());
     }
     proxyUtil.start();
+
+    ProxyInstanceManager.setCurrentProxy(proxyUtil);
+    RootRegistry.instance().registerOverride(proxyUtil, RegistryScope.TEST);
+
     return proxyUtil.getProxy();
   }
 
