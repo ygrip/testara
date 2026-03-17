@@ -41,3 +41,4 @@ build/
 **/cursor/
 **/plan/
 *.plan.md
+*.versionsBackup
