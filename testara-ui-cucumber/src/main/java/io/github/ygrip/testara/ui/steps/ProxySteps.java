@@ -16,6 +16,7 @@ import java.util.Map;
 import com.fasterxml.jackson.core.type.TypeReference;
 import io.github.ygrip.testara.core.context.TestComponent;
 import io.github.ygrip.testara.core.context.TestFramework;
+import io.github.ygrip.testara.core.mapper.MapperHelper;
 import io.github.ygrip.testara.core.model.DefaultProperties;
 import io.github.ygrip.testara.core.registry.RegistryScope;
 import io.github.ygrip.testara.core.transformer.TransformerService;
@@ -146,7 +147,7 @@ public class ProxySteps {
     throws Throwable {
     checkProxy();
     urlContains = executeCommand(urlContains);
-    body = executeCommand(body);
+    body = MapperHelper.toString(executeCommand(body));
     MitmProxyRule rule = MitmProxyRule.mockResponse(urlContains, statusCode, body);
     MitmProxyMessageResponse response = proxy().createRule(rule);
     log.info("Created mock response rule for '{}' -> {} : {}", urlContains, statusCode,
@@ -159,7 +160,7 @@ public class ProxySteps {
     throws Throwable {
     checkProxy();
     urlContains = executeCommand(urlContains);
-    body = executeCommand(body);
+    body = MapperHelper.toString(executeCommand(body));
     MitmProxyRule rule = MitmProxyRule.mockResponse(urlContains, statusCode, body);
     MitmProxyMessageResponse response = proxy().createRule(rule);
     log.info("Created mock response rule for '{}' -> {} : {}", urlContains, statusCode,

@@ -16,7 +16,7 @@ import lombok.NoArgsConstructor;
 public class MitmProxyResponseModification {
   private Integer statusCode;
   private MitmProxyHeaderModification headers;
-  private String body;
+  private Object body;
   /**
    * Base64-encoded body content for binary responses (images, fonts, etc.).
    * The MitmProxy Grid API addon must handle this field by decoding the value

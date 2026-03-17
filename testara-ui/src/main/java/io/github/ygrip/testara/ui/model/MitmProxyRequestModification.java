@@ -16,6 +16,6 @@ import lombok.NoArgsConstructor;
 public class MitmProxyRequestModification {
   private MitmProxyHeaderModification headers;
   private MitmProxyParamModification params;
-  private String body;
+  private Object body;
   private MitmProxyBodyReplace bodyReplace;
 }

@@ -6,11 +6,11 @@
   <parent>
     <groupId>io.github.ygrip</groupId>
     <artifactId>testara-core-parent</artifactId>
-    <version>1.1.3</version>
+    <version>1.1.2</version>
   </parent>
 
-  <artifactId>testara-ui-playwright</artifactId>
-  <name>Testara UI Playwright</name>
+  <artifactId>testara-ui-appium</artifactId>
+  <name>Testara UI Appium</name>
 
   <properties>
     <maven.compiler.source>21</maven.compiler.source>
@@ -21,11 +21,11 @@
   <dependencies>
     <dependency>
       <groupId>io.github.ygrip</groupId>
-      <artifactId>testara-ui</artifactId>
+      <artifactId>testara-ui-selenium</artifactId>
     </dependency>
     <dependency>
-      <groupId>com.microsoft.playwright</groupId>
-      <artifactId>playwright</artifactId>
+      <groupId>io.appium</groupId>
+      <artifactId>java-client</artifactId>
     </dependency>
 
     <!-- Test dependencies -->
@@ -100,7 +100,7 @@
           </execution>
         </executions>
       </plugin>
-        <plugin>
+      <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-surefire-plugin</artifactId>
         <configuration>

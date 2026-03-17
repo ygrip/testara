@@ -10,6 +10,7 @@ import io.github.ygrip.testara.ui.driver.DriverSessionManager;
 import lombok.Getter;
 
 public final class NamedPage {
+  @Getter
   private final String name;
   @Getter
   private final PageFinder<?, ?, ?> finder;
@@ -53,6 +54,7 @@ public final class NamedPage {
   }
 
   public static class NamedPageContext {
+    @Getter
     private final String name;
     private PageFinder<?, ?, ?> finder;
     private Class<? extends PageContext<?>> pageType;

@@ -41,7 +41,6 @@ import lombok.extern.log4j.Log4j2;
  * }</pre>
  *
  * @see MitmProxyRule
- * @see io.github.ygrip.testara.api.model.CreateRequestSpecification
  */
 @Data
 @Builder

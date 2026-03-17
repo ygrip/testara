@@ -7,6 +7,7 @@ import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 
+import io.github.ygrip.testara.core.mapper.MapperHelper;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -45,13 +46,13 @@ public class MitmProxyRule {
   /**
    * Mock a response with a fixed status code and body.
    */
-  public static MitmProxyRule mockResponse(String urlContains, int statusCode, String body) {
+  public static MitmProxyRule mockResponse(String urlContains, int statusCode, Object body) {
     return MitmProxyRule.builder()
         .match(MitmProxyRuleMatch.builder().urlContains(urlContains).build())
         .action(MitmProxyRuleAction.builder()
             .modifyResponse(MitmProxyResponseModification.builder()
                 .statusCode(statusCode)
-                .body(body)
+                .body(MapperHelper.toString(body))
                 .build())
             .build())
         .build();

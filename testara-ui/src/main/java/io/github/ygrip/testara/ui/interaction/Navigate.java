@@ -1,8 +1,16 @@
 package io.github.ygrip.testara.ui.interaction;
 
+import java.util.HashMap;
 import java.util.Optional;
 
+import org.apache.commons.lang3.ObjectUtils;
+import org.apache.commons.lang3.StringUtils;
+
+import io.github.ygrip.testara.core.context.TestFramework;
+import io.github.ygrip.testara.ui.config.WebPageDataProperties;
+import io.github.ygrip.testara.ui.driver.DriverSession;
 import io.github.ygrip.testara.ui.executor.Actor;
+import io.github.ygrip.testara.ui.model.WebPageData;
 import io.github.ygrip.testara.ui.page.Element;
 import io.github.ygrip.testara.ui.page.NamedPage;
 import io.github.ygrip.testara.ui.page.PageContext;
@@ -27,11 +35,16 @@ public final class Navigate implements Interaction {
   }
 
   public static Navigate to(NamedPage.NamedPageContext page) {
-    return new NavigationContext(Optional.ofNullable(page)
+    final var pageContext = Optional.ofNullable(page)
       .map(NamedPage.NamedPageContext::build)
       .map(NamedPage::getPage)
+      .orElse(null);
+    return new NavigationContext(Optional.ofNullable(pageContext)
       .map(PageContext::pageUrl)
-      .orElse(null)).build();
+      .filter(StringUtils::isNotBlank)
+      .orElseGet(() -> Optional.ofNullable(page)
+        .map(NamedPage.NamedPageContext::getName)
+        .orElse(null))).build();
   }
 
   public static Navigate refresh() {
@@ -45,8 +58,27 @@ public final class Navigate implements Interaction {
   @Override
   public void perform(InteractionContext context) {
     switch (kind) {
-      case GO -> context.navigation()
-        .to(url);
+      case GO -> {
+        DriverSession<?> session = context.session();
+        final var platform = session.platform();
+        final var pageData = Optional.ofNullable(TestFramework.configuration()
+            .get(WebPageDataProperties.class))
+          .map(WebPageDataProperties::getPage)
+          .map(page -> page.getOrDefault(platform, new HashMap<>()))
+          .map(page -> page.get(url))
+          .filter(ObjectUtils::isNotEmpty)
+          .orElse(new WebPageData());
+
+        final var converter = TestFramework.context()
+          .converter();
+        final var targetLocation = Optional.ofNullable(pageData.getUrl())
+          .map(converter::convert)
+          .map(String::valueOf)
+          .filter(StringUtils::isNotBlank)
+          .orElse(url);
+        context.navigation()
+          .to(targetLocation);
+      }
       case REFRESH -> context.navigation()
         .refresh();
       case RELOAD -> context.navigation()
