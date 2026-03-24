@@ -7,6 +7,7 @@ import io.github.ygrip.testara.ui.executor.ActorManager;
 import io.github.ygrip.testara.ui.model.Locator;
 import io.github.ygrip.testara.ui.page.Element;
 
+import io.github.ygrip.testara.ui.page.PageFinder;
 import lombok.extern.log4j.Log4j2;
 
 /**
@@ -28,8 +29,7 @@ public final class PopulateFor {
    * @return a {@link SingleElementPopulator} object.
    */
   public static SingleElementPopulator one(Locator selector) {
-    return new Builder(Element.of(selector)
-      .build()).one();
+    return new Builder(Element.of(selector)).one();
   }
 
   /**
@@ -39,8 +39,7 @@ public final class PopulateFor {
    * @return a {@link SingleElementPopulator} object.
    */
   public static SingleElementPopulator one(String selector) {
-    return new Builder(Element.of(selector)
-      .build()).one();
+    return new Builder(Element.of(selector)).one();
   }
 
   /**
@@ -50,7 +49,7 @@ public final class PopulateFor {
    * @return a {@link SingleElementPopulator} object.
    */
   public static SingleElementPopulator one(Element.ElementContext selector) {
-    return new Builder(selector.build()).one();
+    return new Builder(selector).one();
   }
 
   /**
@@ -60,8 +59,7 @@ public final class PopulateFor {
    * @return a {@link MultipleElementPopulator} object.
    */
   public static MultipleElementPopulator all(Locator selector) {
-    return new Builder(Element.of(selector)
-      .build()).all();
+    return new Builder(Element.of(selector)).all();
   }
 
   /**
@@ -71,8 +69,7 @@ public final class PopulateFor {
    * @return a {@link MultipleElementPopulator} object.
    */
   public static MultipleElementPopulator all(String selector) {
-    return new Builder(Element.of(selector)
-      .build()).all();
+    return new Builder(Element.of(selector)).all();
   }
 
   /**
@@ -82,7 +79,7 @@ public final class PopulateFor {
    * @return a {@link MultipleElementPopulator} object.
    */
   public static MultipleElementPopulator all(Element.ElementContext selector) {
-    return new Builder(selector.build()).all();
+    return new Builder(selector).all();
   }
 
   public static class Builder {
@@ -90,11 +87,21 @@ public final class PopulateFor {
     private final Actor actor;
     private final DriverSession<?> session;
 
-    Builder(Element locator) {
-      this.locator = locator;
+    Builder(Element.ElementContext locator) {
       this.actor = ActorManager.currentActor();
       this.session = DriverSessionManager.inThisTestThread()
         .getCurrentDriver();
+      if (session != null && session.isActive()) {
+        final var finder = session.finder();
+        if (finder != null) {
+          locator.by(finder);
+          final var page = finder.getCurrentPage();
+          if (page != null) {
+            locator.on(page);
+          }
+        }
+      }
+      this.locator = locator.build();
     }
 
     SingleElementPopulator one() {

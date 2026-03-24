@@ -2,6 +2,7 @@ package io.github.ygrip.testara.ui.playwright.capability;
 
 import java.time.Duration;
 import java.util.List;
+import java.util.Optional;
 
 import org.apache.commons.lang3.ObjectUtils;
 
@@ -10,173 +11,239 @@ import io.github.ygrip.testara.ui.page.Element;
 import com.microsoft.playwright.ElementHandle;
 import com.microsoft.playwright.Page;
 
+import io.github.ygrip.testara.ui.playwright.driver.PlaywrightSession;
 import lombok.extern.log4j.Log4j2;
 
 @Log4j2
 public final class PlaywrightInteractionCapability extends PlaywrightElementResolver implements InteractionCapability {
-  private final Page page;
 
-  public PlaywrightInteractionCapability(Page page) {
-    this.page = page;
+  public PlaywrightInteractionCapability(PlaywrightSession session) {
+    super(session);
+  }
+
+  private static String wrapAsSeleniumScript(String script, boolean async) {
+    String body = Optional.ofNullable(script)
+      .orElse("")
+      .replaceAll("\\barguments\\s*\\[", "seleniumArgs[");
+    String prefix = async ? "async " : "";
+    return prefix + "function(arg) {"
+      + "const seleniumArgs = Array.isArray(arg) ? arg : (arg == null ? [] : [arg]);"
+      + body
+      + "\n}";
+  }
+
+  /**
+   * Convert any Playwright Locator args to ElementHandle so they can be passed to page.evaluate().
+   */
+  private static Object[] resolveEvalArgs(Object[] args) {
+    Object[] resolved = new Object[args.length];
+    for (int i = 0; i < args.length; i++) {
+      if (args[i] instanceof com.microsoft.playwright.Locator loc) {
+        resolved[i] = loc.elementHandle();
+      } else {
+        resolved[i] = args[i];
+      }
+    }
+    return resolved;
   }
 
   @Override
   @SuppressWarnings("unchecked")
   public <T> T executeScript(String script, Object... args) {
-    return (T) page.evaluate(script, args.length == 1 ? args[0] : args);
+    String wrappedScript = wrapAsSeleniumScript(script, false);
+    return session.runOnApiThread(() -> {
+      Object[] resolved = resolveEvalArgs(args);
+      return (T) session.pageForApi()
+        .evaluate(wrappedScript, resolved.length == 1 ? resolved[0] : resolved);
+    });
   }
 
   @Override
   @SuppressWarnings("unchecked")
   public <T> T executeScriptAsync(String script, Object... args) {
-    return (T) page.evaluate(script, args.length == 1 ? args[0] : args);
+    String wrappedScript = wrapAsSeleniumScript(script, true);
+    return session.runOnApiThread(() -> {
+      Object[] resolved = resolveEvalArgs(args);
+      return (T) session.pageForApi()
+        .evaluate(wrappedScript, resolved.length == 1 ? resolved[0] : resolved);
+    });
   }
 
   @Override
   public InteractionCapability scrollTo(Element locator, boolean alignToTop) {
-    ElementHandle target = element(locator);
-    if (ObjectUtils.isNotEmpty(target)) {
-      target.evaluate("(el, align) => el.scrollIntoView(align)", alignToTop);
-    }
+    session.runOnApiThread(() -> {
+      com.microsoft.playwright.Locator target = resolveOnApiThreadOnly(locator);
+      if (ObjectUtils.isNotEmpty(target)) {
+        target.evaluate("(el, align) => el.scrollIntoView(align)", alignToTop);
+      }
+      return null;
+    });
     return this;
   }
 
   @Override
   public InteractionCapability click(Element locator) {
-    ElementHandle targetElement = element(locator);
-    if (ObjectUtils.isNotEmpty(targetElement)) {
-      targetElement.click();
-    }
+    session.runOnApiThread(() -> {
+      com.microsoft.playwright.Locator targetElement = resolveOnApiThreadOnly(locator);
+      if (ObjectUtils.isNotEmpty(targetElement)) {
+        targetElement.click();
+      }
+      return null;
+    });
     return this;
   }
 
   @Override
   public InteractionCapability focus(Element locator) {
-    ElementHandle targetElement = element(locator);
-    if (ObjectUtils.isNotEmpty(targetElement)) {
-      targetElement.focus();
-    }
+    session.runOnApiThread(() -> {
+      com.microsoft.playwright.Locator targetElement = resolveOnApiThreadOnly(locator);
+      if (ObjectUtils.isNotEmpty(targetElement)) {
+        targetElement.focus();
+      }
+      return null;
+    });
     return this;
   }
 
   @Override
   public InteractionCapability blur(Element locator) {
-    ElementHandle targetElement = element(locator);
-    if (ObjectUtils.isNotEmpty(targetElement)) {
-      executeScript("arguments[0].blur();", targetElement);
-    }
+    session.runOnApiThread(() -> {
+      com.microsoft.playwright.Locator targetElement = resolveOnApiThreadOnly(locator);
+      if (ObjectUtils.isNotEmpty(targetElement)) {
+        targetElement.blur();
+      }
+      return null;
+    });
     return this;
   }
 
   @Override
   public InteractionCapability forceClick(Element locator) {
-    ElementHandle target = element(locator);
-    if (ObjectUtils.isNotEmpty(target)) {
-      target.click(new ElementHandle.ClickOptions().setForce(true));
-    }
+    session.runOnApiThread(() -> {
+      com.microsoft.playwright.Locator target = resolveOnApiThreadOnly(locator);
+      if (ObjectUtils.isNotEmpty(target)) {
+        target.click(new com.microsoft.playwright.Locator.ClickOptions().setForce(true));
+      }
+      return null;
+    });
     return this;
   }
 
   @Override
   public InteractionCapability doubleClick(Element locator) {
-    ElementHandle targetElement = element(locator);
-    if (ObjectUtils.isNotEmpty(targetElement)) {
-      targetElement.dblclick();
-    }
+    session.runOnApiThread(() -> {
+      com.microsoft.playwright.Locator targetElement = resolveOnApiThreadOnly(locator);
+      if (ObjectUtils.isNotEmpty(targetElement)) {
+        targetElement.dblclick();
+      }
+      return null;
+    });
     return this;
   }
 
   @Override
   public InteractionCapability hover(Element locator) {
-    ElementHandle targetElement = element(locator);
-    if (ObjectUtils.isNotEmpty(targetElement)) {
-      targetElement.hover();
-    }
+    session.runOnApiThread(() -> {
+      com.microsoft.playwright.Locator targetElement = resolveOnApiThreadOnly(locator);
+      if (ObjectUtils.isNotEmpty(targetElement)) {
+        targetElement.hover();
+      }
+      return null;
+    });
     return this;
   }
 
   @Override
   public InteractionCapability hold(Element locator, Duration duration) {
-    ElementHandle targetElement = element(locator);
-    if (ObjectUtils.isNotEmpty(targetElement)) {
-      var box = targetElement.boundingBox();
-      if (box != null) {
-        double x = box.x + box.width / 2;
-        double y = box.y + box.height / 2;
-        page.mouse().move(x, y);
-        page.mouse().down();
-        page.waitForTimeout(duration.toMillis());
-        page.mouse().up();
+    session.runOnApiThread(() -> {
+      com.microsoft.playwright.Locator targetElement = resolveOnApiThreadOnly(locator);
+      if (ObjectUtils.isNotEmpty(targetElement)) {
+        var box = targetElement.boundingBox();
+        Page page = session.pageForApi();
+        if (box != null) {
+          double x = box.x + box.width / 2;
+          double y = box.y + box.height / 2;
+          page.mouse().move(x, y);
+          page.mouse().down();
+          page.waitForTimeout(duration.toMillis());
+          page.mouse().up();
+        }
       }
-    }
+      return null;
+    });
     return this;
   }
 
   @Override
   public InteractionCapability drag(Element source, Element target) {
-    ElementHandle sourceElement = element(source);
-    ElementHandle targetElement = element(target);
-    if (ObjectUtils.isNotEmpty(sourceElement) && ObjectUtils.isNotEmpty(targetElement)) {
-      var sourceBox = sourceElement.boundingBox();
-      var targetBox = targetElement.boundingBox();
-      if (sourceBox != null && targetBox != null) {
-        double sx = sourceBox.x + sourceBox.width / 2;
-        double sy = sourceBox.y + sourceBox.height / 2;
-        double tx = targetBox.x + targetBox.width / 2;
-        double ty = targetBox.y + targetBox.height / 2;
-        page.mouse().move(sx, sy);
-        page.mouse().down();
-        page.mouse().move(tx, ty);
-        page.mouse().up();
+    session.runOnApiThread(() -> {
+      com.microsoft.playwright.Locator sourceElement = resolveOnApiThreadOnly(source);
+      com.microsoft.playwright.Locator targetElement = resolveOnApiThreadOnly(target);
+      if (ObjectUtils.isNotEmpty(sourceElement) && ObjectUtils.isNotEmpty(targetElement)) {
+        sourceElement.dragTo(targetElement);
       }
-    }
+      return null;
+    });
     return this;
   }
 
   @Override
   public InteractionCapability drag(Element source, int xOffset, int yOffset) {
-    ElementHandle sourceElement = element(source);
-    if (ObjectUtils.isNotEmpty(sourceElement)) {
-      var box = sourceElement.boundingBox();
-      if (box != null) {
-        double sx = box.x + box.width / 2;
-        double sy = box.y + box.height / 2;
-        page.mouse().move(sx, sy);
-        page.mouse().down();
-        page.mouse().move(sx + xOffset, sy + yOffset);
-        page.mouse().up();
+    session.runOnApiThread(() -> {
+      com.microsoft.playwright.Locator sourceElement = resolveOnApiThreadOnly(source);
+      if (ObjectUtils.isNotEmpty(sourceElement)) {
+        var box = sourceElement.boundingBox();
+        Page page = session.pageForApi();
+        if (box != null) {
+          double sx = box.x + box.width / 2;
+          double sy = box.y + box.height / 2;
+          page.mouse().move(sx, sy);
+          page.mouse().down();
+          page.mouse().move(sx + xOffset, sy + yOffset);
+          page.mouse().up();
+        }
       }
-    }
+      return null;
+    });
     return this;
   }
 
   @Override
   public TextEntry enter(String text) {
     return locator -> {
-      ElementHandle el = element(locator);
-      if (ObjectUtils.isNotEmpty(el)) {
-        el.fill("");
-        el.fill(text);
-      }
+      session.runOnApiThread(() -> {
+        com.microsoft.playwright.Locator el = resolveOnApiThreadOnly(locator);
+        if (ObjectUtils.isNotEmpty(el)) {
+          el.clear();
+          el.fill(text);
+        }
+        return null;
+      });
       return PlaywrightInteractionCapability.this;
     };
   }
 
   @Override
   public InteractionCapability clear(Element locator) {
-    ElementHandle targetElement = element(locator);
-    if (ObjectUtils.isNotEmpty(targetElement)) {
-      targetElement.fill("");
-    }
+    session.runOnApiThread(() -> {
+      com.microsoft.playwright.Locator targetElement = resolveOnApiThreadOnly(locator);
+      if (ObjectUtils.isNotEmpty(targetElement)) {
+        targetElement.clear();
+      }
+      return null;
+    });
     return this;
   }
 
   @Override
   public InteractionCapability submit(Element locator) {
-    ElementHandle targetElement = element(locator);
-    if (ObjectUtils.isNotEmpty(targetElement)) {
-      targetElement.press("Enter");
-    }
+    session.runOnApiThread(() -> {
+      com.microsoft.playwright.Locator targetElement = resolveOnApiThreadOnly(locator);
+      if (ObjectUtils.isNotEmpty(targetElement)) {
+        targetElement.press("Enter");
+      }
+      return null;
+    });
     return this;
   }
 
@@ -185,46 +252,58 @@ public final class PlaywrightInteractionCapability extends PlaywrightElementReso
     return new SelectOption() {
       @Override
       public InteractionCapability byValue(String value) {
-        ElementHandle el = element(locator);
-        if (ObjectUtils.isNotEmpty(el)) {
-          el.selectOption(new com.microsoft.playwright.options.SelectOption().setValue(value));
-        }
+        session.runOnApiThread(() -> {
+          com.microsoft.playwright.Locator el = resolveOnApiThreadOnly(locator);
+          if (ObjectUtils.isNotEmpty(el)) {
+            el.selectOption(new com.microsoft.playwright.options.SelectOption().setValue(value));
+          }
+          return null;
+        });
         return PlaywrightInteractionCapability.this;
       }
 
       @Override
       public InteractionCapability byIndex(int index) {
-        ElementHandle el = element(locator);
-        if (ObjectUtils.isNotEmpty(el)) {
-          el.selectOption(new com.microsoft.playwright.options.SelectOption().setIndex(index));
-        }
+        session.runOnApiThread(() -> {
+          com.microsoft.playwright.Locator el = resolveOnApiThreadOnly(locator);
+          if (ObjectUtils.isNotEmpty(el)) {
+            el.selectOption(new com.microsoft.playwright.options.SelectOption().setIndex(index));
+          }
+          return null;
+        });
         return PlaywrightInteractionCapability.this;
       }
 
       @Override
       public InteractionCapability byVisibleText(String visibleText) {
-        ElementHandle el = element(locator);
-        if (ObjectUtils.isNotEmpty(el)) {
-          el.selectOption(new com.microsoft.playwright.options.SelectOption().setLabel(visibleText));
-        }
+        session.runOnApiThread(() -> {
+          com.microsoft.playwright.Locator el = resolveOnApiThreadOnly(locator);
+          if (ObjectUtils.isNotEmpty(el)) {
+            el.selectOption(new com.microsoft.playwright.options.SelectOption().setLabel(visibleText));
+          }
+          return null;
+        });
         return PlaywrightInteractionCapability.this;
       }
     };
   }
 
   @Override
-  public ElementHandle findElement(Element locator) {
+  public com.microsoft.playwright.Locator findElement(Element locator) {
     try {
-      return element(locator);
+      return session.runOnApiThread(() -> resolveOnApiThreadOnly(locator));
     } catch (Exception e) {
       return null;
     }
   }
 
   @Override
-  public List<ElementHandle> findElements(Element locator) {
+  public List<com.microsoft.playwright.Locator> findElements(Element locator) {
     try {
-      return elements(locator);
+      return session.runOnApiThread(() -> {
+        List<com.microsoft.playwright.Locator> list = resolveElementsOnApiThreadOnly(locator);
+        return list != null ? list : List.of();
+      });
     } catch (Exception e) {
       return List.of();
     }

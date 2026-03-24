@@ -3,10 +3,15 @@ package io.github.ygrip.testara.ui.playwright.engine;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.TimeUnit;
 
 import org.apache.commons.lang3.ObjectUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.logging.log4j.Logger;
+
+import com.microsoft.playwright.Browser;
+import com.microsoft.playwright.BrowserType;
+import com.microsoft.playwright.Playwright;
 
 import io.github.ygrip.testara.core.context.TestFramework;
 import io.github.ygrip.testara.ui.driver.AbstractDriver;
@@ -20,17 +25,12 @@ import io.github.ygrip.testara.ui.model.RemoteDriverConfig;
 import io.github.ygrip.testara.ui.playwright.config.PlaywrightDriverProperties;
 import io.github.ygrip.testara.ui.playwright.driver.PlaywrightSession;
 import io.github.ygrip.testara.ui.playwright.driver.StealthProvider;
-import com.microsoft.playwright.Browser;
-import com.microsoft.playwright.BrowserType;
-import com.microsoft.playwright.Playwright;
-
 import lombok.extern.log4j.Log4j2;
 
 @Log4j2
 public final class PlaywrightEngine implements EngineFactory<PlaywrightDriverProperties> {
   private static final String ID = "playwright";
   private static final String DEFAULT_REMOTE_URL = "ws://localhost:3000/";
-  private Playwright playwright;
 
   @Override
   public String id() {
@@ -71,16 +71,17 @@ public final class PlaywrightEngine implements EngineFactory<PlaywrightDriverPro
       DriverSessionManager.inThisTestThread()
         .registerDriver(driverFullName)
         .forDriver(session);
-      DriverSessionManager.inThisTestThread()
-        .setCurrentActiveDriver(session);
     }
+    // Same thread as the test: always mark this session current so PageContext / Actor see it,
+    // including cache hits (Selenium/Appium engines use the same rule).
+    DriverSessionManager.inThisTestThread()
+      .setCurrentActiveDriver(session);
 
     return session;
   }
 
   @SuppressWarnings("unchecked")
-  private PlaywrightSession forDriver(String name, DeviceType deviceType,
-    AvailableProxy proxyType) throws Exception {
+  private PlaywrightSession forDriver(String name, DeviceType deviceType, AvailableProxy proxyType) throws Exception {
     final var drivers = loadDrivers();
     final var driverType = drivers.get(name);
 
@@ -124,77 +125,120 @@ public final class PlaywrightEngine implements EngineFactory<PlaywrightDriverPro
     }
 
     final var remote = getRemoteDriverProperties(deviceType);
-    Browser browser;
+    boolean maximizeBrowser = Optional.ofNullable(config())
+      .map(PlaywrightDriverProperties::isMaximizeBrowser)
+      .orElse(false);
+    boolean fixedLayoutViewport = deviceType.equals(DeviceType.MOBILE)
+      || Optional.ofNullable(emulation)
+        .map(EmulationModel::isAdjustDimension)
+        .orElse(false);
+    // Full-window chrome + a fixed Playwright viewport causes resize/flicker.
+    if (maximizeBrowser && !fixedLayoutViewport) {
+      List<String> args = options.args;
+      args.add("--start-maximized");
+      options.setArgs(args);
 
-    if (playwright == null) {
-      playwright = Playwright.create();
-    }
-
-    BrowserType browserType = resolveBrowserType(name);
-
-    if (Optional.ofNullable(remote)
-      .map(RemoteDriverConfig::isEnabled)
-      .orElse(false)) {
-      final var url = Optional.of(remote)
-        .map(RemoteDriverConfig::getUri)
-        .filter(StringUtils::isNotBlank)
-        .orElse(DEFAULT_REMOTE_URL);
-      log.info(
-        "#Connecting to remote playwright browser for {} in {} platform to {}",
-        factory.driverName(),
-        deviceType.name().toLowerCase(),
-        url
-      );
-      browser = browserType.connect(url, new BrowserType.ConnectOptions());
-    } else {
-      log.debug(
-        "Launching local playwright browser for {} in {} platform",
-        factory.driverName(),
-        deviceType.name()
-      );
-      browser = browserType.launch(options);
+      log.debug("Using (maximize) browser size");
     }
 
     String resolvedUserAgent = resolveUserAgent(factory);
     String stealthScript = resolveStealthScript(factory);
 
     PlaywrightSession session = new PlaywrightSession();
-    session.withStealthConfig(resolvedUserAgent, stealthScript);
+    session.setMaximized(maximizeBrowser);
+
+    // =========================
+    // VIEWPORT / EMULATION CONFIG
+    // =========================
 
     if (Optional.ofNullable(emulation)
       .map(EmulationModel::isAdjustDimension)
       .orElse(false)) {
       DeviceDimension dimension = factory.getDimension(emulation);
+
       double pixelRatio = dimension.getPixelRatio();
       boolean mobile = deviceType.equals(DeviceType.MOBILE);
       session.withViewportConfig(
         dimension.getWidth(),
         dimension.getHeight(),
         pixelRatio > 0 ? pixelRatio : null,
-        mobile ? true : null,
-        mobile ? true : null
+        mobile,
+        mobile
       );
-      log.debug("Configured viewport {}x{} (scaleFactor={}, mobile={})",
-        dimension.getWidth(), dimension.getHeight(), pixelRatio, mobile);
-    } else if (deviceType.equals(DeviceType.MOBILE)) {
-      DeviceDimension dimension = factory.getDimension(emulation);
-      session.withViewportConfig(
+
+      log.debug(
+        "Configured viewport {}x{} (scaleFactor={}, mobile={})",
         dimension.getWidth(),
         dimension.getHeight(),
-        2.0,
-        true,
-        true
+        pixelRatio,
+        mobile
       );
+
+    } else if (deviceType.equals(DeviceType.MOBILE)) {
+
+      DeviceDimension dimension = factory.getDimension(emulation);
+
+      session.withViewportConfig(dimension.getWidth(), dimension.getHeight(), 2.0, true, true);
+
       log.debug("Mobile emulation with viewport {}x{}", dimension.getWidth(), dimension.getHeight());
-    } else if (Optional.ofNullable(config())
-      .map(PlaywrightDriverProperties::isMaximizeBrowser)
-      .orElse(false)) {
-      session.withViewportConfig(1920, 1080, null, null, null);
-      log.debug("Maximize browser: using full HD viewport 1920x1080");
+
     }
 
-    return (PlaywrightSession) session.using(browser)
-      .on(deviceType);
+    BrowserType.LaunchOptions finalOptions = options;
+    long initStartedAt = System.nanoTime();
+    session.runInitializeBlocking(() -> {
+      long playwrightCreateStartedAt = System.nanoTime();
+      Playwright pw = Playwright.create();
+      session.retainPlaywright(pw);
+      long playwrightCreatedAt = System.nanoTime();
+
+      BrowserType browserType = resolveBrowserType(pw, name);
+      Browser browser;
+      long browserLaunchStartedAt = System.nanoTime();
+      if (Optional.ofNullable(remote)
+        .map(RemoteDriverConfig::isEnabled)
+        .orElse(false)) {
+        final var url = Optional.of(remote)
+          .map(RemoteDriverConfig::getUri)
+          .filter(StringUtils::isNotBlank)
+          .orElse(DEFAULT_REMOTE_URL);
+        log.info(
+          "#Connecting to remote playwright browser for {} in {} platform to {}",
+          factory.driverName(),
+          deviceType.name()
+            .toLowerCase(),
+          url
+        );
+        browser = browserType.connect(
+          url,
+          new BrowserType.ConnectOptions().setTimeout(remote.getConnectionTimeoutSeconds() * 1000)
+        );
+      } else {
+        log.debug("Launching local playwright browser for {} in {} platform", factory.driverName(), deviceType.name());
+        browser = browserType.launch(finalOptions);
+      }
+      long browserLaunchedAt = System.nanoTime();
+      session.using(browser);
+      session.withStealthConfig(resolvedUserAgent, stealthScript);
+      session.on(deviceType);
+
+      long initializedAt = System.nanoTime();
+      log.info(
+        "Playwright init timing [{}|{}]: create={}ms, launch/connect={}ms, context+page={}ms, total={}ms",
+        factory.driverName(),
+        deviceType.name().toLowerCase(),
+        TimeUnit.NANOSECONDS.toMillis(playwrightCreatedAt - playwrightCreateStartedAt),
+        TimeUnit.NANOSECONDS.toMillis(browserLaunchedAt - browserLaunchStartedAt),
+        TimeUnit.NANOSECONDS.toMillis(initializedAt - browserLaunchedAt),
+        TimeUnit.NANOSECONDS.toMillis(initializedAt - playwrightCreateStartedAt)
+      );
+    });
+    long initFinishedAt = System.nanoTime();
+    long totalInitMs = TimeUnit.NANOSECONDS.toMillis(initFinishedAt - initStartedAt);
+    if (totalInitMs > 10_000) {
+      log.warn("Playwright session initialization took {}ms (>{}ms threshold)", totalInitMs, 10_000);
+    }
+    return session;
   }
 
   private String resolveUserAgent(AbstractDriver<Browser, BrowserType.LaunchOptions> factory) {
@@ -215,8 +259,9 @@ public final class PlaywrightEngine implements EngineFactory<PlaywrightDriverPro
     return null;
   }
 
-  private BrowserType resolveBrowserType(String name) {
-    return switch (name.toLowerCase().trim()) {
+  private static BrowserType resolveBrowserType(Playwright playwright, String name) {
+    return switch (name.toLowerCase()
+      .trim()) {
       case "firefox" -> playwright.firefox();
       case "webkit", "safari" -> playwright.webkit();
       default -> playwright.chromium();

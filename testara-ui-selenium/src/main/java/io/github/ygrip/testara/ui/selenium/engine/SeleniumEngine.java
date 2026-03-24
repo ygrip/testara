@@ -341,9 +341,9 @@ public final class SeleniumEngine implements EngineFactory<SeleniumDriverPropert
       DriverSessionManager.inThisTestThread()
         .registerDriver(driverFullName)
         .forDriver(session);
-      DriverSessionManager.inThisTestThread()
-        .setCurrentActiveDriver(session);
     }
+    DriverSessionManager.inThisTestThread()
+      .setCurrentActiveDriver(session);
 
     return session;
   }

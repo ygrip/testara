@@ -261,9 +261,9 @@ public final class AppiumEngine implements EngineFactory<AppiumDriverProperties>
       DriverSessionManager.inThisTestThread()
         .registerDriver(driverFullName)
         .forDriver(session);
-      DriverSessionManager.inThisTestThread()
-        .setCurrentActiveDriver(session);
     }
+    DriverSessionManager.inThisTestThread()
+      .setCurrentActiveDriver(session);
 
     return session;
   }

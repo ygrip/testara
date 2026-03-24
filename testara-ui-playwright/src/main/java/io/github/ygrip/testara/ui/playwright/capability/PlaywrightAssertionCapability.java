@@ -8,17 +8,15 @@ import org.apache.commons.lang3.StringUtils;
 import io.github.ygrip.testara.ui.capability.AssertionCapability;
 import io.github.ygrip.testara.ui.page.Element;
 import io.github.ygrip.testara.ui.page.NamedPage;
-import com.microsoft.playwright.ElementHandle;
-import com.microsoft.playwright.Page;
 
+import io.github.ygrip.testara.ui.playwright.driver.PlaywrightSession;
 import lombok.extern.log4j.Log4j2;
 
 @Log4j2
 public final class PlaywrightAssertionCapability extends PlaywrightElementResolver implements AssertionCapability {
-  private final Page page;
 
-  public PlaywrightAssertionCapability(Page page) {
-    this.page = page;
+  public PlaywrightAssertionCapability(PlaywrightSession session) {
+    super(session);
   }
 
   @Override
@@ -39,10 +37,10 @@ public final class PlaywrightAssertionCapability extends PlaywrightElementResolv
 
   @Override
   public AssertionCapability seeThatAttribute(Element locator, String attributeName) {
-    Boolean valid = Optional.ofNullable(element(locator))
+    Boolean valid = session.runOnApiThread(() -> Optional.ofNullable(resolveOnApiThreadOnly(locator))
       .map(el -> el.getAttribute(attributeName))
       .map(StringUtils::isNotBlank)
-      .orElse(false);
+      .orElse(false));
     if (!valid) {
       throw new AssertionError(
         "Element : " + locator.getLocator() + " does not have attribute name : " + attributeName);
@@ -89,7 +87,7 @@ public final class PlaywrightAssertionCapability extends PlaywrightElementResolv
   @Override
   public AssertionCapability hasClass(Element locator, String className) {
     String attribute = attribute(locator, className);
-    if(attribute == null || !attribute.contains(className)){
+    if (attribute == null || !attribute.contains(className)) {
       throw new AssertionError("Expected to contain class: '" + className + "', actual: '" + attribute + "'");
     }
     return this;
@@ -106,9 +104,9 @@ public final class PlaywrightAssertionCapability extends PlaywrightElementResolv
   @Override
   public boolean isVisible(Element locator) {
     try {
-      return Optional.ofNullable(element(locator))
-        .map(ElementHandle::isVisible)
-        .orElse(false);
+      return session.runOnApiThread(() -> Optional.ofNullable(resolveOnApiThreadOnly(locator))
+        .map(com.microsoft.playwright.Locator::isVisible)
+        .orElse(false));
     } catch (Exception e) {
       return false;
     }
@@ -122,9 +120,9 @@ public final class PlaywrightAssertionCapability extends PlaywrightElementResolv
   @Override
   public boolean isEnabled(Element locator) {
     try {
-      return Optional.ofNullable(element(locator))
-        .map(ElementHandle::isEnabled)
-        .orElse(false);
+      return session.runOnApiThread(() -> Optional.ofNullable(resolveOnApiThreadOnly(locator))
+        .map(com.microsoft.playwright.Locator::isEnabled)
+        .orElse(false));
     } catch (Exception e) {
       return false;
     }
@@ -133,7 +131,7 @@ public final class PlaywrightAssertionCapability extends PlaywrightElementResolv
   @Override
   public boolean isPresent(Element locator) {
     try {
-      return ObjectUtils.isNotEmpty(element(locator));
+      return session.runOnApiThread(() -> ObjectUtils.isNotEmpty(resolveOnApiThreadOnly(locator)));
     } catch (Exception e) {
       return false;
     }

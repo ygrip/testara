@@ -3,6 +3,7 @@ package io.github.ygrip.testara.ui.page;
 import java.time.Duration;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Supplier;
 
 import org.apache.commons.lang3.ObjectUtils;
 import org.apache.commons.lang3.StringUtils;
@@ -20,7 +21,6 @@ import io.github.ygrip.testara.ui.driver.DriverSessionManager;
 import io.github.ygrip.testara.ui.error.PageFailureException;
 import io.github.ygrip.testara.ui.model.Page;
 import io.github.ygrip.testara.ui.model.WebPageData;
-
 import lombok.extern.log4j.Log4j2;
 
 @Log4j2
@@ -28,7 +28,7 @@ public abstract class PageContext<D extends DriverSession<?>> {
   private final Page metadata;
   private final WebPageData pageData;
   private final ObjectConverter converter;
-  private final D driver;
+  private final Supplier<D> driver;
 
   public PageContext() {
     try {
@@ -43,7 +43,7 @@ public abstract class PageContext<D extends DriverSession<?>> {
   }
 
   public PageContext(D driver) {
-    this.driver = driver;
+    this.driver = () -> driver;
     this.metadata = this.getClass()
       .getAnnotation(Page.class);
     this.pageData = loadPageDataProperties(metadata);
@@ -70,9 +70,9 @@ public abstract class PageContext<D extends DriverSession<?>> {
   }
 
   @SuppressWarnings("unchecked")
-  private D getActiveDriver() throws PageFailureException {
+  private Supplier<D> getActiveDriver() throws PageFailureException {
     try {
-      return (D) DriverSessionManager.inThisTestThread()
+      return () -> (D) DriverSessionManager.inThisTestThread()
         .getCurrentDriver();
     } catch (Exception err) {
       log.error("Fail to get current driver on page {}, with error {}", getClass(), err.getMessage(), err);
@@ -81,7 +81,7 @@ public abstract class PageContext<D extends DriverSession<?>> {
   }
 
   public D driver() {
-    return this.driver;
+    return this.driver.get();
   }
 
   public Page metadata() {
@@ -125,7 +125,9 @@ public abstract class PageContext<D extends DriverSession<?>> {
     if (StringUtils.isBlank(pageUrl)) {
       return false;
     }
-    return Optional.ofNullable(currentUrl())
+    final var current = currentUrl();
+    log.debug("Current url : {}", current);
+    return Optional.ofNullable(current)
       .filter(StringUtils::isNotBlank)
       .map(currentUrl -> currentUrl.startsWith(pageUrl))
       .orElse(false);
@@ -142,11 +144,8 @@ public abstract class PageContext<D extends DriverSession<?>> {
         .until(() -> {
           try {
             boolean valid = isCurrentPage();
-            while (!valid) {
-              valid = isCurrentPage();
-            }
             result.set(valid);
-            return true;
+            return valid;
           } catch (Exception err) {
             lastError.set(err);
             result.set(null);

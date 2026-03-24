@@ -1,5 +1,7 @@
 package io.github.ygrip.testara.ui.playwright.driver;
 
+import java.nio.file.Paths;
+import java.util.ArrayList;
 import java.util.List;
 
 import org.apache.commons.lang3.ObjectUtils;
@@ -54,7 +56,7 @@ public class Webkit extends AbstractDriver<Browser, BrowserType.LaunchOptions> i
     BrowserType.LaunchOptions options = new BrowserType.LaunchOptions();
     options.setHeadless(isHeadless());
 
-    List<String> args = new java.util.ArrayList<>();
+    List<String> args = new ArrayList<>();
     List<String> additionalArgs = getArguments();
     if (ObjectUtils.isNotEmpty(additionalArgs)) {
       args.addAll(additionalArgs);
@@ -65,7 +67,7 @@ public class Webkit extends AbstractDriver<Browser, BrowserType.LaunchOptions> i
 
     final var binaryPath = getBinaryPath();
     if (StringUtils.isNotBlank(binaryPath)) {
-      options.setExecutablePath(java.nio.file.Paths.get(binaryPath));
+      options.setExecutablePath(Paths.get(binaryPath));
     }
 
     if (isHeadless()) {

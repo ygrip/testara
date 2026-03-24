@@ -8,6 +8,7 @@ import lombok.extern.log4j.Log4j2;
 import org.apache.commons.lang3.StringUtils;
 
 import java.io.File;
+import java.io.FileOutputStream;
 import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
@@ -93,6 +94,33 @@ public class FileHelper {
       return file.getAbsolutePath();
     } catch (IOException e) {
       log.error("Fail to write file ", e);
+      return null;
+    }
+  }
+
+  /**
+   * Write input of list of string as a file in the respective filepath
+   *
+   * @param data     as the data that user want to input in in bytes array
+   * @param filePath is String of the file path stored
+   * @param options  StandardOperation as the file write options
+   */
+  public static String writeBytes(byte[] data, String filePath, StandardOpenOption... options) {
+    Path path = Paths.get(filePath);
+    File file = path.toFile();
+    try {
+      if (!file.exists()) {
+        if (!path.getParent().toFile().exists()) {
+          Files.createDirectories(path.getParent());
+        }
+        Files.createFile(path);
+      }
+      try (FileOutputStream fos = new FileOutputStream(file)) {
+        fos.write(data);
+      }
+      return file.getAbsolutePath();
+    } catch (IOException e) {
+      log.error("Fail to write bytes to file ", e);
       return null;
     }
   }

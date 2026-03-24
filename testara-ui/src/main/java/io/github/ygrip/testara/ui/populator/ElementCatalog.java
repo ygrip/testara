@@ -48,6 +48,9 @@ public class ElementCatalog {
   public <T> Optional<Element<T>> addElement(String identifier, T target) {
     if (target != null) {
       JavaType type = MapperHelper.getGenericType(target.getClass());
+      if (type == null) {
+        return Optional.empty();
+      }
       Map<String, Element<?>> catalog = catalogs.getOrDefault(type, new HashMap<>());
       Element<T> element = new Element<>(identifier, target);
       catalog.put(identifier, element);
@@ -66,8 +69,11 @@ public class ElementCatalog {
    * @return a {@link Element} object.
    */
   public <T> Optional<Element<T>> addLazyElement(String identifier, Class<T> type, Field field) {
-    if (field != null) {
+    if (field != null && type != null) {
       JavaType javaType = MapperHelper.getGenericType(type);
+      if (javaType == null) {
+        return Optional.empty();
+      }
       Map<String, Element<?>> catalog = catalogs.getOrDefault(javaType, new HashMap<>());
       Element<T> element = new Element<>(identifier, field);
       catalog.put(identifier, element);
@@ -86,8 +92,11 @@ public class ElementCatalog {
    * @return a {@link Element} object.
    */
   public <T> Optional<Element<T>> addLazyElement(String identifier, TypeReference<T> type, Field field) {
-    if (field != null) {
+    if (field != null && type != null) {
       JavaType javaType = MapperHelper.getGenericType(type);
+      if (javaType == null) {
+        return Optional.empty();
+      }
       Map<String, Element<?>> catalog = catalogs.getOrDefault(javaType, new HashMap<>());
       Element<T> element = new Element<>(identifier, field);
       catalog.put(identifier, element);
@@ -106,7 +115,7 @@ public class ElementCatalog {
    * @return a {@link Element} object.
    */
   public <T> Optional<Element<T>> addLazyElement(String identifier, JavaType type, Field field) {
-    if (field != null) {
+    if (field != null && type != null) {
       Map<String, Element<?>> catalog = catalogs.getOrDefault(type, new HashMap<>());
       Element<T> element = new Element<>(identifier, field);
       catalog.put(identifier, element);
@@ -133,6 +142,9 @@ public class ElementCatalog {
   }
 
   private boolean assignableType(JavaType input, JavaType expected) {
+    if (input == null || expected == null) {
+      return false;
+    }
     return input.isTypeOrSubTypeOf(expected.getRawClass());
   }
 
@@ -146,9 +158,12 @@ public class ElementCatalog {
    */
   @SuppressWarnings("unchecked")
   private <T> T findElement(JavaType type, String query, Object instance) {
+    if (type == null || query == null) {
+      return null;
+    }
     List<JavaType> targetTypes = catalogs.keySet()
       .stream()
-      .filter(key -> assignableType(key, type))
+      .filter(key -> key != null && assignableType(key, type))
       .toList();
     AtomicReference<T> result = new AtomicReference<>();
     for (JavaType key : targetTypes) {
@@ -196,6 +211,9 @@ public class ElementCatalog {
    * @return a {@link Finder} object.
    */
   public Finder findBy(Class<?> clazz) {
+    if (clazz == null) {
+      throw new IllegalArgumentException("findBy(Class) does not accept null");
+    }
     this.finder = new Finder(clazz);
     return this.finder;
   }
@@ -207,6 +225,9 @@ public class ElementCatalog {
    * @return a {@link Finder} object.
    */
   public Finder findBy(JavaType type) {
+    if (type == null) {
+      throw new IllegalArgumentException("findBy(JavaType) does not accept null");
+    }
     this.finder = new Finder(type);
     return this.finder;
   }
@@ -218,6 +239,9 @@ public class ElementCatalog {
    * @return a {@link Finder} object.
    */
   public Finder findBy(TypeReference<?> typeReference) {
+    if (typeReference == null) {
+      throw new IllegalArgumentException("findBy(TypeReference) does not accept null");
+    }
     this.finder = new Finder(typeReference);
     return this.finder;
   }
@@ -326,12 +350,18 @@ public class ElementCatalog {
 
     public Finder(Class<?> key) {
       keys = new ArrayList<>();
-      keys.add(MapperHelper.getGenericType(key));
+      JavaType jt = MapperHelper.getGenericType(key);
+      if (jt != null) {
+        keys.add(jt);
+      }
     }
 
     public Finder(TypeReference<?> key) {
       keys = new ArrayList<>();
-      keys.add(MapperHelper.getGenericType(key));
+      JavaType jt = MapperHelper.getGenericType(key);
+      if (jt != null) {
+        keys.add(jt);
+      }
     }
 
     public Finder(JavaType javaType) {
@@ -348,17 +378,29 @@ public class ElementCatalog {
     }
 
     public Finder orBy(Class<?> key) {
-      keys.add(MapperHelper.getGenericType(key));
+      if (key != null) {
+        JavaType jt = MapperHelper.getGenericType(key);
+        if (jt != null) {
+          keys.add(jt);
+        }
+      }
       return this;
     }
 
     public Finder orBy(TypeReference<?> key) {
-      keys.add(MapperHelper.getGenericType(key));
+      if (key != null) {
+        JavaType jt = MapperHelper.getGenericType(key);
+        if (jt != null) {
+          keys.add(jt);
+        }
+      }
       return this;
     }
 
     public Finder orBy(JavaType key) {
-      keys.add(key);
+      if (key != null) {
+        keys.add(key);
+      }
       return this;
     }
 

@@ -1,5 +1,7 @@
 package io.github.ygrip.testara.ui.playwright.driver;
 
+import java.nio.file.Paths;
+import java.util.ArrayList;
 import java.util.List;
 
 import org.apache.commons.lang3.ObjectUtils;
@@ -53,7 +55,7 @@ public class PlaywrightFirefox extends AbstractDriver<Browser, BrowserType.Launc
     BrowserType.LaunchOptions options = new BrowserType.LaunchOptions();
     options.setHeadless(isHeadless());
 
-    List<String> args = new java.util.ArrayList<>();
+    List<String> args = new ArrayList<>();
     args.add("--no-sandbox");
 
     List<String> additionalArgs = getArguments();
@@ -64,7 +66,7 @@ public class PlaywrightFirefox extends AbstractDriver<Browser, BrowserType.Launc
 
     final var binaryPath = getBinaryPath();
     if (StringUtils.isNotBlank(binaryPath)) {
-      options.setExecutablePath(java.nio.file.Paths.get(binaryPath));
+      options.setExecutablePath(Paths.get(binaryPath));
     }
 
     return options;

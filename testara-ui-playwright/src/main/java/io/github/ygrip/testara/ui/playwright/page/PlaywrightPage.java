@@ -1,12 +1,12 @@
 package io.github.ygrip.testara.ui.playwright.page;
 
-import java.lang.reflect.Proxy;
 import java.util.List;
 
+import io.github.ygrip.testara.ui.driver.DriverSession;
+import io.github.ygrip.testara.ui.driver.DriverSessionManager;
 import io.github.ygrip.testara.ui.page.PageContext;
 import io.github.ygrip.testara.ui.playwright.driver.PlaywrightSession;
 import com.microsoft.playwright.BrowserContext;
-import com.microsoft.playwright.ElementHandle;
 import com.microsoft.playwright.Page;
 
 import lombok.extern.log4j.Log4j2;
@@ -14,96 +14,117 @@ import lombok.extern.log4j.Log4j2;
 @Log4j2
 public abstract class PlaywrightPage extends PageContext<PlaywrightSession> {
 
+  /**
+   * Returns the live {@link Page} after marshalling to the Playwright API thread. Do not retain or
+   * use this reference from another thread; prefer {@link PageContext} methods and capabilities.
+   */
   public Page page() {
-    return driver().page();
+    return pw().runOnApiThread(() -> pw().pageForApi());
   }
 
   public BrowserContext context() {
-    return driver().context();
+    return pw().runOnApiThread(() -> pw().contextForApi());
+  }
+
+  private PlaywrightSession pw() {
+    PlaywrightSession s = driver();
+    if (s != null) {
+      return s;
+    }
+    for (DriverSession<?> d : DriverSessionManager.inThisTestThread().getCurrentDrivers()) {
+      if (d instanceof PlaywrightSession pws && d.isActive()) {
+        return pws;
+      }
+    }
+    throw new IllegalStateException(
+      "No Playwright session on this test thread. Open a browser (e.g. via the Playwright engine) "
+        + "or call DriverSessionManager.inThisTestThread().setCurrentActiveDriver(session) after registering the driver."
+    );
   }
 
   @Override
   public String currentUrl() {
-    return page().url();
+    return pw().runOnApiThread(() -> pw().pageForApi().url());
   }
 
   @Override
   public String pageTitle() {
-    return page().title();
+    return pw().runOnApiThread(() -> pw().pageForApi().title());
   }
 
   @Override
   public void open(String url) {
-    page().navigate(url);
+    pw().runOnApiThread(() -> {
+      pw().pageForApi().navigate(url);
+      return null;
+    });
   }
 
   @Override
   public void refresh() {
-    page().reload();
+    pw().runOnApiThread(() -> {
+      pw().pageForApi().reload();
+      return null;
+    });
   }
 
   @Override
   public void reload() {
-    page().reload();
+    pw().runOnApiThread(() -> {
+      pw().pageForApi().reload();
+      return null;
+    });
   }
 
   @Override
   public void forward() {
-    page().goForward();
+    pw().runOnApiThread(() -> {
+      pw().pageForApi().goForward();
+      return null;
+    });
   }
 
   @Override
   public void back() {
-    page().goBack();
+    pw().runOnApiThread(() -> {
+      pw().pageForApi().goBack();
+      return null;
+    });
   }
 
-  public ElementHandle findOne(String locator) {
+  public com.microsoft.playwright.Locator findOne(String locator) {
     try {
-      return (ElementHandle) Proxy.newProxyInstance(
-        ElementHandle.class.getClassLoader(), new Class[] {ElementHandle.class}, (proxy, method, args) -> {
-          ElementHandle element = page().locator(locator)
-            .elementHandle();
-          return method.invoke(element, args);
-        }
-      );
+      PlaywrightSession s = pw();
+      return s.runOnApiThread(() -> s.pageForApi().locator(locator).first());
     } catch (Throwable ignored) {
       return null;
     }
   }
 
-  public ElementHandle findOne(String locator, Page.LocatorOptions locatorOptions) {
+  public com.microsoft.playwright.Locator findOne(String locator, Page.LocatorOptions locatorOptions) {
     try {
-      return (ElementHandle) Proxy.newProxyInstance(
-        ElementHandle.class.getClassLoader(), new Class[] {ElementHandle.class}, (proxy, method, args) -> {
-          ElementHandle element = page().locator(locator, locatorOptions)
-            .elementHandle();
-          return method.invoke(element, args);
-        }
-      );
+      PlaywrightSession s = pw();
+      return s.runOnApiThread(() -> s.pageForApi().locator(locator, locatorOptions).first());
     } catch (Throwable ignored) {
       return null;
     }
   }
 
-  @SuppressWarnings("unchecked")
-  public List<ElementHandle> findAll(String locator) {
-    return (List<ElementHandle>) Proxy.newProxyInstance(
-      List.class.getClassLoader(), new Class[] {List.class}, (proxy, method, args) -> {
-        List<ElementHandle> elements = page().locator(locator)
-          .elementHandles();
-        return method.invoke(elements, args);
-      }
-    );
+  public List<com.microsoft.playwright.Locator> findAll(String locator) {
+    PlaywrightSession s = pw();
+    return s.runOnApiThread(() -> {
+      com.microsoft.playwright.Locator base = s.pageForApi().locator(locator);
+      base.first().waitFor();
+      return base.all();
+    });
   }
 
-  @SuppressWarnings("unchecked")
-  public List<ElementHandle> findAll(String locator, Page.LocatorOptions locatorOptions) {
-    return (List<ElementHandle>) Proxy.newProxyInstance(
-      List.class.getClassLoader(), new Class[] {List.class}, (proxy, method, args) -> {
-        List<ElementHandle> elements = page().locator(locator)
-          .elementHandles();
-        return method.invoke(elements, args);
-      }
-    );
+  public List<com.microsoft.playwright.Locator> findAll(String locator, Page.LocatorOptions locatorOptions) {
+    PlaywrightSession s = pw();
+    return s.runOnApiThread(() -> {
+      com.microsoft.playwright.Locator base = s.pageForApi().locator(locator, locatorOptions);
+      base.first().waitFor();
+      return base.all();
+    });
   }
 }

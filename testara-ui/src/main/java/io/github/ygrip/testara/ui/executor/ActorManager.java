@@ -31,4 +31,16 @@ public final class ActorManager {
 
     return currentActors.get(sessionName);
   }
+
+  public static Map<String, Actor> getActors() {
+    return ACTORS.get();
+  }
+
+  public static void bindToCurrentThread(Map<String, Actor> actors) {
+    if (actors == null) {
+      ACTORS.remove();
+      return;
+    }
+    ACTORS.set(new HashMap<>(actors));
+  }
 }

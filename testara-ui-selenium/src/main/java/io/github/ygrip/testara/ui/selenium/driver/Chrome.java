@@ -53,6 +53,9 @@ public class Chrome extends AbstractDriver<ChromeDriver, ChromeOptions> {
     Map<String, Object> chromePrefs = new HashMap<>();
     chromePrefs.put("profile.default_content_settings.popups", 0);
     chromePrefs.put("download.prompt_for_download", false);
+    chromePrefs.put("credentials_enable_service", false);
+    chromePrefs.put("profile.password_manager_enabled", false);
+    chromePrefs.put("profile.password_manager_leak_detection", false);
     chromePrefs.put("download.default_directory", getDownloadLocation());
     ChromeOptions options = new ChromeOptions();
     options.addArguments("--disable-extensions");

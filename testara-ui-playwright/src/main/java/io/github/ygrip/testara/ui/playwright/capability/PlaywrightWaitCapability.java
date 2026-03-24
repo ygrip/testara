@@ -4,7 +4,6 @@ import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.equalTo;
 
 import java.time.Duration;
-import java.util.List;
 import java.util.Optional;
 
 import org.apache.commons.lang3.ObjectUtils;
@@ -15,18 +14,16 @@ import io.github.ygrip.testara.ui.capability.WaitCapability;
 import io.github.ygrip.testara.ui.page.Element;
 import io.github.ygrip.testara.ui.page.NamedPage;
 import io.github.ygrip.testara.ui.page.PageContext;
-import com.microsoft.playwright.ElementHandle;
-import com.microsoft.playwright.Page;
 
+import io.github.ygrip.testara.ui.playwright.driver.PlaywrightSession;
 import lombok.extern.log4j.Log4j2;
 
 @Log4j2
-public final class PlaywrightWaitCapability implements WaitCapability {
-  private final Page page;
+public final class PlaywrightWaitCapability extends PlaywrightElementResolver implements WaitCapability {
   private Duration defaultTimeout = Duration.ofSeconds(10);
 
-  public PlaywrightWaitCapability(Page page) {
-    this.page = page;
+  public PlaywrightWaitCapability(PlaywrightSession session) {
+    super(session);
   }
 
   @Override
@@ -56,10 +53,10 @@ public final class PlaywrightWaitCapability implements WaitCapability {
         .pollInterval(Duration.ofMillis(100))
         .until(() -> {
           try {
-            return Optional.ofNullable(page.url())
+            return session.runOnApiThread(() -> Optional.ofNullable(session.pageForApi().url())
               .filter(StringUtils::isNotBlank)
               .map(current -> current.contains(url))
-              .orElse(false);
+              .orElse(false));
           } catch (Exception err) {
             return false;
           }
@@ -70,10 +67,27 @@ public final class PlaywrightWaitCapability implements WaitCapability {
 
   @Override
   public WaitCapability untilSelected(Element locator) {
-    ElementHandle targetElement = element(locator);
-    if (targetElement != null) {
-      targetElement.waitForSelector("", new ElementHandle.WaitForSelectorOptions().setTimeout(defaultTimeout.toMillis()));
-    }
+    Awaitility.await()
+      .pollInSameThread()
+      .atMost(defaultTimeout.plusMillis(1))
+      .pollInterval(Duration.ofMillis(100))
+      .ignoreExceptions()
+      .until(() -> {
+        try {
+          return session.runOnApiThread(() -> {
+            com.microsoft.playwright.Locator el = resolveOnApiThreadOnly(locator);
+            if (el == null) {
+              return false;
+            }
+            Boolean selected = (Boolean) el.evaluate(
+              "e => (e.tagName === 'OPTION' && e.selected) || e.checked === true"
+            );
+            return Boolean.TRUE.equals(selected);
+          });
+        } catch (Exception e) {
+          return false;
+        }
+      });
     return this;
   }
 
@@ -85,8 +99,14 @@ public final class PlaywrightWaitCapability implements WaitCapability {
       .pollInterval(Duration.ofMillis(100))
       .ignoreExceptions()
       .until(() -> {
-        ElementHandle el = element(locator);
-        return el != null && el.isVisible();
+        try {
+          return session.runOnApiThread(() -> {
+            com.microsoft.playwright.Locator el = resolveOnApiThreadOnly(locator);
+            return el != null && el.isVisible();
+          });
+        } catch (Exception e) {
+          return false;
+        }
       });
     return this;
   }
@@ -99,8 +119,14 @@ public final class PlaywrightWaitCapability implements WaitCapability {
       .pollInterval(Duration.ofMillis(100))
       .ignoreExceptions()
       .until(() -> {
-        ElementHandle el = element(locator);
-        return el == null || !el.isVisible();
+        try {
+          return session.runOnApiThread(() -> {
+            com.microsoft.playwright.Locator el = resolveOnApiThreadOnly(locator);
+            return el == null || !el.isVisible();
+          });
+        } catch (Exception e) {
+          return false;
+        }
       });
     return this;
   }
@@ -113,8 +139,14 @@ public final class PlaywrightWaitCapability implements WaitCapability {
       .pollInterval(Duration.ofMillis(100))
       .ignoreExceptions()
       .until(() -> {
-        ElementHandle el = element(locator);
-        return el != null && el.isVisible() && el.isEnabled();
+        try {
+          return session.runOnApiThread(() -> {
+            com.microsoft.playwright.Locator el = resolveOnApiThreadOnly(locator);
+            return el != null && el.isVisible() && el.isEnabled();
+          });
+        } catch (Exception e) {
+          return false;
+        }
       });
     return this;
   }
@@ -128,7 +160,13 @@ public final class PlaywrightWaitCapability implements WaitCapability {
       .ignoreExceptions()
       .until(() -> {
         try {
-          return locator.one() != null;
+          return session.runOnApiThread(() -> {
+            try {
+              return locator.one() != null;
+            } catch (Exception e) {
+              return false;
+            }
+          });
         } catch (Exception e) {
           return false;
         }
@@ -144,10 +182,13 @@ public final class PlaywrightWaitCapability implements WaitCapability {
       .pollInterval(Duration.ofMillis(100))
       .ignoreExceptions()
       .until(() -> {
-        ElementHandle el = element(locator);
-        return Optional.ofNullable(el)
-          .map(ElementHandle::isEnabled)
-          .orElse(false);
+        try {
+          return session.runOnApiThread(() -> Optional.ofNullable(resolveOnApiThreadOnly(locator))
+            .map(com.microsoft.playwright.Locator::isEnabled)
+            .orElse(false));
+        } catch (Exception e) {
+          return false;
+        }
       });
     return this;
   }
@@ -160,10 +201,13 @@ public final class PlaywrightWaitCapability implements WaitCapability {
       .pollInterval(Duration.ofMillis(100))
       .ignoreExceptions()
       .until(() -> {
-        ElementHandle el = element(locator);
-        return !Optional.ofNullable(el)
-          .map(ElementHandle::isEnabled)
-          .orElse(false);
+        try {
+          return session.runOnApiThread(() -> !Optional.ofNullable(resolveOnApiThreadOnly(locator))
+            .map(com.microsoft.playwright.Locator::isEnabled)
+            .orElse(false));
+        } catch (Exception e) {
+          return false;
+        }
       });
     return this;
   }
@@ -177,15 +221,5 @@ public final class PlaywrightWaitCapability implements WaitCapability {
       .ignoreExceptions()
       .untilAsserted(() -> assertThat(true, equalTo(true)));
     return this;
-  }
-
-  @SuppressWarnings({"rawtypes"})
-  private ElementHandle element(Element locator) {
-    try {
-      return (ElementHandle) locator.one(defaultTimeout);
-    } catch (Exception e) {
-      log.warn("Unable to find element on {}", locator.getLocator());
-      return null;
-    }
   }
 }

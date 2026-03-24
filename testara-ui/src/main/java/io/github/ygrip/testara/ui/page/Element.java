@@ -13,8 +13,8 @@ import org.awaitility.core.ConditionTimeoutException;
 import io.github.ygrip.testara.core.model.ValueUnit;
 import io.github.ygrip.testara.core.time.DurationParser;
 import io.github.ygrip.testara.ui.driver.DriverSessionManager;
+import io.github.ygrip.testara.ui.error.ElementNotFoundException;
 import io.github.ygrip.testara.ui.model.Locator;
-
 import lombok.Getter;
 import lombok.extern.log4j.Log4j2;
 
@@ -23,8 +23,8 @@ public final class Element<E> {
   @Getter
   private final Locator locator;
   private final Element<E> parent;
-  private final PageFinder<?, E, ?> finder;
-  private final PageContext<?> pageContext;
+  private PageFinder<?, E, ?> finder;
+  private PageContext<?> pageContext;
   private final Kind kind;
   private E instance;
   private Element<E> child;
@@ -46,6 +46,16 @@ public final class Element<E> {
     this.parent = null;
     this.instance = null;
     this.kind = kind;
+  }
+
+  public Element<E> onPage(PageContext<?> pageContext){
+    this.pageContext = pageContext;
+    return this;
+  }
+
+  public Element<E> using(PageFinder<?, E, ?> finder){
+    this.finder = finder;
+    return this;
   }
 
   Element(PageFinder<?, E, ?> finder, PageContext<?> pageContext, E instance) {
@@ -83,8 +93,7 @@ public final class Element<E> {
     return new ElementContext(locator);
   }
 
-  public static <E> Element<E> instance(PageFinder<?, E, ?> finder, PageContext<?> pageContext,
-    E instance) {
+  public static <E> Element<E> instance(PageFinder<?, E, ?> finder, PageContext<?> pageContext, E instance) {
     return new Element<>(finder, pageContext, instance);
   }
 
@@ -118,11 +127,11 @@ public final class Element<E> {
     T result;
     if (ObjectUtils.isNotEmpty(pageContext)) {
       result = (T) ((PageFinder) finder).getLocator(pageContext, elementName);
-      if (result == null) {
-        result = (T) ((PageFinder) finder).getLocator(pageContext, locator);
-      }
     } else {
       result = (T) finder.getLocator(elementName);
+    }
+    if (result == null) {
+      result = (T) ((PageFinder) finder).getLocator(locator);
     }
     finder.setSuppressLog(false);
     return result;
@@ -130,12 +139,18 @@ public final class Element<E> {
 
   @SuppressWarnings({"unchecked", "rawtypes"})
   public <T> T one() throws Exception {
-    if (ObjectUtils.isNotEmpty(instance)) {
+    // Hold a stable reference only for explicit Element.instance(...) wrappers (no locator/parent).
+    if (locator == null && parent == null && ObjectUtils.isNotEmpty(instance)) {
       try {
         return (T) instance;
       } catch (Exception ignored) {
         // fall through
       }
+    }
+    // Locator- or parent-based elements must re-resolve each call (e.g. Playwright handles go stale
+    // after navigation; Selenium WebElement can go stale the same way).
+    if (locator != null || parent != null) {
+      instance = null;
     }
     if (ObjectUtils.isEmpty(parent) && (locator == null || locator.getValue() == null)) {
       return null;
@@ -152,13 +167,24 @@ public final class Element<E> {
       };
     } else {
       String elementName = locator.getValue();
-      if (ObjectUtils.isNotEmpty(pageContext)) {
-        result = (T) ((PageFinder) finder).getElement(pageContext, elementName)
-          .get();
-      } else {
-        result = (T) finder.getElement(elementName)
-          .get();
+      try {
+        if (ObjectUtils.isNotEmpty(pageContext)) {
+          result = (T) ((PageFinder) finder).getElement(pageContext, elementName)
+            .get();
+        } else {
+          result = (T) finder.getElement(elementName)
+            .get();
+        }
+      } catch (ElementNotFoundException err) {
+        if (ObjectUtils.isNotEmpty(pageContext)) {
+          result = (T) ((PageFinder) finder).getElementFromPage(pageContext, locator)
+            .get();
+        } else {
+          result = (T) ((PageFinder) finder).getElement(locator)
+            .get();
+        }
       }
+
       result = switch (kind) {
         case FOLLOWING_SIBLING, SIBLINGS -> (T) finder.getFollowingSiblingElement((E) result);
         case PRECEDING_SIBLING -> (T) finder.getPrecedingSiblingElement((E) result);
@@ -168,7 +194,9 @@ public final class Element<E> {
     }
 
     try {
-      instance = (E) result;
+      if (locator == null && parent == null) {
+        instance = (E) result;
+      }
     } catch (Exception ignored) {
       // ignore
     }
@@ -228,12 +256,22 @@ public final class Element<E> {
       };
     } else {
       String elementName = locator.getValue();
-      if (ObjectUtils.isNotEmpty(pageContext)) {
-        result = (List<T>) ((PageFinder) finder).getElements(pageContext, elementName)
-          .get();
-      } else {
-        result = (List<T>) finder.getElements(elementName)
-          .get();
+      try {
+        if (ObjectUtils.isNotEmpty(pageContext)) {
+          result = (List<T>) ((PageFinder) finder).getElements(pageContext, elementName)
+            .get();
+        } else {
+          result = (List<T>) finder.getElements(elementName)
+            .get();
+        }
+      } catch (ElementNotFoundException err) {
+        if (ObjectUtils.isNotEmpty(pageContext)) {
+          result = (List<T>) ((PageFinder) finder).getElementsFromPage(pageContext, locator)
+            .get();
+        } else {
+          result = (List<T>) ((PageFinder) finder).getElements(locator)
+            .get();
+        }
       }
       result = switch (kind) {
         case FOLLOWING_SIBLING -> (List<T>) finder.getFollowingSiblingElements((E) result);

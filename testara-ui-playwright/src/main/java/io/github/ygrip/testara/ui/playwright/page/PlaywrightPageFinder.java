@@ -12,22 +12,82 @@ import org.apache.logging.log4j.Logger;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JavaType;
+
 import io.github.ygrip.testara.core.context.TestComponent;
 import io.github.ygrip.testara.core.mapper.MapperHelper;
 import io.github.ygrip.testara.core.registry.RegistryScope;
+import io.github.ygrip.testara.ui.driver.DriverSession;
+import io.github.ygrip.testara.ui.driver.DriverSessionManager;
 import io.github.ygrip.testara.ui.model.Locator;
 import io.github.ygrip.testara.ui.page.PageFinder;
 import io.github.ygrip.testara.ui.playwright.capability.PlaywrightLocatorConverter;
 import io.github.ygrip.testara.ui.playwright.config.PlaywrightDriverProperties;
+import io.github.ygrip.testara.ui.playwright.driver.PlaywrightSession;
 import io.github.ygrip.testara.ui.populator.ElementCatalog;
-import com.microsoft.playwright.ElementHandle;
-import com.microsoft.playwright.Page;
-
 import lombok.extern.log4j.Log4j2;
 
 @Log4j2
 @TestComponent(scope = RegistryScope.TEST)
-public class PlaywrightPageFinder extends PageFinder<PlaywrightPage, ElementHandle, String> {
+public class PlaywrightPageFinder extends PageFinder<PlaywrightPage, com.microsoft.playwright.Locator, String> {
+
+  private static PlaywrightSession currentPwSession() {
+    PlaywrightSession onApi = PlaywrightSession.sessionRunningOnThisThread();
+    if (onApi != null) {
+      return onApi;
+    }
+    var d = DriverSessionManager.inThisTestThread()
+      .getCurrentDriver();
+    if (d instanceof PlaywrightSession pws) {
+      return pws;
+    }
+    for (DriverSession<?> candidate : DriverSessionManager.inThisTestThread()
+      .getCurrentDrivers()) {
+      if (candidate instanceof PlaywrightSession pws && candidate.isActive()) {
+        return pws;
+      }
+    }
+    return null;
+  }
+
+  private static PlaywrightSession requireSession(PlaywrightPage page) {
+    if (page != null) {
+      PlaywrightSession fromPage = page.driver();
+      if (fromPage != null) {
+        return fromPage;
+      }
+    }
+    PlaywrightSession s = currentPwSession();
+    if (s == null) {
+      throw new IllegalStateException(
+        "Playwright: set finder.setCurrentPage(...) after navigation, or register a Playwright driver on this test thread.");
+    }
+    return s;
+  }
+
+  /**
+   * Normalize a selector string so Playwright's locator engine handles both CSS and XPath.
+   * Raw XPath expressions (starting with /, ./, (, or containing ::) are prefixed with "xpath=".
+   */
+  private static String normalizeSelector(String locator) {
+    if (locator == null) {
+      return null;
+    }
+    if (locator.startsWith("xpath=")) {
+      return locator;
+    }
+    if (looksLikeXpath(locator)) {
+      return "xpath=" + locator;
+    }
+    // Strip leading "* > " — in standard CSS it's a no-op (every element is a child of *),
+    // but in Playwright's chained locator context, * only matches strict descendants of the
+    // parent, not the parent itself.  So "* > span.X" fails to find a span that is a direct
+    // child of the scoped parent.  Removing the prefix makes the selector equivalent.
+    return locator.replaceFirst("^\\*\\s*>\\s*", "");
+  }
+
+  private static boolean looksLikeXpath(String locator) {
+    return locator.startsWith("/") || locator.startsWith("./") || locator.startsWith("(") || locator.contains("::");
+  }
 
   @Override
   public Class<PlaywrightDriverProperties> configType() {
@@ -41,10 +101,7 @@ public class PlaywrightPageFinder extends PageFinder<PlaywrightPage, ElementHand
 
   @Override
   public String getLocator(PlaywrightPage page, String element) {
-    if (page == null) {
-      return null;
-    }
-    if (element == null || element.isBlank()) {
+    if (page == null || element == null || element.isBlank()) {
       return null;
     }
 
@@ -53,7 +110,6 @@ public class PlaywrightPageFinder extends PageFinder<PlaywrightPage, ElementHand
       ElementCatalog catalog = buildPageCatalog(page);
       Map.Entry<JavaType, Object> item = catalog.findBy(Locator.class)
         .orBy(com.microsoft.playwright.Locator.class)
-        .orBy(ElementHandle.class)
         .withQuery(element)
         .getResult(page);
 
@@ -64,9 +120,7 @@ public class PlaywrightPageFinder extends PageFinder<PlaywrightPage, ElementHand
           if (key.isTypeOrSubTypeOf(Locator.class)) {
             result = PlaywrightLocatorConverter.toSelector((Locator) value);
           } else if (key.isTypeOrSubTypeOf(com.microsoft.playwright.Locator.class)) {
-            result = toLocator(((com.microsoft.playwright.Locator) value).elementHandle());
-          } else if (key.isTypeOrSubTypeOf(ElementHandle.class)) {
-            result = toLocator((ElementHandle) value);
+            result = value.toString();
           }
         }
       } else {
@@ -78,7 +132,8 @@ public class PlaywrightPageFinder extends PageFinder<PlaywrightPage, ElementHand
           "Locator lookup failed for '{}': {} (page={})",
           element,
           e.getMessage(),
-          page.getClass().getSimpleName(),
+          page.getClass()
+            .getSimpleName(),
           e
         );
       }
@@ -87,51 +142,24 @@ public class PlaywrightPageFinder extends PageFinder<PlaywrightPage, ElementHand
   }
 
   @Override
-  public String getLocator(PlaywrightPage page, Locator locator) {
-    if (page == null || locator == null) {
+  public String getLocator(Locator locator) {
+    if (locator == null) {
       return null;
     }
     return PlaywrightLocatorConverter.toSelector(locator);
   }
 
-  private String toLocator(ElementHandle element) {
-    if (element == null) {
-      return null;
-    }
-    try {
-      Object result = element.evaluate("""
-        el => {
-          if (el.id) return '#' + el.id;
-          if (el.className && typeof el.className === 'string') {
-            const cls = el.className.trim().split(/\\s+/).join('.');
-            if (cls) return '.' + cls;
-          }
-          const tag = el.tagName.toLowerCase();
-          const parent = el.parentElement;
-          if (!parent) return tag;
-          const siblings = Array.from(parent.children).filter(c => c.tagName === el.tagName);
-          if (siblings.length === 1) return tag;
-          const idx = siblings.indexOf(el) + 1;
-          return tag + ':nth-child(' + idx + ')';
-        }
-        """);
-      return result != null ? result.toString() : null;
-    } catch (Exception e) {
-      return null;
-    }
-  }
-
   @Override
-  public Supplier<ElementHandle> getElementFromPage(PlaywrightPage page, String element) throws Exception {
+  public Supplier<com.microsoft.playwright.Locator> getElementFromPage(PlaywrightPage page, String element)
+    throws Exception {
     if (page == null) {
       return null;
     }
-    Supplier<ElementHandle> result = null;
+    Supplier<com.microsoft.playwright.Locator> result = null;
     try {
       ElementCatalog catalog = buildPageCatalog(page);
       Map.Entry<JavaType, Object> item = catalog.findBy(Locator.class)
         .orBy(com.microsoft.playwright.Locator.class)
-        .orBy(ElementHandle.class)
         .withQuery(element)
         .getResult(page);
 
@@ -142,11 +170,13 @@ public class PlaywrightPageFinder extends PageFinder<PlaywrightPage, ElementHand
           if (key.isTypeOrSubTypeOf(Locator.class)) {
             Locator locator = (Locator) value;
             String selector = PlaywrightLocatorConverter.toSelector(locator);
-            result = () -> page.page().locator(selector).elementHandle();
+            final PlaywrightSession s = requireSession(page);
+            result = () -> s.runOnApiThread(() -> s.pageForApi()
+              .locator(selector)
+              .first());
           } else if (key.isTypeOrSubTypeOf(com.microsoft.playwright.Locator.class)) {
-            result = () -> ((com.microsoft.playwright.Locator) value).elementHandle();
-          } else if (key.isTypeOrSubTypeOf(ElementHandle.class)) {
-            result = () -> (ElementHandle) value;
+            final com.microsoft.playwright.Locator pwLoc = (com.microsoft.playwright.Locator) value;
+            result = () -> pwLoc.first();
           }
         }
       }
@@ -159,17 +189,18 @@ public class PlaywrightPageFinder extends PageFinder<PlaywrightPage, ElementHand
   }
 
   @Override
-  public Supplier<List<ElementHandle>> getElementsFromPage(PlaywrightPage page, String element) throws Exception {
+  public Supplier<List<com.microsoft.playwright.Locator>> getElementsFromPage(PlaywrightPage page, String element)
+    throws Exception {
     if (page == null) {
       return null;
     }
-    Supplier<List<ElementHandle>> result = ArrayList::new;
+    Supplier<List<com.microsoft.playwright.Locator>> result = ArrayList::new;
     try {
       ElementCatalog catalog = buildPageCatalog(page);
 
       Map.Entry<JavaType, Object> item = catalog.findBy(Locator.class)
         .orBy(com.microsoft.playwright.Locator.class)
-        .orBy(new TypeReference<List<ElementHandle>>() {
+        .orBy(new TypeReference<List<com.microsoft.playwright.Locator>>() {
         })
         .withQuery(element)
         .getResult(page);
@@ -181,12 +212,22 @@ public class PlaywrightPageFinder extends PageFinder<PlaywrightPage, ElementHand
           if (key.isTypeOrSubTypeOf(Locator.class)) {
             Locator locator = (Locator) value;
             String selector = PlaywrightLocatorConverter.toSelector(locator);
-            result = () -> page.page().locator(selector).elementHandles();
+            final PlaywrightSession s = requireSession(page);
+            result = () -> s.runOnApiThread(() -> {
+              com.microsoft.playwright.Locator base = s.pageForApi().locator(selector);
+              base.first().waitFor();
+              return base.all();
+            });
           } else if (key.isTypeOrSubTypeOf(com.microsoft.playwright.Locator.class)) {
-            result = () -> ((com.microsoft.playwright.Locator) value).elementHandles();
+            final com.microsoft.playwright.Locator pwLoc = (com.microsoft.playwright.Locator) value;
+            final PlaywrightSession s = requireSession(page);
+            result = () -> s.runOnApiThread(() -> {
+              pwLoc.first().waitFor();
+              return pwLoc.all();
+            });
           } else if (key.isCollectionLikeType()) {
             if (key.getContentType()
-              .isTypeOrSubTypeOf(ElementHandle.class)) {
+              .isTypeOrSubTypeOf(com.microsoft.playwright.Locator.class)) {
               result = () -> MapperHelper.toObject(
                 value, new TypeReference<>() {
                 }
@@ -204,158 +245,203 @@ public class PlaywrightPageFinder extends PageFinder<PlaywrightPage, ElementHand
   }
 
   @Override
-  public Supplier<List<ElementHandle>> getElementsFromPage(PlaywrightPage page, Locator locator) throws Exception {
+  public Supplier<List<com.microsoft.playwright.Locator>> getElementsFromPage(PlaywrightPage page, Locator locator)
+    throws Exception {
     String selector = PlaywrightLocatorConverter.toSelector(locator);
-    return () -> page.page().locator(selector).elementHandles();
+    final PlaywrightSession s = requireSession(page);
+    return () -> s.runOnApiThread(() -> {
+      com.microsoft.playwright.Locator base = s.pageForApi().locator(selector);
+      base.first().waitFor();
+      return base.all();
+    });
   }
 
   @Override
-  public List<ElementHandle> getElementsWithRoot(ElementHandle parent, String locator) {
+  public Supplier<com.microsoft.playwright.Locator> getElement(Locator locator) throws Exception {
+    return getElementFromPage(getCurrentPage(), locator);
+  }
+
+  @Override
+  public Supplier<List<com.microsoft.playwright.Locator>> getElements(Locator locator) throws Exception {
+    return getElementsFromPage(getCurrentPage(), locator);
+  }
+
+  @Override
+  public List<com.microsoft.playwright.Locator> getElementsWithRoot(com.microsoft.playwright.Locator parent,
+    String locator) {
     try {
       if (parent == null || locator == null) {
         return new ArrayList<>();
       }
-      return parent.querySelectorAll(locator);
-    } catch (Exception ignored) {
+
+      PlaywrightSession s = currentPwSession();
+      if (s == null) {
+        return new ArrayList<>();
+      }
+
+      return s.runOnApiThread(() -> parent.locator(normalizeSelector(locator)).all());
+    } catch (Exception e) {
+      log.error("Failed to get elements with root. Locator: {}, Error: {}", locator, e.getMessage());
       return new ArrayList<>();
     }
   }
 
   @Override
-  public ElementHandle getElementWithRoot(ElementHandle parent, String locator) {
+  public com.microsoft.playwright.Locator getElementWithRoot(com.microsoft.playwright.Locator parent, String locator) {
     try {
-      return ObjectUtils.isNotEmpty(locator) ? parent.querySelector(locator) : parent;
-    } catch (Exception ignored) {
-      return null;
-    }
-  }
-
-  @Override
-  public ElementHandle getPrecedingSiblingElement(ElementHandle parent, String locator) {
-    try {
-      ElementHandle element = getElementWithRoot(parent, locator);
-      if (element == null) {
+      PlaywrightSession s = currentPwSession();
+      if (s == null) {
         return null;
       }
-      return (ElementHandle) element.evaluateHandle(
-        "el => el.previousElementSibling"
-      ).asElement();
-    } catch (Exception ignored) {
-      return null;
-    }
-  }
-
-  @Override
-  @SuppressWarnings("unchecked")
-  public List<ElementHandle> getPrecedingSiblingElements(ElementHandle parent, String locator) {
-    try {
-      ElementHandle element = getElementWithRoot(parent, locator);
-      if (element == null) {
-        return null;
-      }
-      Page page = element.ownerFrame().page();
-      return (List<ElementHandle>) page.evaluate("""
-        el => {
-          var siblings = [];
-          var sibling = el.previousElementSibling;
-          while (sibling) {
-            siblings.push(sibling);
-            sibling = sibling.previousElementSibling;
-          }
-          return siblings;
+      return s.runOnApiThread(() -> {
+        if (ObjectUtils.isEmpty(locator)) {
+          return parent;
         }
-        """, element);
-    } catch (Exception ignored) {
+        com.microsoft.playwright.Locator result = parent.locator(normalizeSelector(locator));
+        if (result.count() == 0) return null;
+        return result.first();
+      });
+    } catch (Exception e) {
+      log.error("Failed to get element with root. Locator: {}, Error: {}", locator, e.getMessage());
       return null;
     }
   }
 
   @Override
-  public ElementHandle getFollowingSiblingElement(ElementHandle parent, String locator) {
+  public com.microsoft.playwright.Locator getPrecedingSiblingElement(com.microsoft.playwright.Locator parent,
+    String locator) {
     try {
-      ElementHandle element = getElementWithRoot(parent, locator);
+      com.microsoft.playwright.Locator element = getElementWithRoot(parent, locator);
       if (element == null) {
         return null;
       }
-      return (ElementHandle) element.evaluateHandle(
-        "el => el.nextElementSibling"
-      ).asElement();
+      PlaywrightSession s = currentPwSession();
+      if (s == null) {
+        return null;
+      }
+      return s.runOnApiThread(() -> {
+        com.microsoft.playwright.Locator sibling = element.locator("xpath=preceding-sibling::*[1]");
+        if (sibling.count() == 0) return null;
+        return sibling;
+      });
     } catch (Exception ignored) {
       return null;
     }
   }
 
   @Override
-  @SuppressWarnings("unchecked")
-  public List<ElementHandle> getFollowingSiblingElements(ElementHandle parent, String locator) {
+  public List<com.microsoft.playwright.Locator> getPrecedingSiblingElements(com.microsoft.playwright.Locator parent,
+    String locator) {
     try {
-      ElementHandle element = getElementWithRoot(parent, locator);
+      com.microsoft.playwright.Locator element = getElementWithRoot(parent, locator);
+      if (element == null) {
+        return new ArrayList<>();
+      }
+
+      PlaywrightSession s = currentPwSession();
+      if (s == null) {
+        return new ArrayList<>();
+      }
+
+      return s.runOnApiThread(() -> element.locator("xpath=preceding-sibling::*").all());
+    } catch (Exception e) {
+      return new ArrayList<>();
+    }
+  }
+
+  @Override
+  public com.microsoft.playwright.Locator getFollowingSiblingElement(com.microsoft.playwright.Locator parent,
+    String locator) {
+    try {
+      com.microsoft.playwright.Locator element = getElementWithRoot(parent, locator);
       if (element == null) {
         return null;
       }
-      Page page = element.ownerFrame().page();
-      return (List<ElementHandle>) page.evaluate("""
-        el => {
-          var siblings = [];
-          var sibling = el.nextElementSibling;
-          while (sibling) {
-            siblings.push(sibling);
-            sibling = sibling.nextElementSibling;
-          }
-          return siblings;
-        }
-        """, element);
+      PlaywrightSession s = currentPwSession();
+      if (s == null) {
+        return null;
+      }
+      return s.runOnApiThread(() -> {
+        com.microsoft.playwright.Locator sibling = element.locator("xpath=following-sibling::*[1]");
+        if (sibling.count() == 0) return null;
+        return sibling;
+      });
     } catch (Exception ignored) {
       return null;
     }
   }
 
   @Override
-  @SuppressWarnings("unchecked")
-  public List<ElementHandle> getSiblings(ElementHandle parent, String locator) {
+  public List<com.microsoft.playwright.Locator> getFollowingSiblingElements(com.microsoft.playwright.Locator parent,
+    String locator) {
     try {
-      ElementHandle element = getElementWithRoot(parent, locator);
+      com.microsoft.playwright.Locator element = getElementWithRoot(parent, locator);
+      if (element == null) {
+        return new ArrayList<>();
+      }
+
+      PlaywrightSession s = currentPwSession();
+      if (s == null) {
+        return new ArrayList<>();
+      }
+
+      return s.runOnApiThread(() -> element.locator("xpath=following-sibling::*").all());
+    } catch (Exception e) {
+      return new ArrayList<>();
+    }
+  }
+
+  @Override
+  public List<com.microsoft.playwright.Locator> getSiblings(com.microsoft.playwright.Locator parent, String locator) {
+    try {
+      com.microsoft.playwright.Locator element = getElementWithRoot(parent, locator);
+      if (element == null) {
+        return new ArrayList<>();
+      }
+
+      PlaywrightSession s = currentPwSession();
+      if (s == null) {
+        return new ArrayList<>();
+      }
+
+      return s.runOnApiThread(() -> element.locator("xpath=../child::*").all());
+    } catch (Exception e) {
+      return new ArrayList<>();
+    }
+  }
+
+  @Override
+  public com.microsoft.playwright.Locator getChildNode(com.microsoft.playwright.Locator parent, String locator,
+    int childIndex) {
+    try {
+      com.microsoft.playwright.Locator element = getElementWithRoot(parent, locator);
       if (element == null) {
         return null;
       }
-      Page page = element.ownerFrame().page();
-      return (List<ElementHandle>) page.evaluate("""
-        el => {
-          var siblings = [];
-          var sibling = el.parentNode.firstChild;
-          while (sibling) {
-            if (sibling.nodeType === 1 && sibling !== el) {
-              siblings.push(sibling);
-            }
-            sibling = sibling.nextSibling;
-          }
-          return siblings;
-        }
-        """, element);
-    } catch (Exception ignored) {
-      return null;
-    }
-  }
 
-  @Override
-  public ElementHandle getChildNode(ElementHandle parent, String locator, int childIndex) {
-    try {
-      ElementHandle element = getElementWithRoot(parent, locator);
-      if (element == null) {
+      PlaywrightSession s = currentPwSession();
+      if (s == null) {
         return null;
       }
-      return (ElementHandle) element.evaluateHandle(
-        String.format("el => el.childNodes[%d]", childIndex)
-      ).asElement();
-    } catch (Exception ignored) {
+
+      return s.runOnApiThread(() -> {
+        com.microsoft.playwright.Locator children = element.locator(":scope > *");
+        if (children.count() <= childIndex) return null;
+        return children.nth(childIndex);
+      });
+    } catch (Exception e) {
       return null;
     }
   }
 
   @Override
-  public Supplier<ElementHandle> getElementFromPage(PlaywrightPage page, Locator locator) throws Exception {
+  public Supplier<com.microsoft.playwright.Locator> getElementFromPage(PlaywrightPage page, Locator locator)
+    throws Exception {
     String selector = PlaywrightLocatorConverter.toSelector(locator);
-    return () -> page.page().locator(selector).elementHandle();
+    final PlaywrightSession s = requireSession(page);
+    return () -> s.runOnApiThread(() -> s.pageForApi()
+      .locator(selector)
+      .first());
   }
 
   @Override
@@ -368,14 +454,11 @@ public class PlaywrightPageFinder extends PageFinder<PlaywrightPage, ElementHand
       } else if (javaType.isTypeOrSubTypeOf(com.microsoft.playwright.Locator.class)) {
         catalog.addElement(field.getName(), (com.microsoft.playwright.Locator) value)
           .ifPresent(el -> el.setAliases(generateAliases(field.getName())));
-      } else if (javaType.isTypeOrSubTypeOf(ElementHandle.class)) {
-        catalog.addLazyElement(field.getName(), ElementHandle.class, field)
-          .ifPresent(el -> el.setAliases(generateAliases(field.getName())));
       } else if (javaType.isCollectionLikeType()) {
         if (javaType.getContentType()
-          .isTypeOrSuperTypeOf(ElementHandle.class)) {
+          .isTypeOrSuperTypeOf(com.microsoft.playwright.Locator.class)) {
           catalog.addLazyElement(
-              field.getName(), new TypeReference<List<ElementHandle>>() {
+              field.getName(), new TypeReference<List<com.microsoft.playwright.Locator>>() {
               }, field
             )
             .ifPresent(el -> el.setAliases(generateAliases(field.getName())));

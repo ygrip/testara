@@ -23,6 +23,8 @@ import org.apache.commons.lang3.ObjectUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.logging.log4j.Logger;
 
+import com.google.common.base.Stopwatch;
+
 import io.github.ygrip.testara.core.context.TestFramework;
 import io.github.ygrip.testara.core.scan.ClassScanner;
 import io.github.ygrip.testara.core.support.CommonHelper;
@@ -34,8 +36,6 @@ import io.github.ygrip.testara.ui.model.Locator;
 import io.github.ygrip.testara.ui.model.Page;
 import io.github.ygrip.testara.ui.model.Selector;
 import io.github.ygrip.testara.ui.populator.ElementCatalog;
-import com.google.common.base.Stopwatch;
-
 import lombok.Getter;
 import lombok.Setter;
 
@@ -117,7 +117,7 @@ public abstract class PageFinder<P extends PageContext<?>, E, B> {
     }
   }
 
-  public B getLocator(String element){
+  public B getLocator(String element) {
     return getLocator(getCurrentPage(), element);
   }
 
@@ -126,7 +126,7 @@ public abstract class PageFinder<P extends PageContext<?>, E, B> {
   /**
    * Resolve a {@link Locator} to the engine-specific locator (e.g. By).
    */
-  public abstract B getLocator(P page, Locator locator);
+  public abstract B getLocator(Locator locator);
 
   /**
    * <p>getElement.</p>
@@ -280,43 +280,54 @@ public abstract class PageFinder<P extends PageContext<?>, E, B> {
     return result;
   }
 
+  /**
+   * Resolve a {@link Locator} to the engine-specific locator (e.g. By).
+   */
+  public abstract Supplier<E> getElement(Locator locator) throws Exception;
+
+  /**
+   * Resolve a {@link Locator} to the engine-specific locator (e.g. By).
+   */
+  public abstract Supplier<List<E>> getElements(Locator locator) throws Exception;
+
+
   public abstract List<E> getElementsWithRoot(E parent, B locator);
 
   public abstract E getElementWithRoot(E parent, B locator);
 
   public abstract E getPrecedingSiblingElement(E parent, B locator);
 
-  public E getPrecedingSiblingElement(E element){
+  public E getPrecedingSiblingElement(E element) {
     return getPrecedingSiblingElement(element, null);
   }
 
   public abstract List<E> getPrecedingSiblingElements(E parent, B locator);
 
-  public List<E> getPrecedingSiblingElements(E element){
+  public List<E> getPrecedingSiblingElements(E element) {
     return getPrecedingSiblingElements(element, null);
   }
 
   public abstract E getFollowingSiblingElement(E parent, B locator);
 
-  public E getFollowingSiblingElement(E element){
+  public E getFollowingSiblingElement(E element) {
     return getFollowingSiblingElement(element, null);
   }
 
   public abstract List<E> getFollowingSiblingElements(E parent, B locator);
 
-  public List<E> getFollowingSiblingElements(E element){
+  public List<E> getFollowingSiblingElements(E element) {
     return getFollowingSiblingElements(element, null);
   }
 
   public abstract List<E> getSiblings(E parent, B locator);
 
-  public List<E> getSiblings(E element){
+  public List<E> getSiblings(E element) {
     return getSiblings(element, null);
   }
 
   public abstract E getChildNode(E parent, B locator, int childIndex);
 
-  public E getChildNode(E element, int childIndex){
+  public E getChildNode(E element, int childIndex) {
     return getChildNode(element, null, childIndex);
   }
 
@@ -332,32 +343,40 @@ public abstract class PageFinder<P extends PageContext<?>, E, B> {
         parts[0].trim()
           .replace("-", "")
       );
-      if (selector == null) {
-        selector = Selector.CSS;
-      }
-      element = String.join(":" , Arrays.copyOfRange(parts, 1, parts.length));
-    }else{
-      selector = Selector.CSS;
-      element = String.join(":" , parts);
+      element = String.join(":", Arrays.copyOfRange(parts, 1, parts.length));
+    } else {
+      selector = null;
+      element = String.join(":", parts);
     }
 
     return new AbstractMap.SimpleEntry<>(element, selector);
   }
 
-  protected Locator resolveLocator(String element){
+  protected Locator resolveLocator(String element) {
     Map.Entry<String, Selector> locators = parseElementSelector(element);
 
+    if (locators.getValue() == null) {
+      return Locator.css(locators.getKey());
+    }
     return Locator.of(locators.getValue(), locators.getKey());
   }
 
   private Supplier<E> resolveTargetFromLocator(P page, String element) {
     final var selector = parseElementSelector(element);
 
+    if (selector.getValue() == null) {
+      return null;
+    }
+
     return usingSelector(page, selector.getKey(), selector.getValue());
   }
 
   private Supplier<List<E>> resolveTargetsFromLocator(P page, String element) {
     final var selector = parseElementSelector(element);
+
+    if (selector.getValue() == null) {
+      return null;
+    }
 
     return usingSelectors(page, selector.getKey(), selector.getValue());
   }
@@ -518,8 +537,18 @@ public abstract class PageFinder<P extends PageContext<?>, E, B> {
       log().debug("Scanned {} page classes", loaded.size());
 
       for (Class<?> clazz : loaded) {
+        if (clazz == null) {
+          continue;
+        }
         final var metadata = clazz.getAnnotation(Page.class);
+        if (metadata == null) {
+          continue;
+        }
         final var name = metadata.name();
+        if (StringUtils.isBlank(name)) {
+          log().warn("Skipping page class {}: @Page name is blank", clazz.getName());
+          continue;
+        }
         final var platforms = metadata.platforms();
 
         for (var platform : platforms) {
@@ -567,6 +596,10 @@ public abstract class PageFinder<P extends PageContext<?>, E, B> {
     }
 
     Class<? extends P> pageClass = (Class<? extends P>) page.getClass();
+    if (pageClass == null) {
+      log().error("page.getClass() returned null for {}", page);
+      return new ElementCatalog();
+    }
 
     if (CATALOGS.containsKey(pageClass)) {
       return CATALOGS.get(pageClass);
@@ -635,8 +668,14 @@ public abstract class PageFinder<P extends PageContext<?>, E, B> {
     List<P> result = new ArrayList<>();
     DeviceType platform = getCurrentDeviceType();
     Map<String, Class<? extends P>> pages = pages().get(platform);
+    if (pages == null || pages.isEmpty()) {
+      return result;
+    }
 
     for (Class<? extends P> pageClass : pages.values()) {
+      if (pageClass == null) {
+        continue;
+      }
       ElementCatalog catalog = CATALOGS.get(pageClass);
       if (catalog != null && catalog.hasElement(element)) {
         try {

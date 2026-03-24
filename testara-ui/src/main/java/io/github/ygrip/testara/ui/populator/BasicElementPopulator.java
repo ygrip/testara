@@ -13,16 +13,19 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
 import java.util.function.Function;
 import java.util.function.Supplier;
+
 import org.apache.commons.lang3.ObjectUtils;
 
+import io.github.ygrip.testara.ui.driver.DriverInstances;
 import io.github.ygrip.testara.ui.driver.DriverSession;
+import io.github.ygrip.testara.ui.driver.DriverSessionManager;
 import io.github.ygrip.testara.ui.executor.Actor;
+import io.github.ygrip.testara.ui.executor.ActorManager;
 import io.github.ygrip.testara.ui.interaction.Interaction;
 import io.github.ygrip.testara.ui.observation.Observation;
 import io.github.ygrip.testara.ui.page.Element;
 import io.github.ygrip.testara.ui.page.PageContext;
 import io.github.ygrip.testara.ui.page.PageFinder;
-
 import jakarta.validation.constraints.NotNull;
 import lombok.extern.log4j.Log4j2;
 
@@ -40,7 +43,11 @@ public abstract class BasicElementPopulator<P extends BasicElementPopulator<?>> 
    * to avoid "unable to create native thread" / "selector manager closed" when
    * resolving large lists (generations × cards × keys).
    */
-  private static final int POPULATOR_CONCURRENCY = Math.min(16, Runtime.getRuntime().availableProcessors() * 4);
+  private static final int POPULATOR_CONCURRENCY = Math.min(
+    16,
+    Runtime.getRuntime()
+      .availableProcessors() * 4
+  );
 
   /**
    * Bounded virtual-thread executor: fixed pool of virtual threads so only
@@ -49,26 +56,20 @@ public abstract class BasicElementPopulator<P extends BasicElementPopulator<?>> 
    */
   private static final ExecutorService POPULATOR_EXECUTOR =
     Executors.newFixedThreadPool(POPULATOR_CONCURRENCY, virtualThreadFactory());
-
-  private static ThreadFactory virtualThreadFactory() {
-    return Thread.ofVirtual().name("populator-", 0).factory();
-  }
-
-  /** Shared executor for use by subclasses (e.g. parallel per-element resolution). */
-  protected static ExecutorService populatorExecutor() {
-    return POPULATOR_EXECUTOR;
-  }
-
   private final Map<String, Populator> mappedFunction;
   private final Map<ActionState, List<Action>> actions;
   private final Actor actor;
+  @SuppressWarnings("rawtypes")
   private final Element target;
   private PageFinder<?, Object, ?> finder;
   private PageContext<?> pageContext;
   private Populator function;
+  @SuppressWarnings("rawtypes")
   private Element parent;
+  @SuppressWarnings("rawtypes")
   private Element current;
 
+  @SuppressWarnings({"rawtypes"})
   BasicElementPopulator(@NotNull Actor actor, @NotNull DriverSession<?> session, Element target) {
     this.target = target;
     this.mappedFunction = new HashMap<>();
@@ -76,6 +77,19 @@ public abstract class BasicElementPopulator<P extends BasicElementPopulator<?>> 
     this.actor = actor;
     this.finder = session.finder();
     this.pageContext = finder.getCurrentPage();
+  }
+
+  private static ThreadFactory virtualThreadFactory() {
+    return Thread.ofVirtual()
+      .name("populator-", 0)
+      .factory();
+  }
+
+  /**
+   * Shared executor for use by subclasses (e.g. parallel per-element resolution).
+   */
+  protected static ExecutorService populatorExecutor() {
+    return POPULATOR_EXECUTOR;
   }
 
   protected PageFinder<?, Object, ?> finder() {
@@ -86,21 +100,27 @@ public abstract class BasicElementPopulator<P extends BasicElementPopulator<?>> 
     return pageContext;
   }
 
+  @SuppressWarnings({"unchecked", "rawtypes"})
   protected Element target() {
     if (ObjectUtils.isNotEmpty(parent)) {
-      Element scoped = parent.withChild(target).child();
-      return scoped;
+      return parent
+        .withChild(target.using(finder)
+          .onPage(pageContext))
+        .child();
     }
-    return target;
+    return target.using(finder)
+      .onPage(pageContext);
   }
 
-  protected Element current(){
+  @SuppressWarnings("rawtypes")
+  protected Element current() {
     return current;
   }
 
-  @SuppressWarnings("unchecked")
-  protected P setCurrent(Element current){
-    this.current = current;
+  @SuppressWarnings({"unchecked", "rawtypes"})
+  protected P setCurrent(Element current) {
+    this.current = current.using(finder)
+      .onPage(pageContext);
     return (P) this;
   }
 
@@ -121,17 +141,19 @@ public abstract class BasicElementPopulator<P extends BasicElementPopulator<?>> 
    *
    * @return a {@link Object} object.
    */
+  @SuppressWarnings("rawtypes")
   protected Element getParent() {
     return this.parent;
   }
 
-  @SuppressWarnings({"unchecked"})
+  @SuppressWarnings({"unchecked", "rawtypes"})
   protected P setParent(Element element) {
-    this.parent = element;
+    this.parent = element.using(finder)
+      .onPage(pageContext);
     return (P) this;
   }
 
-  @SuppressWarnings({"unchecked"})
+  @SuppressWarnings({"unchecked", "rawtypes"})
   private Object processPopulator(Element element, String mappedKey, Populator entry) {
     Object result = null;
     boolean useFallback = false;
@@ -142,7 +164,9 @@ public abstract class BasicElementPopulator<P extends BasicElementPopulator<?>> 
       log.warn(
         "Cannot fetch the result for key {} populator {}: {}",
         keyLabel,
-        entry.getPopulator().getClass().getSimpleName(),
+        entry.getPopulator()
+          .getClass()
+          .getSimpleName(),
         e.getMessage(),
         e
       );
@@ -150,14 +174,22 @@ public abstract class BasicElementPopulator<P extends BasicElementPopulator<?>> 
     }
 
     if (useFallback && !isBlank(entry.getFallback())) {
-      log.debug("Try fallback {} for key {}", entry.getFallback().getClass().getSimpleName(), keyLabel);
+      log.debug(
+        "Try fallback {} for key {}",
+        entry.getFallback()
+          .getClass()
+          .getSimpleName(),
+        keyLabel
+      );
       try {
         result = doResolvePopulator(element, entry.getFallback());
       } catch (Exception e) {
         log.warn(
           "Cannot fetch the result from fallback for key {} populator {}: {}",
           keyLabel,
-          entry.getFallback().getClass().getSimpleName(),
+          entry.getFallback()
+            .getClass()
+            .getSimpleName(),
           e.getMessage(),
           e
         );
@@ -192,7 +224,9 @@ public abstract class BasicElementPopulator<P extends BasicElementPopulator<?>> 
   @SuppressWarnings({"rawtypes", "unchecked"})
   private Object doResolvePopulator(Element element, Object entry) throws Exception {
     if (entry instanceof ElementResolver resolver) {
-      return resolver.setTarget(element).result(actor);
+      return resolver.setTarget(element.using(finder)
+          .onPage(pageContext))
+        .result(actor);
     } else if (entry instanceof BasicElementPopulator populator) {
       try {
         return populator.withFinder(finder)
@@ -200,25 +234,32 @@ public abstract class BasicElementPopulator<P extends BasicElementPopulator<?>> 
           .setParent(element)
           .resolve();
       } catch (Exception e) {
+        e.printStackTrace();
         throw new IllegalStateException(
-          "Nested " + populator.getClass().getSimpleName() + " failed with parent scope (parent has locator=" + (element != null && element.getLocator() != null) + ")",
-          e
+          "Nested " + populator.getClass()
+            .getSimpleName() + " failed with parent scope (parent has locator=" + (element != null
+            && element.getLocator() != null) + ")", e
         );
       }
     } else if (entry instanceof Observation<?> observation) {
-      return actor.observe(observation.root(element));
+      return actor.observe(observation.root(element.using(finder)
+        .onPage(pageContext)));
     }
     return null;
   }
 
+  @SuppressWarnings({"rawtypes", "unchecked"})
   protected Object process(Element element) {
-    setCurrent(element);
+    setCurrent(element.using(finder)
+      .onPage(pageContext));
     performActions();
     if (!isBlank(this.mappedFunction)) {
-      return processMappedFunctionsInParallel(element);
+      return processMappedFunctionsInParallel(element.using(finder)
+        .onPage(pageContext));
     }
     if (!isBlank(this.function)) {
-      return processPopulator(element, null, this.function);
+      return processPopulator(element.using(finder)
+        .onPage(pageContext), null, this.function);
     }
     return null;
   }
@@ -226,19 +267,34 @@ public abstract class BasicElementPopulator<P extends BasicElementPopulator<?>> 
   /**
    * Resolves all mapped keys in parallel using virtual threads.
    * Preserves key order in the result map.
+   * Propagates DriverSessionManager and ActorManager ThreadLocal context to worker threads.
    */
+  @SuppressWarnings("rawtypes")
   private Map<String, Object> processMappedFunctionsInParallel(Element element) {
     List<Map.Entry<String, Populator>> entries = new ArrayList<>(this.mappedFunction.entrySet());
+    final DriverInstances callerInstances = DriverSessionManager.getInstances();
+    final Map<String, Actor> callerActors = ActorManager.getActors();
     List<CompletableFuture<Map.Entry<String, Object>>> futures = entries.stream()
       .map(entry -> CompletableFuture.<Map.Entry<String, Object>>supplyAsync(
-        () -> new AbstractMap.SimpleEntry<>(
-          entry.getKey(),
-          processPopulator(element, entry.getKey(), entry.getValue())
-        ),
-        POPULATOR_EXECUTOR
+        () -> {
+          DriverInstances prev = DriverSessionManager.getInstances();
+          Map<String, Actor> prevActors = ActorManager.getActors();
+          DriverSessionManager.bindToCurrentThread(callerInstances);
+          ActorManager.bindToCurrentThread(callerActors);
+          try {
+            return new AbstractMap.SimpleEntry<>(
+              entry.getKey(),
+              processPopulator(element, entry.getKey(), entry.getValue())
+            );
+          } finally {
+            DriverSessionManager.bindToCurrentThread(prev);
+            ActorManager.bindToCurrentThread(prevActors);
+          }
+        }, POPULATOR_EXECUTOR
       ))
       .toList();
-    CompletableFuture.allOf(futures.toArray(CompletableFuture[]::new)).join();
+    CompletableFuture.allOf(futures.toArray(CompletableFuture[]::new))
+      .join();
     Map<String, Object> result = new HashMap<>(entries.size());
     for (CompletableFuture<Map.Entry<String, Object>> f : futures) {
       Map.Entry<String, Object> e = f.join();
@@ -343,11 +399,10 @@ public abstract class BasicElementPopulator<P extends BasicElementPopulator<?>> 
    * @param value resolver, observation, or nested populator
    * @return this builder
    */
-  @SuppressWarnings("unchecked")
   public P set(Object value) {
     Populator p = new Populator();
     assignValue(p, value);
-    return (P) p.build();
+    return p.build();
   }
 
   /**
@@ -357,11 +412,10 @@ public abstract class BasicElementPopulator<P extends BasicElementPopulator<?>> 
    * @param value resolver, observation, or nested populator
    * @return this builder
    */
-  @SuppressWarnings("unchecked")
   public P set(String key, Object value) {
     Populator p = new Populator(key);
     assignValue(p, value);
-    return (P) p.build();
+    return p.build();
   }
 
   /**
@@ -375,6 +429,7 @@ public abstract class BasicElementPopulator<P extends BasicElementPopulator<?>> 
    * @param rest alternating key, value (must be even length)
    * @return this builder
    */
+  @SuppressWarnings("unchecked")
   public P set(String k1, Object v1, String k2, Object v2, Object... rest) {
     set(k1, v1);
     set(k2, v2);
@@ -384,7 +439,10 @@ public abstract class BasicElementPopulator<P extends BasicElementPopulator<?>> 
       }
       for (int i = 0; i < rest.length; i += 2) {
         if (!(rest[i] instanceof String)) {
-          throw new IllegalArgumentException("Key at index " + i + " must be String, got " + (rest[i] == null ? "null" : rest[i].getClass().getName()));
+          throw new IllegalArgumentException("Key at index " + i + " must be String, got " + (rest[i] == null ?
+            "null" :
+            rest[i].getClass()
+              .getName()));
         }
         set((String) rest[i], rest[i + 1]);
       }
@@ -392,16 +450,16 @@ public abstract class BasicElementPopulator<P extends BasicElementPopulator<?>> 
     return (P) this;
   }
 
+  @SuppressWarnings({"unchecked", "rawtypes"})
   private void assignValue(Populator p, Object value) {
-    if (value instanceof BasicElementPopulator) {
-      p.with((BasicElementPopulator<?>) value);
-    } else if (value instanceof ElementResolver) {
-      p.with((ElementResolver) value);
-    } else if (value instanceof Observation) {
-      p.with((Observation<?>) value);
-    } else {
-      throw new IllegalArgumentException(
-        "value must be ElementResolver, Observation, or BasicElementPopulator, got " + (value == null ? "null" : value.getClass().getName()));
+    switch (value) {
+      case BasicElementPopulator populator -> p.with((BasicElementPopulator<?>) populator.withFinder(this.finder)
+        .withPage(this.pageContext));
+      case ElementResolver resolver -> p.with(resolver);
+      case Observation observation -> p.with(observation);
+      default -> throw new IllegalArgumentException(
+        "value must be ElementResolver, Observation, or BasicElementPopulator, got " + value.getClass()
+          .getName());
     }
   }
 

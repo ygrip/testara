@@ -1,14 +1,15 @@
 package io.github.ygrip.testara.command.operand;
 
+import java.math.BigDecimal;
+import java.util.List;
+
 import com.fasterxml.jackson.core.type.TypeReference;
+
 import io.github.ygrip.testara.command.model.CommandLogic;
 import io.github.ygrip.testara.command.model.CommandTag;
 import io.github.ygrip.testara.core.mapper.MapperHelper;
 import io.github.ygrip.testara.core.support.CommonHelper;
 import io.github.ygrip.testara.core.support.NumberHelper;
-
-import java.math.BigDecimal;
-import java.util.List;
 
 
 /**
@@ -17,7 +18,7 @@ import java.util.List;
  * @author yunaz.ramadhan on 3/29/2020
  * @version $Id: $Id
  */
-@CommandTag(command = "sumof", overwrite = true, cacheable = true)
+@CommandTag(command = "sumof", alias = {"sum"}, overwrite = true, cacheable = true)
 public class SumOfCommand implements CommandLogic<Number> {
   /**
    * {@inheritDoc}
@@ -37,8 +38,10 @@ public class SumOfCommand implements CommandLogic<Number> {
     }
     if (parameters.size() == 1) {
       if (CommonHelper.isCollection(parameters.get(0))) {
-        List<Object> parsed = MapperHelper.toObject(parameters.get(0), new TypeReference<>() {
-        });
+        List<Object> parsed = MapperHelper.toObject(
+          parameters.get(0), new TypeReference<>() {
+          }
+        );
         BigDecimal result = new BigDecimal(0);
         if (parsed == null) {
           return NumberHelper.autoBoxingNumber(result);

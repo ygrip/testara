@@ -15,8 +15,11 @@ import java.util.stream.Collectors;
 import com.fasterxml.jackson.core.type.TypeReference;
 import io.github.ygrip.testara.core.concurrency.ExecutorFactory;
 import io.github.ygrip.testara.core.mapper.MapperHelper;
+import io.github.ygrip.testara.ui.driver.DriverInstances;
 import io.github.ygrip.testara.ui.driver.DriverSession;
+import io.github.ygrip.testara.ui.driver.DriverSessionManager;
 import io.github.ygrip.testara.ui.executor.Actor;
+import io.github.ygrip.testara.ui.executor.ActorManager;
 import io.github.ygrip.testara.ui.page.Element;
 
 import lombok.extern.log4j.Log4j2;
@@ -97,12 +100,26 @@ public final class MultipleElementPopulator extends BasicElementPopulator<Multip
 
       // Resolve each element in parallel using dedicated ForkJoinPool (not shared executor).
       // Parallelism is bounded by ELEMENT_POOL (min 1, max 2 * CPU cores).
+      // Propagate DriverSessionManager and ActorManager ThreadLocal context to worker threads.
+      final DriverInstances callerInstances = DriverSessionManager.getInstances();
+      final Map<String, Actor> callerActors = ActorManager.getActors();
       List<CompletableFuture<AbstractMap.SimpleEntry<Integer, Object>>> futures = elementsWithId.stream()
         .map(item -> CompletableFuture.supplyAsync(
-          () -> new AbstractMap.SimpleEntry<>(
-            item.getKey(),
-            process(Element.instance(finder(), pageContext(), item.getValue()))
-          ), ELEMENT_POOL
+          () -> {
+            DriverInstances prev = DriverSessionManager.getInstances();
+            Map<String, Actor> prevActors = ActorManager.getActors();
+            DriverSessionManager.bindToCurrentThread(callerInstances);
+            ActorManager.bindToCurrentThread(callerActors);
+            try {
+              return new AbstractMap.SimpleEntry<>(
+                item.getKey(),
+                process(Element.instance(finder(), pageContext(), item.getValue()))
+              );
+            } finally {
+              DriverSessionManager.bindToCurrentThread(prev);
+              ActorManager.bindToCurrentThread(prevActors);
+            }
+          }, ELEMENT_POOL
         ))
         .toList();
       CompletableFuture.allOf(futures.toArray(CompletableFuture[]::new))

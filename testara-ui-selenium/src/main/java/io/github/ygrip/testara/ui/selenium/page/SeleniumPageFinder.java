@@ -94,8 +94,8 @@ public class SeleniumPageFinder extends PageFinder<SeleniumPage, WebElement, By>
   }
 
   @Override
-  public By getLocator(SeleniumPage page, Locator locator) {
-    if (page == null || locator == null) {
+  public By getLocator(Locator locator) {
+    if (locator == null) {
       return null;
     }
     return ByLocator.toBy(locator);
@@ -237,6 +237,16 @@ public class SeleniumPageFinder extends PageFinder<SeleniumPage, WebElement, By>
     return () -> page.driver()
       .instance()
       .findElements(ByLocator.toBy(locator));
+  }
+
+  @Override
+  public Supplier<WebElement> getElement(Locator locator) throws Exception {
+    return getElementFromPage(getCurrentPage(), locator);
+  }
+
+  @Override
+  public Supplier<List<WebElement>> getElements(Locator locator) throws Exception {
+    return getElementsFromPage(getCurrentPage(), locator);
   }
 
   @Override

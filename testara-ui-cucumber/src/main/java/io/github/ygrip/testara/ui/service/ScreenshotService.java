@@ -1,0 +1,106 @@
+package io.github.ygrip.testara.ui.service;
+
+import java.io.File;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
+
+import io.cucumber.java.Scenario;
+import io.github.ygrip.testara.ui.context.StepContext;
+import io.github.ygrip.testara.ui.executor.Actor;
+import io.github.ygrip.testara.ui.executor.ActorManager;
+import io.github.ygrip.testara.ui.model.ScreenshotStrategy;
+import io.github.ygrip.testara.ui.observation.Capture;
+import io.github.ygrip.testara.ui.support.ScreenRecorder;
+import lombok.extern.log4j.Log4j2;
+
+@Log4j2
+public final class ScreenshotService {
+  private static final Map<String, String> recordingMap = new ConcurrentHashMap<>();
+
+  public static void attachStepScreenshot(ScreenshotStrategy screenshotStrategy, Scenario scenario) {
+    if (screenshotStrategy.equals(ScreenshotStrategy.ON_EACH_STEP)) {
+      String stepName = StepContext.getStepName();
+      takeScreenshot(stepName, scenario);
+    }
+  }
+
+  public static void startRecording(Actor actor, int frameRates, boolean forceResolution, int bitRate, Scenario scenario) {
+    final var id = scenario.getId();
+    if (!recordingMap.containsKey(id)) {
+      try {
+        // Encode the string
+        String encodedParam = URLEncoder.encode(id, StandardCharsets.UTF_8);
+        final var instance = ScreenRecorder.instance()
+          .withActor(actor).forceResolution(forceResolution).bitRate(bitRate);
+
+        instance.startRecording("./target/recording/" + encodedParam, frameRates);
+        // Safe marker to identify this scenario already recorded
+        recordingMap.put(id, instance.outputPath());
+      } catch (Exception err) {
+        log.error("Fail to record screen, {}", err.getMessage());
+      }
+    }
+  }
+
+  public static void attachRecording(ScreenshotStrategy screenshotStrategy, Scenario scenario) {
+    final String scenarioName = scenario.getName();
+    final String id = scenario.getId();
+
+    try {
+      // Stop async
+      CompletableFuture<File> recordingFuture = ScreenRecorder.instance()
+        .stopRecordingAsync();
+
+      // Only block here (safe point)
+      File video = recordingFuture.join();
+
+      if (video.exists() && video.length() > 0) {
+        byte[] data = Files.readAllBytes(video.toPath());
+        boolean shouldAttach =
+          screenshotStrategy != ScreenshotStrategy.NONE && (screenshotStrategy != ScreenshotStrategy.ON_FAILURE
+            || scenario.isFailed());
+
+        if (shouldAttach) {
+          scenario.attach(data, "video/mp4", scenarioName);
+        }
+      }
+
+      recordingMap.remove(id);
+
+    } catch (Exception err) {
+      log.warn("Recording failed: {}", err.getMessage());
+    }
+  }
+
+  private static void takeScreenshot(String name, Scenario scenario) {
+    Actor actor = ActorManager.currentActor();
+    if (actor == null)
+      return;
+
+    try {
+      byte[] screenshot = actor.observe(Capture.page()
+        .visibleOnViewPort());
+
+      if (screenshot != null && screenshot.length > 0) {
+        scenario.attach(screenshot, "image/png", name);
+      }
+    } catch (Exception e) {
+      log.warn("Screenshot failed: {}", e.getMessage());
+    }
+  }
+
+  public static void attachScenarioScreenshot(ScreenshotStrategy screenshotStrategy, Scenario scenario) {
+    String scenarioName = scenario.getName();
+    if (screenshotStrategy.equals(ScreenshotStrategy.ON_FAILURE)) {
+      if (scenario.isFailed()) {
+        takeScreenshot(scenarioName, scenario);
+      }
+    } else if (screenshotStrategy.equals(ScreenshotStrategy.ON_EACH_SCENARIO)) {
+      takeScreenshot(scenarioName, scenario);
+    }
+  }
+}

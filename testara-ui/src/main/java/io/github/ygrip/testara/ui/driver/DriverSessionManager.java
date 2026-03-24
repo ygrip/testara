@@ -15,6 +15,18 @@ public final class DriverSessionManager {
     return DRIVER_INSTANCES_THREAD_LOCAL.get();
   }
 
+  public static DriverInstances getInstances() {
+    return DRIVER_INSTANCES_THREAD_LOCAL.get();
+  }
+
+  public static void bindToCurrentThread(DriverInstances instances) {
+    if (instances == null) {
+      DRIVER_INSTANCES_THREAD_LOCAL.remove();
+      return;
+    }
+    DRIVER_INSTANCES_THREAD_LOCAL.set(instances);
+  }
+
   public static void tearDown() {
     inThisTestThread().clearCurrentActiveDriver();
     inThisTestThread().closeAllDrivers();

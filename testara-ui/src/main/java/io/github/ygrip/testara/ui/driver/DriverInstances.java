@@ -18,11 +18,17 @@ public final class DriverInstances {
   }
 
   public DriverSession<?> getCurrentDriver() {
-    return this.driverMap.getOrDefault(this.currentDriver, null);
+    if (this.currentDriver == null) {
+      return null;
+    }
+    return this.driverMap.get(this.currentDriver);
   }
 
   public DriverSession<?> getDriver(String driverName) {
-    return this.driverMap.getOrDefault(driverName, null);
+    if (driverName == null) {
+      return null;
+    }
+    return this.driverMap.get(driverName);
   }
 
   public String getCurrentDriverName() {
@@ -39,14 +45,15 @@ public final class DriverInstances {
   }
 
   public void closeDriver(String driverName) {
-    if (this.driverMap.containsKey(driverName)) {
-      DriverSession<?> closedDriver = this.driverMap.get(driverName);
-      this.closeAndQuit(closedDriver);
-      this.driverMap.remove(driverName);
-      if (driverName.equals(this.currentDriver)) {
-        this.currentDriver = null;
-        this.clearCurrentActiveDriver();
-      }
+    if (driverName == null || !this.driverMap.containsKey(driverName)) {
+      return;
+    }
+    DriverSession<?> closedDriver = this.driverMap.get(driverName);
+    this.closeAndQuit(closedDriver);
+    this.driverMap.remove(driverName);
+    if (driverName.equals(this.currentDriver)) {
+      this.currentDriver = null;
+      this.clearCurrentActiveDriver();
     }
   }
 
