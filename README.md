@@ -18,6 +18,7 @@ Testara is a modular test automation framework built on Java 21 that provides a 
 - **Spring Integration** — Optional Spring Boot auto-configuration and bean scoping
 - **Command Engine** — Extensible command/expression parser with data generation (DataFaker)
 - **Validation** — Rich assertion library built on AssertJ with declarative validation rules
+- **Testara Agent** — AI-assisted skills for summarizing, reviewing, generating, and running tests
 
 ## Modules
 
@@ -42,9 +43,35 @@ Testara is a modular test automation framework built on Java 21 that provides a 
 | `testara-reporter-plugin` | Maven plugin for HTML test reports | [Documentation](testara-reporter-plugin/README.md) |
 | `testara-bom` | Bill of Materials for version alignment | — |
 | `testara-*-cucumber` | Pre-built Cucumber step definitions for each module | — |
+| `testara-agent` | Agentic skill engine (project indexing, feature parsing, skills) | [Documentation](docs/agentic-skills.md) |
+| `testara-agent-cli` | CLI for all Testara Agent skills + MCP server mode | [Documentation](docs/agentic-skills.md) |
+
+## Testara Agent
+
+Testara Agent provides AI-assisted tools for analyzing and generating Testara tests.
+
+```bash
+# Build the agent JAR
+mvn -pl testara-agent-cli -am package -DskipTests
+
+# Set an alias
+alias testara-agent='java -jar testara-agent-cli/target/testara-agent-cli.jar'
+
+# Run skills
+testara-agent /test-overview .
+testara-agent /test-review src/test/resources/features
+testara-agent /test-run "run payment smoke tests"
+testara-agent /test-plan "Create tests for refund approval" --slice api
+
+# Start MCP server (Claude Code, Cursor, GitHub Copilot)
+testara-agent mcp .
+```
+
+See **[Testara Agent documentation](docs/agentic-skills.md)** for full skill reference, MCP setup, and LLM configuration.
 
 ## Documentation
 
+- **[Testara Agent](docs/agentic-skills.md)** — All 8 agentic skills, MCP server, LLM setup, security model
 - **[Command Engine](testara-command/README.md)** — All 50+ built-in commands, syntax reference, and how to create custom commands
 - **[Validation](testara-validation/README.md)** — All 40+ validators, usage patterns, and how to create custom validations
 - **[API Testing](testara-api/README.md)** — Service configuration, request building, load testing, and interceptors
