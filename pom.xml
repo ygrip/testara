@@ -6,12 +6,12 @@
 
   <groupId>io.github.ygrip</groupId>
   <artifactId>testara-core-parent</artifactId>
-  <version>1.1.4</version>
+  <version>1.1.5</version>
   <packaging>pom</packaging>
 
   <name>Testara Testing Framework</name>
   <description>Persistent and assurance-driven full-stack automation framework.</description>
-  <url>https://www.github.com/ygrip</url>
+  <url>https://www.github.com/ygrip/testara</url>
 
   <licenses>
     <license>
@@ -111,7 +111,7 @@
     <hamcrest.version>3.0</hamcrest.version>
     <assertj.version>4.0.0-M1</assertj.version>
     <wiremock.version>3.13.2</wiremock.version>
-    <mitmproxy-grid-java-client.version>0.1.0-SNAPSHOT</mitmproxy-grid-java-client.version>
+    <mitmproxy-grid-java-client.version>0.1.0</mitmproxy-grid-java-client.version>
     <testcontainers.version>2.0.2</testcontainers.version>
 
     <!-- Reporting versions -->
@@ -865,6 +865,14 @@
           <groupId>org.apache.maven.plugins</groupId>
           <artifactId>maven-gpg-plugin</artifactId>
           <version>${maven-gpg-plugin.version}</version>
+          <configuration>
+            <!-- batch + loopback: no interactive prompt; works with or without passphrase -->
+            <gpgArguments>
+              <arg>--batch</arg>
+              <arg>--pinentry-mode</arg>
+              <arg>loopback</arg>
+            </gpgArguments>
+          </configuration>
           <executions>
             <execution>
               <id>sign-artifacts</id>
