@@ -4,6 +4,12 @@ import java.io.File;
 import java.nio.file.Files;
 import java.util.Base64;
 
+import io.github.ygrip.mitmproxy.grid.client.model.MitmProxyBodyReplace;
+import io.github.ygrip.mitmproxy.grid.client.model.MitmProxyRequestModification;
+import io.github.ygrip.mitmproxy.grid.client.model.MitmProxyResponseModification;
+import io.github.ygrip.mitmproxy.grid.client.model.MitmProxyRule;
+import io.github.ygrip.mitmproxy.grid.client.model.MitmProxyRuleAction;
+import io.github.ygrip.mitmproxy.grid.client.model.MitmProxyRuleMatch;
 import io.github.ygrip.testara.core.file.FileHelper;
 import lombok.AllArgsConstructor;
 import lombok.Builder;

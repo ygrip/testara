@@ -29,6 +29,10 @@
       <artifactId>testara-command</artifactId>
     </dependency>
     <dependency>
+      <groupId>io.github.ygrip</groupId>
+      <artifactId>mitmproxy-grid-java-client</artifactId>
+    </dependency>
+    <dependency>
       <groupId>com.browserup</groupId>
       <artifactId>browserup-proxy-core</artifactId>
     </dependency>

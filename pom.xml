@@ -111,6 +111,7 @@
     <hamcrest.version>3.0</hamcrest.version>
     <assertj.version>4.0.0-M1</assertj.version>
     <wiremock.version>3.13.2</wiremock.version>
+    <mitmproxy-grid-java-client.version>0.1.0-SNAPSHOT</mitmproxy-grid-java-client.version>
     <testcontainers.version>2.0.2</testcontainers.version>
 
     <!-- Reporting versions -->
@@ -257,6 +258,13 @@
         <groupId>io.github.ygrip</groupId>
         <artifactId>testara-reporter-plugin</artifactId>
         <version>${project.parent.version}</version>
+      </dependency>
+
+      <!-- External SDKs -->
+      <dependency>
+        <groupId>io.github.ygrip</groupId>
+        <artifactId>mitmproxy-grid-java-client</artifactId>
+        <version>${mitmproxy-grid-java-client.version}</version>
       </dependency>
 
       <!-- Third party Modules -->

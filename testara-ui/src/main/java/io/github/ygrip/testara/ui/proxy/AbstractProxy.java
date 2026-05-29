@@ -3,15 +3,15 @@ package io.github.ygrip.testara.ui.proxy;
 import java.util.Collections;
 import java.util.List;
 
+import io.github.ygrip.mitmproxy.grid.client.model.MitmProxyCreateInstanceResponse;
+import io.github.ygrip.mitmproxy.grid.client.model.MitmProxyHealthResponse;
+import io.github.ygrip.mitmproxy.grid.client.model.MitmProxyInstanceDetail;
+import io.github.ygrip.mitmproxy.grid.client.model.MitmProxyMessageResponse;
+import io.github.ygrip.mitmproxy.grid.client.model.MitmProxyRenewResponse;
+import io.github.ygrip.mitmproxy.grid.client.model.MitmProxyRule;
+import io.github.ygrip.mitmproxy.grid.client.model.MitmProxyRuleResponse;
 import io.github.ygrip.testara.core.data.DataHolder;
 import io.github.ygrip.testara.ui.model.AvailableProxy;
-import io.github.ygrip.testara.ui.model.MitmProxyCreateInstanceResponse;
-import io.github.ygrip.testara.ui.model.MitmProxyHealthResponse;
-import io.github.ygrip.testara.ui.model.MitmProxyInstanceDetail;
-import io.github.ygrip.testara.ui.model.MitmProxyMessageResponse;
-import io.github.ygrip.testara.ui.model.MitmProxyRenewResponse;
-import io.github.ygrip.testara.ui.model.MitmProxyRule;
-import io.github.ygrip.testara.ui.model.MitmProxyRuleResponse;
 import io.github.ygrip.testara.ui.model.ProxyRuleCreation;
 
 import lombok.extern.log4j.Log4j2;
