@@ -1,0 +1,7 @@
+{
+  "database": "dolt",
+  "backend": "dolt",
+  "dolt_mode": "embedded",
+  "dolt_database": "testara",
+  "project_id": "4c9d69f5-96f1-4ac5-bfe6-05633f050254"
+}
