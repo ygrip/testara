@@ -147,6 +147,7 @@
     <module>testara-ui-cucumber</module>
     <module>testara-agent</module>
     <module>testara-agent-cli</module>
+    <module>testara-agent-mcp</module>
   </modules>
 
   <dependencyManagement>
@@ -272,6 +273,11 @@
       <dependency>
         <groupId>io.github.ygrip</groupId>
         <artifactId>testara-agent-cli</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.github.ygrip</groupId>
+        <artifactId>testara-agent-mcp</artifactId>
         <version>${project.version}</version>
       </dependency>
 

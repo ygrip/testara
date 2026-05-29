@@ -9,9 +9,9 @@
     <version>2.0.0</version>
   </parent>
 
-  <artifactId>testara-agent-cli</artifactId>
-  <name>Testara Agent CLI</name>
-  <description>Command-line interface for Testara Agent skills</description>
+  <artifactId>testara-agent-mcp</artifactId>
+  <name>Testara Agent MCP Server</name>
+  <description>Exposes Testara Agent skills as MCP tools via stdio JSON-RPC</description>
 
   <dependencies>
     <dependency>
@@ -19,35 +19,13 @@
       <artifactId>testara-agent</artifactId>
     </dependency>
     <dependency>
-      <groupId>info.picocli</groupId>
-      <artifactId>picocli</artifactId>
-    </dependency>
-    <dependency>
-      <groupId>org.junit.jupiter</groupId>
-      <artifactId>junit-jupiter</artifactId>
-      <scope>test</scope>
+      <groupId>com.fasterxml.jackson.core</groupId>
+      <artifactId>jackson-databind</artifactId>
     </dependency>
   </dependencies>
 
   <build>
     <plugins>
-      <plugin>
-        <groupId>org.apache.maven.plugins</groupId>
-        <artifactId>maven-compiler-plugin</artifactId>
-        <configuration>
-          <annotationProcessorPaths>
-            <path>
-              <groupId>info.picocli</groupId>
-              <artifactId>picocli-codegen</artifactId>
-              <version>${picocli.version}</version>
-            </path>
-          </annotationProcessorPaths>
-          <compilerArgs>
-            <arg>-Aproject=${project.groupId}/${project.artifactId}</arg>
-          </compilerArgs>
-        </configuration>
-      </plugin>
-      <!-- Fat JAR for standalone distribution -->
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-shade-plugin</artifactId>
@@ -57,10 +35,10 @@
             <phase>package</phase>
             <goals><goal>shade</goal></goals>
             <configuration>
-              <finalName>testara-agent-cli</finalName>
+              <finalName>testara-agent-mcp</finalName>
               <transformers>
                 <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
-                  <mainClass>io.github.ygrip.testara.agent.cli.TestaraAgentCli</mainClass>
+                  <mainClass>io.github.ygrip.testara.agent.mcp.TestaraAgentMcpMain</mainClass>
                 </transformer>
                 <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
               </transformers>

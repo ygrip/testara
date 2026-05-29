@@ -1,7 +1,6 @@
 package io.github.ygrip.testara.agent.cli;
 
-import io.github.ygrip.testara.agent.cli.command.TestOverviewCommand;
-import io.github.ygrip.testara.agent.cli.command.TestSummaryCommand;
+import io.github.ygrip.testara.agent.cli.command.*;
 import picocli.CommandLine;
 import picocli.CommandLine.Command;
 
@@ -13,6 +12,12 @@ import picocli.CommandLine.Command;
     subcommands = {
         TestSummaryCommand.class,
         TestOverviewCommand.class,
+        TestReviewCommand.class,
+        TestRunCommand.class,
+        TestCommandSkillCommand.class,
+        TestValidationCommand.class,
+        TestPlanCommand.class,
+        TestInitCommand.class,
         CommandLine.HelpCommand.class
     }
 )
