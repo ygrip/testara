@@ -18,6 +18,7 @@ import picocli.CommandLine.Command;
         TestValidationCommand.class,
         TestPlanCommand.class,
         TestInitCommand.class,
+        McpCommand.class,
         CommandLine.HelpCommand.class
     }
 )

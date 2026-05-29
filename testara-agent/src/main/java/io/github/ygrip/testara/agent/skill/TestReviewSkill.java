@@ -221,6 +221,15 @@ public class TestReviewSkill implements AgentSkill<Path, String> {
       sb.append("## ").append(sev).append(" (").append(group.size()).append(")\n\n");
       group.forEach(f -> sb.append(f.toMarkdown()).append("\n"));
     }
+    // Priority recommendations
+    long blocker = findings.stream().filter(f -> f.severity() == ReviewSeverity.BLOCKER).count();
+    long high     = findings.stream().filter(f -> f.severity() == ReviewSeverity.HIGH).count();
+    if (blocker > 0 || high > 0) {
+      sb.append("## Priority Recommendations\n\n");
+      if (blocker > 0) sb.append("- **P0** — Fix ").append(blocker).append(" BLOCKER issue(s) before any release.\n");
+      if (high > 0)    sb.append("- **P1** — Resolve ").append(high).append(" HIGH issue(s) in the next sprint.\n");
+      sb.append("- **P2–P3** — Schedule remaining MEDIUM/LOW findings for backlog grooming.\n\n");
+    }
     return sb.toString();
   }
 }

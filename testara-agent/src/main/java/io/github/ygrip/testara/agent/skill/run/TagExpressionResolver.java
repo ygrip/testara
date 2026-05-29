@@ -78,10 +78,30 @@ public class TagExpressionResolver {
       }
     }
 
+    // 4. Handle OR groups: "payment or order tests" → "(payment or order)"
+    if (positiveTags.isEmpty() && !lower.contains(" or ")) return negativeTags.isEmpty() ? "" :
+        negativeTags.stream().distinct().map(t -> "not " + t).collect(Collectors.joining(" and "));
+
+    if (positiveTags.isEmpty() && lower.contains(" or ")) {
+      String[] orParts = lower.split("\\s+or\\s+");
+      List<String> orTags = new ArrayList<>();
+      Set<String> indexed = profile.tags().stream().map(TagIndex::tag).collect(Collectors.toSet());
+      for (String part : orParts) {
+        for (String word : part.split("[\\s,;]+")) {
+          word = word.replaceAll("[^a-z0-9_-]", "");
+          if (word.isBlank()) continue;
+          if (aliases.containsKey(word)) { orTags.add(aliases.get(word)); break; }
+          else if (indexed.contains("@" + word)) { orTags.add("@" + word); break; }
+        }
+      }
+      if (!orTags.isEmpty()) positiveTags.addAll(orTags);
+    }
+
     if (positiveTags.isEmpty() && negativeTags.isEmpty()) return "";
 
-    String positive = positiveTags.stream().distinct()
-        .collect(Collectors.joining(" and "));
+    String positive = positiveTags.size() > 1
+        ? "(" + positiveTags.stream().distinct().collect(Collectors.joining(" or ")) + ")"
+        : positiveTags.stream().distinct().collect(Collectors.joining(" and "));
     String negative = negativeTags.stream().distinct()
         .map(t -> "not " + t)
         .collect(Collectors.joining(" and "));

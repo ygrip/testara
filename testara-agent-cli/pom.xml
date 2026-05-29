@@ -19,6 +19,10 @@
       <artifactId>testara-agent</artifactId>
     </dependency>
     <dependency>
+      <groupId>io.github.ygrip</groupId>
+      <artifactId>testara-agent-mcp</artifactId>
+    </dependency>
+    <dependency>
       <groupId>info.picocli</groupId>
       <artifactId>picocli</artifactId>
     </dependency>

@@ -5,6 +5,7 @@ import io.github.ygrip.testara.agent.index.TestaraProjectProfile;
 import io.github.ygrip.testara.agent.skill.run.*;
 
 import java.io.BufferedReader;
+import java.util.concurrent.TimeUnit;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
@@ -75,7 +76,11 @@ public class TestRunSkill implements AgentSkill<String, String> {
 
     if (dryRun || !execute) return plan.toMarkdown();
 
-    // Execute safely
+    // Execution guard: respect TESTARA_AGENT_RUN_ENABLED
+    boolean runEnabled = "true".equalsIgnoreCase(System.getenv("TESTARA_AGENT_RUN_ENABLED"));
+    if (!runEnabled) {
+      return plan.toMarkdown() + "\n> **Execution blocked.** Set TESTARA_AGENT_RUN_ENABLED=true to allow test execution.\n";
+    }
     return executeAndReport(command, tagExpr, context.projectRoot());
   }
 
@@ -83,8 +88,12 @@ public class TestRunSkill implements AgentSkill<String, String> {
     long start = System.currentTimeMillis();
     List<String> output = new ArrayList<>();
     int exitCode;
+    // Choose mvnw or mvn
+    java.nio.file.Path mvnw = projectRoot.resolve("mvnw");
+    String mvnExec = java.nio.file.Files.exists(mvnw) ? mvnw.toAbsolutePath().toString() : "mvn";
+    String safeCommand = command.replace("mvn ", mvnExec + " ");
     try {
-      String[] cmd = {"sh", "-c", command};
+      String[] cmd = {"sh", "-c", safeCommand};
       ProcessBuilder pb = new ProcessBuilder(cmd)
           .directory(projectRoot.toFile())
           .redirectErrorStream(true);
@@ -94,7 +103,12 @@ public class TestRunSkill implements AgentSkill<String, String> {
         String line;
         while ((line = br.readLine()) != null) output.add(line);
       }
-      exitCode = process.waitFor();
+      boolean finished = process.waitFor(15, TimeUnit.MINUTES);
+      if (!finished) {
+        process.destroyForcibly();
+        return "## Test Run Report\n\n**Status:** TIMEOUT  \nTest execution exceeded 15-minute limit.\n";
+      }
+      exitCode = process.exitValue();
     } catch (IOException | InterruptedException e) {
       if (e instanceof InterruptedException) Thread.currentThread().interrupt();
       return "Execution failed: " + e.getMessage();
