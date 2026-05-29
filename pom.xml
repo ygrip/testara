@@ -113,6 +113,7 @@
     <wiremock.version>3.13.2</wiremock.version>
     <mitmproxy-grid-java-client.version>0.1.0</mitmproxy-grid-java-client.version>
     <testcontainers.version>2.0.2</testcontainers.version>
+    <picocli.version>4.7.6</picocli.version>
 
     <!-- Reporting versions -->
     <thymeleaf.version>3.1.2.RELEASE</thymeleaf.version>
@@ -144,6 +145,8 @@
     <module>testara-ui-appium</module>
     <module>testara-ui-playwright</module>
     <module>testara-ui-cucumber</module>
+    <module>testara-agent</module>
+    <module>testara-agent-cli</module>
   </modules>
 
   <dependencyManagement>
@@ -260,11 +263,28 @@
         <version>${project.parent.version}</version>
       </dependency>
 
+      <!-- Agent modules -->
+      <dependency>
+        <groupId>io.github.ygrip</groupId>
+        <artifactId>testara-agent</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.github.ygrip</groupId>
+        <artifactId>testara-agent-cli</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+
       <!-- External SDKs -->
       <dependency>
         <groupId>io.github.ygrip</groupId>
         <artifactId>mitmproxy-grid-java-client</artifactId>
         <version>${mitmproxy-grid-java-client.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>info.picocli</groupId>
+        <artifactId>picocli</artifactId>
+        <version>${picocli.version}</version>
       </dependency>
 
       <!-- Third party Modules -->

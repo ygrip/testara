@@ -1,0 +1,261 @@
+package io.github.ygrip.testara.agent.index;
+
+import io.github.ygrip.testara.agent.parser.FeatureParser;
+
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.*;
+import java.util.logging.Logger;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
+
+/**
+ * Indexes a Testara project: detects modules, feature files, step definitions,
+ * commands, validators, and tags — all from the file system without executing code.
+ */
+public class ProjectIndexer {
+
+  private static final Logger LOG = Logger.getLogger(ProjectIndexer.class.getName());
+
+  private static final Pattern MODULE_PATTERN = Pattern.compile(
+      "<module>\\s*([^<]+?)\\s*</module>");
+  private static final Pattern JAVA_VERSION_PATTERN = Pattern.compile(
+      "<java\\.version>\\s*([^<]+?)\\s*</java\\.version>");
+  private static final Pattern STEP_ANNOTATION = Pattern.compile(
+      "@(Given|When|Then|And|But)\\(\"(.*?)\"\\)");
+  private static final Pattern COMMAND_TAG = Pattern.compile(
+      "@CommandTag\\([^)]*command\\s*=\\s*\"([^\"]+)\"[^)]*(?:alias\\s*=\\s*\\{([^}]*)\\})?[^)]*(?:cacheable\\s*=\\s*(true|false))?");
+  private static final Pattern VALIDATION_TAG = Pattern.compile(
+      "@ValidationTag\\([^)]*command\\s*=\\s*\"([^\"]+)\"[^)]*(?:alias\\s*=\\s*\\{([^}]*)\\})?[^)]*(?:cacheable\\s*=\\s*(true|false))?");
+  private static final Pattern CLASS_NAME = Pattern.compile(
+      "(?:public\\s+)?(?:class|interface)\\s+(\\w+)");
+
+  private final FeatureParser featureParser = new FeatureParser();
+
+  public TestaraProjectProfile index(Path projectRoot) {
+    LOG.info("Indexing project at " + projectRoot);
+
+    List<String> modules = detectModules(projectRoot);
+    String javaVersion = detectJavaVersion(projectRoot);
+    BuildTool buildTool = Files.exists(projectRoot.resolve("pom.xml"))
+        ? BuildTool.MAVEN : BuildTool.GRADLE;
+
+    List<Path> featureRoots = findFeatureRoots(projectRoot);
+    List<Path> requestSpecRoots = findResourceDirs(projectRoot, "files");
+    List<Path> validationRoots = findResourceDirs(projectRoot, "validations");
+
+    List<FeatureIndex> features = parseFeatures(featureRoots);
+    List<StepDefinitionIndex> stepDefs = scanStepDefinitions(projectRoot);
+    List<CommandIndex> commands = scanCommands(projectRoot);
+    List<ValidationIndex> validations = scanValidations(projectRoot);
+    List<TagIndex> tags = buildTagIndex(features);
+
+    return new TestaraProjectProfile(
+        projectRoot, buildTool, javaVersion, modules,
+        featureRoots, requestSpecRoots, validationRoots,
+        features, stepDefs, commands, validations, tags);
+  }
+
+  // ── Module detection ──────────────────────────────────────────────
+
+  private List<String> detectModules(Path root) {
+    Path pom = root.resolve("pom.xml");
+    if (!Files.exists(pom)) return List.of();
+    try {
+      String content = Files.readString(pom, StandardCharsets.UTF_8);
+      List<String> modules = new ArrayList<>();
+      Matcher m = MODULE_PATTERN.matcher(content);
+      while (m.find()) modules.add(m.group(1));
+      return List.copyOf(modules);
+    } catch (IOException e) {
+      LOG.warning("Cannot read pom.xml: " + e.getMessage());
+      return List.of();
+    }
+  }
+
+  private String detectJavaVersion(Path root) {
+    Path pom = root.resolve("pom.xml");
+    if (!Files.exists(pom)) return "unknown";
+    try {
+      String content = Files.readString(pom, StandardCharsets.UTF_8);
+      Matcher m = JAVA_VERSION_PATTERN.matcher(content);
+      return m.find() ? m.group(1) : "unknown";
+    } catch (IOException e) {
+      return "unknown";
+    }
+  }
+
+  // ── Feature root detection ────────────────────────────────────────
+
+  private List<Path> findFeatureRoots(Path root) {
+    List<Path> roots = new ArrayList<>();
+    try (Stream<Path> walk = Files.walk(root, 6)) {
+      walk.filter(p -> p.getFileName() != null
+              && p.getFileName().toString().equals("features")
+              && Files.isDirectory(p)
+              && !p.toString().contains("target"))
+          .forEach(roots::add);
+    } catch (IOException e) {
+      LOG.warning("Error scanning for feature roots: " + e.getMessage());
+    }
+    return List.copyOf(roots);
+  }
+
+  private List<Path> findResourceDirs(Path root, String dirName) {
+    List<Path> dirs = new ArrayList<>();
+    try (Stream<Path> walk = Files.walk(root, 6)) {
+      walk.filter(p -> p.getFileName() != null
+              && p.getFileName().toString().equals(dirName)
+              && Files.isDirectory(p)
+              && !p.toString().contains("target"))
+          .forEach(dirs::add);
+    } catch (IOException e) {
+      LOG.warning("Error scanning for " + dirName + " dirs: " + e.getMessage());
+    }
+    return List.copyOf(dirs);
+  }
+
+  // ── Feature parsing ───────────────────────────────────────────────
+
+  private List<FeatureIndex> parseFeatures(List<Path> featureRoots) {
+    List<FeatureIndex> features = new ArrayList<>();
+    for (Path root : featureRoots) {
+      try (Stream<Path> walk = Files.walk(root)) {
+        walk.filter(p -> p.toString().endsWith(".feature"))
+            .forEach(p -> {
+              try {
+                features.add(featureParser.parse(p));
+              } catch (IOException e) {
+                LOG.warning("Cannot parse feature " + p + ": " + e.getMessage());
+              }
+            });
+      } catch (IOException e) {
+        LOG.warning("Error walking feature root " + root + ": " + e.getMessage());
+      }
+    }
+    return List.copyOf(features);
+  }
+
+  // ── Step definition scanning ──────────────────────────────────────
+
+  private List<StepDefinitionIndex> scanStepDefinitions(Path root) {
+    List<StepDefinitionIndex> defs = new ArrayList<>();
+    scanJavaFiles(root).forEach(javaFile -> {
+      try {
+        String content = Files.readString(javaFile, StandardCharsets.UTF_8);
+        String className = extractClassName(content);
+        Matcher m = STEP_ANNOTATION.matcher(content);
+        while (m.find()) {
+          defs.add(new StepDefinitionIndex(
+              m.group(1), m.group(2), javaFile, className, ""));
+        }
+      } catch (IOException e) {
+        LOG.fine("Cannot read " + javaFile);
+      }
+    });
+    return List.copyOf(defs);
+  }
+
+  // ── Command scanning ──────────────────────────────────────────────
+
+  private List<CommandIndex> scanCommands(Path root) {
+    List<CommandIndex> commands = new ArrayList<>();
+    scanJavaFiles(root).forEach(javaFile -> {
+      try {
+        String content = Files.readString(javaFile, StandardCharsets.UTF_8);
+        if (!content.contains("@CommandTag")) return;
+        Matcher m = COMMAND_TAG.matcher(content);
+        if (m.find()) {
+          String name = m.group(1);
+          List<String> aliases = parseStringArray(m.group(2));
+          boolean cacheable = "true".equals(m.group(3));
+          String className = extractClassName(content);
+          commands.add(new CommandIndex(name, aliases, cacheable, javaFile, className));
+        }
+      } catch (IOException e) {
+        LOG.fine("Cannot read " + javaFile);
+      }
+    });
+    return List.copyOf(commands);
+  }
+
+  // ── Validation scanning ───────────────────────────────────────────
+
+  private List<ValidationIndex> scanValidations(Path root) {
+    List<ValidationIndex> validations = new ArrayList<>();
+    scanJavaFiles(root).forEach(javaFile -> {
+      try {
+        String content = Files.readString(javaFile, StandardCharsets.UTF_8);
+        if (!content.contains("@ValidationTag")) return;
+        Matcher m = VALIDATION_TAG.matcher(content);
+        if (m.find()) {
+          String name = m.group(1);
+          List<String> aliases = parseStringArray(m.group(2));
+          boolean cacheable = "true".equals(m.group(3));
+          String className = extractClassName(content);
+          validations.add(new ValidationIndex(name, aliases, cacheable, javaFile, className));
+        }
+      } catch (IOException e) {
+        LOG.fine("Cannot read " + javaFile);
+      }
+    });
+    return List.copyOf(validations);
+  }
+
+  // ── Tag index ─────────────────────────────────────────────────────
+
+  private List<TagIndex> buildTagIndex(List<FeatureIndex> features) {
+    Map<String, List<Path>> tagFeatures = new TreeMap<>();
+    Map<String, Integer> tagScenarios = new TreeMap<>();
+    Map<String, List<String>> tagScenarioNames = new TreeMap<>();
+
+    for (FeatureIndex feature : features) {
+      for (String tag : feature.tags()) {
+        tagFeatures.computeIfAbsent(tag, k -> new ArrayList<>()).add(feature.path());
+      }
+      for (ScenarioIndex scenario : feature.scenarios()) {
+        for (String tag : scenario.tags()) {
+          tagFeatures.computeIfAbsent(tag, k -> new ArrayList<>()).add(feature.path());
+          tagScenarios.merge(tag, 1, Integer::sum);
+          tagScenarioNames.computeIfAbsent(tag, k -> new ArrayList<>()).add(scenario.name());
+        }
+      }
+    }
+
+    return tagFeatures.keySet().stream().map(tag -> new TagIndex(
+        tag,
+        (int) tagFeatures.getOrDefault(tag, List.of()).stream().distinct().count(),
+        tagScenarios.getOrDefault(tag, 0),
+        tagFeatures.getOrDefault(tag, List.of()).stream().distinct().toList(),
+        tagScenarioNames.getOrDefault(tag, List.of())
+    )).collect(Collectors.toList());
+  }
+
+  // ── Utilities ─────────────────────────────────────────────────────
+
+  private Stream<Path> scanJavaFiles(Path root) {
+    try {
+      return Files.walk(root)
+          .filter(p -> p.toString().endsWith(".java") && !p.toString().contains("target"));
+    } catch (IOException e) {
+      return Stream.empty();
+    }
+  }
+
+  private String extractClassName(String source) {
+    Matcher m = CLASS_NAME.matcher(source);
+    return m.find() ? m.group(1) : "";
+  }
+
+  private List<String> parseStringArray(String raw) {
+    if (raw == null || raw.isBlank()) return List.of();
+    return Arrays.stream(raw.split(","))
+        .map(s -> s.strip().replaceAll("^\"|\"$", ""))
+        .filter(s -> !s.isBlank())
+        .toList();
+  }
+}
