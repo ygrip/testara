@@ -53,6 +53,8 @@ public class McpServer {
   private final TestValidationSkill validationSkill = new TestValidationSkill();
   private final TestPlanSkill       planSkill       = new TestPlanSkill();
   private final TestInitSkill       initSkill       = new TestInitSkill();
+  private final ListCommandsSkill   listCommandsSkill    = new ListCommandsSkill();
+  private final ListValidationsSkill listValidationsSkill = new ListValidationsSkill();
 
   public McpServer(Path projectRoot) {
     this.projectRoot = projectRoot.toAbsolutePath().normalize();
@@ -138,14 +140,20 @@ public class McpServer {
         optionalBool("dryRun", "Show plan only — default true"),
         optionalBool("execute", "Actually execute Maven — default false"),
         optionalStr("module", "Restrict to Maven module")));
-    tools.add(tool("testara_command",    "Generate a Testara CommandLogic<T> class from description",
-        requiredStr("description", "Description of the command"),
+    tools.add(tool("testara_command",    "List project commands, show command detail, or generate a new CommandLogic<T> class. Omit description to list all.",
+        optionalStr("description", "Omit to list all commands; 'detail:<name>' for details; or describe a new command to generate"),
+        optionalStr("detail", "Command name to show source and usage docs for"),
         optionalStr("package", "Target Java package"),
         optionalStr("returnType", "Return type")));
-    tools.add(tool("testara_validation", "Generate a validation JSON or ValidatorLogic class",
-        requiredStr("description", "Description of the validation"),
+    tools.add(tool("testara_command_detail", "Show source, return type, aliases and how to use a specific Testara command",
+        requiredStr("name", "Command name or alias to look up")));
+    tools.add(tool("testara_validation", "List project validations, show validation detail, or generate a new ValidatorLogic class. Omit description to list all.",
+        optionalStr("description", "Omit to list all validations; 'detail:<name>' for details; or describe a new validation to generate"),
+        optionalStr("detail", "Validation name to show when-to-use and how-to-use docs for"),
         optionalStr("mode", "auto, json, or java"),
         optionalStr("package", "Target Java package")));
+    tools.add(tool("testara_validation_detail", "Show source, types, aliases and when/how to use a specific Testara validation",
+        requiredStr("name", "Validation name or alias to look up")));
     tools.add(tool("testara_plan",       "Generate a Testara-compatible Cucumber feature from intent",
         requiredStr("intent", "Test plan intent"),
         optionalStr("slice", "Layer: api, ui, database, streaming, fullstack"),
@@ -193,7 +201,9 @@ public class McpServer {
           Paths.get(args.path("path").asText(".")), ctx);
       case "testara_run" -> runSkill.execute(args.path("input").asText(""), ctx);
       case "testara_command" -> commandSkill.execute(args.path("description").asText(""), ctx);
+      case "testara_command_detail" -> commandSkill.execute("detail:" + args.path("name").asText(""), ctx);
       case "testara_validation" -> validationSkill.execute(args.path("description").asText(""), ctx);
+      case "testara_validation_detail" -> validationSkill.execute("detail:" + args.path("name").asText(""), ctx);
       case "testara_plan" -> planSkill.execute(new TestPlanSkill.Input(
           args.path("intent").asText(""),
           args.path("slice").asText("api"),
@@ -218,6 +228,8 @@ public class McpServer {
     if (args.has("package")) opts.put("package", args.path("package").asText());
     if (args.has("returnType")) opts.put("returnType", args.path("returnType").asText("String"));
     if (args.has("module"))  opts.put("module", args.path("module").asText());
+    if (args.has("detail"))  opts.put("detail", args.path("detail").asText());
+    if (args.has("write"))   opts.put("write", args.path("write").asBoolean(false) ? "true" : "false");
 
     AgentMode mode = toolName.equals("testara_run") ? AgentMode.PLAN : AgentMode.READ_ONLY;
 

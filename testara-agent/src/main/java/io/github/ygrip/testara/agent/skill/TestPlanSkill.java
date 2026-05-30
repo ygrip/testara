@@ -3,14 +3,23 @@ package io.github.ygrip.testara.agent.skill;
 import io.github.ygrip.testara.agent.index.StepDefinitionIndex;
 import io.github.ygrip.testara.agent.index.TestaraProjectProfile;
 
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.*;
+import java.util.logging.Logger;
 import java.util.stream.Collectors;
 
 /**
  * Skill: generate a Testara-compatible Cucumber .feature file from user intent.
  * Unknown steps are explicitly marked as MISSING to prevent hallucination.
+ *
+ * When context option "write=true", the feature file is saved to disk at the resolved placement path.
  */
 public class TestPlanSkill implements AgentSkill<TestPlanSkill.Input, String> {
+
+  private static final Logger LOG = Logger.getLogger(TestPlanSkill.class.getName());
 
   public record Input(String intent, String slice, String domain, List<String> tags) {}
 
@@ -23,28 +32,57 @@ public class TestPlanSkill implements AgentSkill<TestPlanSkill.Input, String> {
     String slice  = input.slice() != null ? input.slice() : "api";
     String domain = input.domain() != null ? input.domain() : inferDomain(input.intent());
     List<String> tags = buildTags(input.tags(), slice, domain);
+    boolean write = "true".equals(context.options().get("write"));
 
     String featureContent = generateFeature(input.intent(), domain, tags, slice, profile);
     String placement      = resolvePlacement(slice, domain);
+    String fileName       = toFileName(input.intent());
 
     StringBuilder sb = new StringBuilder();
     sb.append("## Test Plan: ").append(input.intent()).append("\n\n");
     sb.append("**Slice:** ").append(slice).append("  \n");
     sb.append("**Domain:** ").append(domain).append("  \n");
-    sb.append("**Placement:** `").append(placement).append("`  \n\n");
-    sb.append("> **Review before committing.** Steps marked `# MISSING` need step definitions.\n\n");
+    sb.append("**Placement:** `").append(placement).append(fileName).append("`  \n\n");
+
+    if (write) {
+      String writtenPath = writeFeatureFile(context.projectRoot(), placement, fileName, featureContent);
+      sb.append(writtenPath != null
+          ? "> Feature file written to `" + writtenPath + "`\n\n"
+          : "> **Warning:** Could not write feature file — check write permissions.\n\n");
+    } else {
+      sb.append("> **Review before committing.** Steps marked `# MISSING` need step definitions.\n\n");
+    }
+
     sb.append("### Generated Feature\n\n```gherkin\n");
     sb.append(featureContent);
     sb.append("\n```\n\n");
 
-    // Report missing steps
     List<String> missingSteps = extractMissingSteps(featureContent);
     if (!missingSteps.isEmpty()) {
       sb.append("### Missing Step Definitions\n\n");
       missingSteps.forEach(s -> sb.append("- `").append(s).append("`\n"));
-      sb.append("\nThese steps must be implemented before the feature can run.\n");
+      sb.append("\nThese steps must be implemented in `StepDefinitions.java` before the feature can run.\n");
+    }
+
+    if (write) {
+      sb.append("\n### Next step\n\n");
+      sb.append("Run your tests:\n```\ntestara-agent test-run '").append(input.intent())
+          .append("' --execute\n```\n");
     }
     return sb.toString();
+  }
+
+  private String writeFeatureFile(Path projectRoot, String placement, String fileName, String content) {
+    try {
+      Path dir = projectRoot.resolve(placement);
+      Files.createDirectories(dir);
+      Path file = dir.resolve(fileName);
+      Files.writeString(file, content, StandardCharsets.UTF_8);
+      return projectRoot.relativize(file).toString();
+    } catch (IOException e) {
+      LOG.warning("Cannot write feature file: " + e.getMessage());
+      return null;
+    }
   }
 
   private String generateFeature(String intent, String domain, List<String> tags,
@@ -71,13 +109,11 @@ public class TestPlanSkill implements AgentSkill<TestPlanSkill.Input, String> {
       sb.append("    ").append(bgKeyword).append(" ").append(bgStep).append("\n\n");
     }
 
-    // Positive scenario
     sb.append("  @P1 @positive\n");
     sb.append("  Scenario: ").append(featureName).append(" — happy path\n");
     appendSliceSteps(sb, intent, domain, slice, knownExpressions, false);
     sb.append("\n");
 
-    // Negative scenario
     sb.append("  @P2 @negative\n");
     sb.append("  Scenario: ").append(featureName).append(" — failure case\n");
     appendSliceSteps(sb, intent, domain, slice, knownExpressions, true);
@@ -152,6 +188,11 @@ public class TestPlanSkill implements AgentSkill<TestPlanSkill.Input, String> {
       case "streaming" -> "src/test/resources/features/streaming/" + domain + "/";
       default          -> "src/test/resources/features/" + domain + "/";
     };
+  }
+
+  private String toFileName(String intent) {
+    return intent.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]+", "-")
+        .replaceAll("^-|-$", "").substring(0, Math.min(50, intent.length())) + ".feature";
   }
 
   private String inferDomain(String intent) {

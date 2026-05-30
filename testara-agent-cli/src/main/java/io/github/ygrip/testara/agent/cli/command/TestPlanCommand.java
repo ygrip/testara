@@ -10,6 +10,7 @@ import picocli.CommandLine.Option;
 import picocli.CommandLine.Parameters;
 
 import java.nio.file.Path;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -34,12 +35,19 @@ public class TestPlanCommand implements Runnable {
   @Option(names = "--project", defaultValue = ".", description = "Project root")
   private Path projectRoot;
 
+  @Option(names = "--write", defaultValue = "false",
+      description = "Write the generated feature file to disk at the resolved placement path")
+  private boolean write;
+
   @Override
   public void run() {
     Path root = projectRoot.toAbsolutePath().normalize();
+    Map<String, String> opts = new HashMap<>();
+    if (write) opts.put("write", "true");
+
     AgentContext ctx = new AgentContext(root,
         JsonlKnowledgeStore.loadProfile(root), AgentMode.PATCH,
-        new DisabledLlmClient(), Map.of());
+        new DisabledLlmClient(), opts);
     System.out.println(new TestPlanSkill().execute(
         new TestPlanSkill.Input(intent, slice, domain, tags != null ? tags : List.of()), ctx));
   }

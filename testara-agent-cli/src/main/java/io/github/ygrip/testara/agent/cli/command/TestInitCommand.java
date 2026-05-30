@@ -35,12 +35,18 @@ public class TestInitCommand implements Runnable {
   @Option(names = "--project", defaultValue = ".", description = "Target project root")
   private Path projectRoot;
 
+  @Option(names = "--preview", defaultValue = "false",
+      description = "Preview files to be created without writing to disk")
+  private boolean preview;
+
   @Override
   public void run() {
     Path root = projectRoot.toAbsolutePath().normalize();
+    // Default: write files. Use --preview to only print what would be created.
+    Map<String, String> opts = Map.of("write", preview ? "false" : "true");
     AgentContext ctx = new AgentContext(root,
         JsonlKnowledgeStore.loadProfile(root), AgentMode.PATCH,
-        new DisabledLlmClient(), Map.of());
+        new DisabledLlmClient(), opts);
     System.out.println(new TestInitSkill().execute(
         new TestInitSkill.Input(type, basePackage, engine, integrateExisting), ctx));
   }

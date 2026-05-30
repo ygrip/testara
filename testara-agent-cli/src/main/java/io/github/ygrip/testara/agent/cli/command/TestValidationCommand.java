@@ -10,15 +10,23 @@ import picocli.CommandLine.Option;
 import picocli.CommandLine.Parameters;
 
 import java.nio.file.Path;
+import java.util.HashMap;
 import java.util.Map;
 
 @Command(name = "/test-validation", aliases = {"test-validation"},
-    description = "Generate a validation JSON or ValidatorLogic class from a description",
+    description = "List project validations, show validation detail, or generate a new ValidatorLogic class",
     mixinStandardHelpOptions = true)
 public class TestValidationCommand implements Runnable {
 
-  @Parameters(index = "0", description = "Description of the validation, e.g. 'response contains active users sorted by date'")
+  @Parameters(index = "0", arity = "0..1",
+      description = "Description to generate a validation, 'detail:<name>' to show detail, or omit to list all")
   private String description;
+
+  @Option(names = {"--list", "-l"}, description = "List all indexed validations in this project")
+  private boolean list;
+
+  @Option(names = {"--detail", "-d"}, description = "Show source, when-to-use and how-to-use for a specific validation")
+  private String detail;
 
   @Option(names = "--mode", defaultValue = "auto",
       description = "Generation mode: auto (default), json, java")
@@ -33,10 +41,16 @@ public class TestValidationCommand implements Runnable {
   @Override
   public void run() {
     Path root = projectRoot.toAbsolutePath().normalize();
-    Map<String, String> opts = Map.of("mode", mode, "package", pkg);
+    Map<String, String> opts = new HashMap<>();
+    opts.put("mode", mode);
+    opts.put("package", pkg);
+    if (detail != null) opts.put("detail", detail);
+
     AgentContext ctx = new AgentContext(root,
         JsonlKnowledgeStore.loadProfile(root), AgentMode.PATCH,
         new DisabledLlmClient(), opts);
-    System.out.println(new TestValidationSkill().execute(description, ctx));
+
+    String input = list ? "--list" : (description != null ? description : "");
+    System.out.println(new TestValidationSkill().execute(input, ctx));
   }
 }

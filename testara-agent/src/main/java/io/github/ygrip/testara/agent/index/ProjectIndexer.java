@@ -44,6 +44,9 @@ public class ProjectIndexer {
   private static final Pattern CLASS_NAME = Pattern.compile(
       "(?:public\\s+)?(?:class|interface)\\s+(\\w+)");
 
+  private static final Pattern SCAN_LOCATIONS_PATTERN = Pattern.compile(
+      "(?:command|validator)\\.executor\\.scan-locations\\s*=\\s*(.+)");
+
   private final FeatureParser featureParser = new FeatureParser();
 
   public TestaraProjectProfile index(Path projectRoot) {
@@ -54,22 +57,82 @@ public class ProjectIndexer {
     BuildTool buildTool = Files.exists(projectRoot.resolve("pom.xml"))
         ? BuildTool.MAVEN : BuildTool.GRADLE;
 
+    // Collect all Java source roots: project root + all Maven module source dirs
+    List<Path> javaSourceRoots = collectJavaSourceRoots(projectRoot, modules);
+
+    // Read configured scan packages from configuration.properties
+    Set<String> scanPackages = readScanPackages(projectRoot);
+
     List<Path> featureRoots = findFeatureRoots(projectRoot);
     List<Path> requestSpecRoots = findResourceDirs(projectRoot, "files");
     List<Path> validationRoots = findResourceDirs(projectRoot, "validations");
 
     List<FeatureIndex> features = parseFeatures(featureRoots);
-    List<StepDefinitionIndex> stepDefs = scanStepDefinitions(projectRoot);
-    List<CommandIndex> commands = scanCommands(projectRoot);
-    List<ValidationIndex> validations = scanValidations(projectRoot);
-    List<DriverIndex> drivers = scanDrivers(projectRoot);
+    List<StepDefinitionIndex> stepDefs = scanStepDefinitions(javaSourceRoots);
+    List<CommandIndex> commands = scanCommands(javaSourceRoots, scanPackages);
+    List<ValidationIndex> validations = scanValidations(javaSourceRoots, scanPackages);
+    List<DriverIndex> drivers = scanDrivers(javaSourceRoots);
     List<TagIndex> tags = buildTagIndex(features);
 
     return new TestaraProjectProfile(
         projectRoot, buildTool, javaVersion, modules,
         featureRoots, requestSpecRoots, validationRoots,
         features, stepDefs, commands, validations, drivers, tags,
-        Map.of(), Map.of());
+        Map.of("scanPackages", String.join(",", scanPackages)), Map.of());
+  }
+
+  // ── Source root collection ────────────────────────────────────────
+
+  private List<Path> collectJavaSourceRoots(Path root, List<String> modules) {
+    List<Path> roots = new ArrayList<>();
+    roots.add(root);
+    for (String module : modules) {
+      Path moduleDir = root.resolve(module);
+      Path mainSrc = moduleDir.resolve("src/main/java");
+      Path testSrc = moduleDir.resolve("src/test/java");
+      if (Files.exists(mainSrc)) roots.add(mainSrc.getParent().getParent().getParent()); // module root
+      else roots.add(moduleDir);
+    }
+    return List.copyOf(roots);
+  }
+
+  // ── Scan package config ───────────────────────────────────────────
+
+  private Set<String> readScanPackages(Path root) {
+    // Default: testara built-in package (same as CommandExecutorProperties default)
+    Set<String> defaults = new LinkedHashSet<>(List.of("io.github.ygrip.testara"));
+    Path config = findConfigProperties(root);
+    if (config == null) return defaults;
+    try {
+      String content = Files.readString(config, StandardCharsets.UTF_8);
+      Matcher m = SCAN_LOCATIONS_PATTERN.matcher(content);
+      if (m.find()) {
+        String[] parts = m.group(1).trim().split(",");
+        Set<String> locations = new LinkedHashSet<>();
+        for (String p : parts) {
+          String pkg = p.strip();
+          if (!pkg.isBlank()) locations.add(pkg);
+        }
+        if (!locations.isEmpty()) {
+          locations.addAll(defaults); // always include testara built-ins
+          return locations;
+        }
+      }
+    } catch (IOException e) {
+      LOG.fine("Cannot read config for scan packages: " + e.getMessage());
+    }
+    return defaults;
+  }
+
+  private Path findConfigProperties(Path root) {
+    for (String candidate : List.of(
+        "src/test/resources/configuration.properties",
+        "configuration.properties",
+        "src/main/resources/configuration.properties")) {
+      Path p = root.resolve(candidate);
+      if (Files.exists(p)) return p;
+    }
+    return null;
   }
 
   // ── Module detection ──────────────────────────────────────────────
@@ -172,19 +235,20 @@ public class ProjectIndexer {
 
   // ── Step definition scanning ──────────────────────────────────────
 
-  private List<StepDefinitionIndex> scanStepDefinitions(Path root) {
+  private List<StepDefinitionIndex> scanStepDefinitions(List<Path> roots) {
     List<StepDefinitionIndex> defs = new ArrayList<>();
-    for (Path javaFile : scanJavaFiles(root)) {
-      try {
-        String content = Files.readString(javaFile, StandardCharsets.UTF_8);
-        String className = extractClassName(content);
-        Matcher m = STEP_ANNOTATION.matcher(content);
-        while (m.find()) {
-          defs.add(new StepDefinitionIndex(
-              m.group(1), m.group(2), javaFile, className, ""));
+    for (Path root : roots) {
+      for (Path javaFile : scanJavaFiles(root)) {
+        try {
+          String content = Files.readString(javaFile, StandardCharsets.UTF_8);
+          String className = extractClassName(content);
+          Matcher m = STEP_ANNOTATION.matcher(content);
+          while (m.find()) {
+            defs.add(new StepDefinitionIndex(m.group(1), m.group(2), javaFile, className, ""));
+          }
+        } catch (IOException e) {
+          LOG.fine("Cannot read " + javaFile);
         }
-      } catch (IOException e) {
-        LOG.fine("Cannot read " + javaFile);
       }
     }
     return List.copyOf(defs);
@@ -192,22 +256,29 @@ public class ProjectIndexer {
 
   // ── Command scanning ──────────────────────────────────────────────
 
-  private List<CommandIndex> scanCommands(Path root) {
+  private List<CommandIndex> scanCommands(List<Path> roots, Set<String> scanPackages) {
+    Set<String> seen = new HashSet<>();
     List<CommandIndex> commands = new ArrayList<>();
-    for (Path javaFile : scanJavaFiles(root)) {
-      try {
-        String content = Files.readString(javaFile, StandardCharsets.UTF_8);
-        if (!content.contains("@CommandTag")) continue;
-        Matcher m = COMMAND_TAG.matcher(content);
-        if (m.find()) {
-          String name = m.group(1);
-          List<String> aliases = parseStringArray(m.group(2));
-          boolean cacheable = "true".equals(m.group(3));
-          String className = extractClassName(content);
-          commands.add(new CommandIndex(name, aliases, "String", cacheable, javaFile, className));
+    for (Path root : roots) {
+      for (Path javaFile : scanJavaFiles(root)) {
+        if (!matchesScanPackage(javaFile, scanPackages)) continue;
+        try {
+          String content = Files.readString(javaFile, StandardCharsets.UTF_8);
+          if (!content.contains("@CommandTag")) continue;
+          Matcher m = COMMAND_TAG.matcher(content);
+          while (m.find()) {
+            String name = m.group(1);
+            if (seen.add(name)) {
+              List<String> aliases = parseStringArray(m.group(2));
+              boolean cacheable = "true".equals(m.group(3));
+              String returnType = extractReturnType(content);
+              String className = extractClassName(content);
+              commands.add(new CommandIndex(name, aliases, returnType, cacheable, javaFile, className));
+            }
+          }
+        } catch (IOException e) {
+          LOG.fine("Cannot read " + javaFile);
         }
-      } catch (IOException e) {
-        LOG.fine("Cannot read " + javaFile);
       }
     }
     return List.copyOf(commands);
@@ -215,22 +286,30 @@ public class ProjectIndexer {
 
   // ── Validation scanning ───────────────────────────────────────────
 
-  private List<ValidationIndex> scanValidations(Path root) {
+  private List<ValidationIndex> scanValidations(List<Path> roots, Set<String> scanPackages) {
+    Set<String> seen = new HashSet<>();
     List<ValidationIndex> validations = new ArrayList<>();
-    for (Path javaFile : scanJavaFiles(root)) {
-      try {
-        String content = Files.readString(javaFile, StandardCharsets.UTF_8);
-        if (!content.contains("@ValidationTag")) continue;
-        Matcher m = VALIDATION_TAG.matcher(content);
-        if (m.find()) {
-          String name = m.group(1);
-          List<String> aliases = parseStringArray(m.group(2));
-          boolean cacheable = "true".equals(m.group(3));
-          String className = extractClassName(content);
-          validations.add(new ValidationIndex(name, aliases, "Object", "Object", cacheable, javaFile, className));
+    for (Path root : roots) {
+      for (Path javaFile : scanJavaFiles(root)) {
+        if (!matchesScanPackage(javaFile, scanPackages)) continue;
+        try {
+          String content = Files.readString(javaFile, StandardCharsets.UTF_8);
+          if (!content.contains("@ValidationTag")) continue;
+          Matcher m = VALIDATION_TAG.matcher(content);
+          while (m.find()) {
+            String name = m.group(1);
+            if (seen.add(name)) {
+              List<String> aliases = parseStringArray(m.group(2));
+              boolean cacheable = "true".equals(m.group(3));
+              String actualType = extractGenericType(content, "ValidatorLogic", 0);
+              String expectedType = extractGenericType(content, "ValidatorLogic", 1);
+              String className = extractClassName(content);
+              validations.add(new ValidationIndex(name, aliases, actualType, expectedType, cacheable, javaFile, className));
+            }
+          }
+        } catch (IOException e) {
+          LOG.fine("Cannot read " + javaFile);
         }
-      } catch (IOException e) {
-        LOG.fine("Cannot read " + javaFile);
       }
     }
     return List.copyOf(validations);
@@ -238,32 +317,34 @@ public class ProjectIndexer {
 
   // ── Driver scanning ───────────────────────────────────────────────
 
-  private List<DriverIndex> scanDrivers(Path root) {
+  private List<DriverIndex> scanDrivers(List<Path> roots) {
     List<DriverIndex> drivers = new ArrayList<>();
-    for (Path javaFile : scanJavaFiles(root)) {
-      try {
-        String content = Files.readString(javaFile, StandardCharsets.UTF_8);
-        if (!content.contains("@DriverMetadata")) continue;
-        Matcher meta = DRIVER_METADATA.matcher(content);
-        if (meta.find()) {
-          String block = meta.group(1);
-          Matcher nameMatcher = DRIVER_NAME.matcher(block);
-          String name = nameMatcher.find() ? nameMatcher.group(1) : "";
-          Matcher engineMatcher = DRIVER_ENGINE.matcher(block);
-          String engine = engineMatcher.find() ? engineMatcher.group(1) : "";
-          Matcher platformsMatcher = DRIVER_PLATFORMS.matcher(block);
-          List<String> platforms = platformsMatcher.find()
-              ? parseStringArray(platformsMatcher.group(1).replaceAll("DeviceType\\.", ""))
-              : List.of();
-          Matcher browserMatcher = DRIVER_BROWSER.matcher(block);
-          String browser = browserMatcher.find() ? browserMatcher.group(1) : "";
-          String className = extractClassName(content);
-          if (!name.isBlank()) {
-            drivers.add(new DriverIndex(name, engine, platforms, browser, javaFile, className));
+    for (Path root : roots) {
+      for (Path javaFile : scanJavaFiles(root)) {
+        try {
+          String content = Files.readString(javaFile, StandardCharsets.UTF_8);
+          if (!content.contains("@DriverMetadata")) continue;
+          Matcher meta = DRIVER_METADATA.matcher(content);
+          if (meta.find()) {
+            String block = meta.group(1);
+            Matcher nameMatcher = DRIVER_NAME.matcher(block);
+            String name = nameMatcher.find() ? nameMatcher.group(1) : "";
+            Matcher engineMatcher = DRIVER_ENGINE.matcher(block);
+            String engine = engineMatcher.find() ? engineMatcher.group(1) : "";
+            Matcher platformsMatcher = DRIVER_PLATFORMS.matcher(block);
+            List<String> platforms = platformsMatcher.find()
+                ? parseStringArray(platformsMatcher.group(1).replaceAll("DeviceType\\.", ""))
+                : List.of();
+            Matcher browserMatcher = DRIVER_BROWSER.matcher(block);
+            String browser = browserMatcher.find() ? browserMatcher.group(1) : "";
+            String className = extractClassName(content);
+            if (!name.isBlank()) {
+              drivers.add(new DriverIndex(name, engine, platforms, browser, javaFile, className));
+            }
           }
+        } catch (IOException e) {
+          LOG.fine("Cannot read " + javaFile);
         }
-      } catch (IOException e) {
-        LOG.fine("Cannot read " + javaFile);
       }
     }
     return List.copyOf(drivers);
@@ -329,6 +410,31 @@ public class ProjectIndexer {
   private String extractClassName(String source) {
     Matcher m = CLASS_NAME.matcher(source);
     return m.find() ? m.group(1) : "";
+  }
+
+  private String extractReturnType(String source) {
+    // e.g. "implements CommandLogic<String>" → "String"
+    Pattern p = Pattern.compile("implements\\s+CommandLogic\\s*<\\s*([^>]+)\\s*>");
+    Matcher m = p.matcher(source);
+    return m.find() ? m.group(1).strip() : "Object";
+  }
+
+  private String extractGenericType(String source, String baseClass, int index) {
+    Pattern p = Pattern.compile("extends\\s+" + baseClass + "\\s*<\\s*([^,>]+)(?:,\\s*([^>]+))?\\s*>");
+    Matcher m = p.matcher(source);
+    if (m.find()) {
+      String type = index == 0 ? m.group(1) : m.group(2);
+      return type != null ? type.strip() : "Object";
+    }
+    return "Object";
+  }
+
+  private boolean matchesScanPackage(Path javaFile, Set<String> scanPackages) {
+    if (scanPackages.isEmpty()) return true;
+    String path = javaFile.toString().replace('\\', '/');
+    // Convert package prefix to path segment (e.g., "io.github.ygrip.testara" → "io/github/ygrip/testara")
+    return scanPackages.stream().anyMatch(pkg ->
+        path.contains(pkg.replace('.', '/')));
   }
 
   private List<String> parseStringArray(String raw) {
