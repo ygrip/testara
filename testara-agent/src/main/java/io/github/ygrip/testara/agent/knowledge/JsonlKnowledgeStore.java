@@ -34,21 +34,39 @@ public final class JsonlKnowledgeStore implements ProjectKnowledgeService {
 
   private final ProjectIndexer indexer = new ProjectIndexer();
 
+  /**
+   * Failsafe convenience: load from cache if available, otherwise fall back
+   * to direct {@link ProjectIndexer}. Never throws — always returns a profile.
+   */
+  public static TestaraProjectProfile loadProfile(Path projectRoot) {
+    try {
+      var store = new JsonlKnowledgeStore();
+      return store.loadOrIndex(projectRoot).profile();
+    } catch (Exception e) {
+      LOG.warning("Knowledge store failed, falling back to direct indexer: " + e.getMessage());
+      return new ProjectIndexer().index(projectRoot);
+    }
+  }
+
   @Override
   public ProjectKnowledgeSnapshot loadOrIndex(Path projectRoot) {
-    Path knowledgeDir = projectRoot.resolve(KNOWLEDGE_DIR);
-    var cached = loadManifest(knowledgeDir);
+    try {
+      Path knowledgeDir = projectRoot.resolve(KNOWLEDGE_DIR);
+      var cached = loadManifest(knowledgeDir);
 
-    // Fast path: fingerprints match
-    if (cached.isPresent()) {
-      var currentFp = scanFingerprints(projectRoot);
-      if (currentFp.equals(cached.get().fingerprint())) {
-        LOG.fine("Knowledge cache is fresh — reusing");
-        return cached.get();
+      // Fast path: fingerprints match
+      if (cached.isPresent()) {
+        var currentFp = scanFingerprints(projectRoot);
+        if (currentFp.equals(cached.get().fingerprint())) {
+          LOG.fine("Knowledge cache is fresh — reusing");
+          return cached.get();
+        }
       }
+    } catch (Exception e) {
+      LOG.warning("Knowledge cache load failed, falling back to direct index: " + e.getMessage());
     }
 
-    // Full reindex
+    // Full reindex (also serves as failsafe fallback)
     LOG.info("Indexing project (full) at " + projectRoot);
     TestaraProjectProfile profile = indexer.index(projectRoot);
     var fp = scanFingerprints(projectRoot);

@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.github.ygrip.testara.agent.AgentMode;
+import io.github.ygrip.testara.agent.knowledge.JsonlKnowledgeStore;
 import io.github.ygrip.testara.agent.index.ProjectIndexer;
 import io.github.ygrip.testara.agent.index.TestaraProjectProfile;
 import io.github.ygrip.testara.agent.llm.DisabledLlmClient;
@@ -62,7 +63,7 @@ public class McpServer {
 
     // Eager index
     LOG.info("Indexing project at " + projectRoot);
-    profile = new ProjectIndexer().index(projectRoot);
+    profile = JsonlKnowledgeStore.loadProfile(projectRoot);
     LOG.info("Index complete: " + profile.features().size() + " features, "
         + profile.totalScenarios() + " scenarios");
 

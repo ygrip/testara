@@ -1,7 +1,7 @@
 package io.github.ygrip.testara.agent.cli.command;
 
 import io.github.ygrip.testara.agent.AgentMode;
-import io.github.ygrip.testara.agent.index.ProjectIndexer;
+import io.github.ygrip.testara.agent.knowledge.JsonlKnowledgeStore;
 import io.github.ygrip.testara.agent.llm.DisabledLlmClient;
 import io.github.ygrip.testara.agent.skill.AgentContext;
 import io.github.ygrip.testara.agent.skill.TestCommandSkill;
@@ -38,7 +38,7 @@ public class TestCommandSkillCommand implements Runnable {
     Path root = projectRoot.toAbsolutePath().normalize();
     Map<String, String> opts = Map.of("package", pkg, "returnType", returnType);
     AgentContext ctx = new AgentContext(root,
-        new ProjectIndexer().index(root), AgentMode.PATCH,
+        JsonlKnowledgeStore.loadProfile(root), AgentMode.PATCH,
         new DisabledLlmClient(), opts);
     System.out.println(new TestCommandSkill().execute(description, ctx));
   }

@@ -1,7 +1,7 @@
 package io.github.ygrip.testara.agent.cli.command;
 
 import io.github.ygrip.testara.agent.AgentMode;
-import io.github.ygrip.testara.agent.index.ProjectIndexer;
+import io.github.ygrip.testara.agent.knowledge.JsonlKnowledgeStore;
 import io.github.ygrip.testara.agent.index.TestaraProjectProfile;
 import io.github.ygrip.testara.agent.llm.DisabledLlmClient;
 import io.github.ygrip.testara.agent.skill.AgentContext;
@@ -31,8 +31,7 @@ public class TestOverviewCommand implements Runnable {
   @Override
   public void run() {
     Path projectRoot = target.toAbsolutePath().normalize();
-    ProjectIndexer indexer = new ProjectIndexer();
-    TestaraProjectProfile profile = indexer.index(projectRoot);
+    TestaraProjectProfile profile = JsonlKnowledgeStore.loadProfile(projectRoot);
 
     AgentContext context = new AgentContext(
         projectRoot, profile, AgentMode.READ_ONLY,

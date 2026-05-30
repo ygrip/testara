@@ -1,7 +1,7 @@
 package io.github.ygrip.testara.agent.cli.command;
 
 import io.github.ygrip.testara.agent.AgentMode;
-import io.github.ygrip.testara.agent.index.ProjectIndexer;
+import io.github.ygrip.testara.agent.knowledge.JsonlKnowledgeStore;
 import io.github.ygrip.testara.agent.llm.DisabledLlmClient;
 import io.github.ygrip.testara.agent.skill.AgentContext;
 import io.github.ygrip.testara.agent.skill.TestRunSkill;
@@ -51,7 +51,7 @@ public class TestRunCommand implements Runnable {
     if (module != null) opts.put("module", module);
 
     AgentContext ctx = new AgentContext(root,
-        new ProjectIndexer().index(root), AgentMode.PLAN,
+        JsonlKnowledgeStore.loadProfile(root), AgentMode.PLAN,
         new DisabledLlmClient(), opts);
     System.out.println(new TestRunSkill().execute(intent, ctx));
   }
