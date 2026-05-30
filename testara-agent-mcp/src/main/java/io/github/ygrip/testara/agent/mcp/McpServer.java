@@ -17,6 +17,7 @@ import io.github.ygrip.testara.agent.skill.run.MavenCommandBuilder;
 
 import java.io.*;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.*;
@@ -61,11 +62,20 @@ public class McpServer {
     BufferedReader in  = new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8));
     PrintWriter    out = new PrintWriter(new OutputStreamWriter(System.out, StandardCharsets.UTF_8), true);
 
-    // Eager index
-    LOG.info("Indexing project at " + projectRoot);
-    profile = JsonlKnowledgeStore.loadProfile(projectRoot);
-    LOG.info("Index complete: " + profile.features().size() + " features, "
-        + profile.totalScenarios() + " scenarios");
+    // Index only when the root looks like a real project — skip when launched from home dir or
+    // a non-project directory (e.g. VS Code global MCP config with "." as CWD)
+    if (Files.exists(projectRoot.resolve("pom.xml")) || Files.exists(projectRoot.resolve("build.gradle"))) {
+      LOG.info("Indexing project at " + projectRoot);
+      profile = JsonlKnowledgeStore.loadProfile(projectRoot);
+      LOG.info("Index complete: " + profile.features().size() + " features, "
+          + profile.totalScenarios() + " scenarios");
+    } else {
+      LOG.warning("No pom.xml or build.gradle found at " + projectRoot + " — starting without project index. Pass the project path as the mcp argument.");
+      profile = new TestaraProjectProfile(projectRoot, null, "unknown",
+          List.of(), List.of(), List.of(), List.of(),
+          List.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
+          Map.of(), Map.of());
+    }
 
     String line;
     while ((line = in.readLine()) != null) {

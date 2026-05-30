@@ -4,8 +4,8 @@ import io.github.ygrip.testara.agent.parser.FeatureParser;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
+import java.nio.file.*;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.*;
 import java.util.logging.Logger;
 import java.util.regex.Matcher;
@@ -105,12 +105,21 @@ public class ProjectIndexer {
 
   private List<Path> findFeatureRoots(Path root) {
     List<Path> roots = new ArrayList<>();
-    try (Stream<Path> walk = Files.walk(root, 6)) {
-      walk.filter(p -> p.getFileName() != null
-              && p.getFileName().toString().equals("features")
-              && Files.isDirectory(p)
-              && !p.toString().contains("target"))
-          .forEach(roots::add);
+    try {
+      Files.walkFileTree(root, Set.of(), 6, new SimpleFileVisitor<>() {
+        @Override
+        public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
+          String name = dir.getFileName() == null ? "" : dir.getFileName().toString();
+          if (name.equals("target")) return FileVisitResult.SKIP_SUBTREE;
+          if (name.equals("features")) roots.add(dir);
+          return FileVisitResult.CONTINUE;
+        }
+        @Override
+        public FileVisitResult visitFileFailed(Path file, IOException exc) {
+          LOG.fine("Skipping inaccessible path: " + file);
+          return FileVisitResult.CONTINUE;
+        }
+      });
     } catch (IOException e) {
       LOG.warning("Error scanning for feature roots: " + e.getMessage());
     }
@@ -119,12 +128,21 @@ public class ProjectIndexer {
 
   private List<Path> findResourceDirs(Path root, String dirName) {
     List<Path> dirs = new ArrayList<>();
-    try (Stream<Path> walk = Files.walk(root, 6)) {
-      walk.filter(p -> p.getFileName() != null
-              && p.getFileName().toString().equals(dirName)
-              && Files.isDirectory(p)
-              && !p.toString().contains("target"))
-          .forEach(dirs::add);
+    try {
+      Files.walkFileTree(root, Set.of(), 6, new SimpleFileVisitor<>() {
+        @Override
+        public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
+          String name = dir.getFileName() == null ? "" : dir.getFileName().toString();
+          if (name.equals("target")) return FileVisitResult.SKIP_SUBTREE;
+          if (name.equals(dirName)) dirs.add(dir);
+          return FileVisitResult.CONTINUE;
+        }
+        @Override
+        public FileVisitResult visitFileFailed(Path file, IOException exc) {
+          LOG.fine("Skipping inaccessible path: " + file);
+          return FileVisitResult.CONTINUE;
+        }
+      });
     } catch (IOException e) {
       LOG.warning("Error scanning for " + dirName + " dirs: " + e.getMessage());
     }
@@ -156,7 +174,7 @@ public class ProjectIndexer {
 
   private List<StepDefinitionIndex> scanStepDefinitions(Path root) {
     List<StepDefinitionIndex> defs = new ArrayList<>();
-    scanJavaFiles(root).forEach(javaFile -> {
+    for (Path javaFile : scanJavaFiles(root)) {
       try {
         String content = Files.readString(javaFile, StandardCharsets.UTF_8);
         String className = extractClassName(content);
@@ -168,7 +186,7 @@ public class ProjectIndexer {
       } catch (IOException e) {
         LOG.fine("Cannot read " + javaFile);
       }
-    });
+    }
     return List.copyOf(defs);
   }
 
@@ -176,10 +194,10 @@ public class ProjectIndexer {
 
   private List<CommandIndex> scanCommands(Path root) {
     List<CommandIndex> commands = new ArrayList<>();
-    scanJavaFiles(root).forEach(javaFile -> {
+    for (Path javaFile : scanJavaFiles(root)) {
       try {
         String content = Files.readString(javaFile, StandardCharsets.UTF_8);
-        if (!content.contains("@CommandTag")) return;
+        if (!content.contains("@CommandTag")) continue;
         Matcher m = COMMAND_TAG.matcher(content);
         if (m.find()) {
           String name = m.group(1);
@@ -191,7 +209,7 @@ public class ProjectIndexer {
       } catch (IOException e) {
         LOG.fine("Cannot read " + javaFile);
       }
-    });
+    }
     return List.copyOf(commands);
   }
 
@@ -199,10 +217,10 @@ public class ProjectIndexer {
 
   private List<ValidationIndex> scanValidations(Path root) {
     List<ValidationIndex> validations = new ArrayList<>();
-    scanJavaFiles(root).forEach(javaFile -> {
+    for (Path javaFile : scanJavaFiles(root)) {
       try {
         String content = Files.readString(javaFile, StandardCharsets.UTF_8);
-        if (!content.contains("@ValidationTag")) return;
+        if (!content.contains("@ValidationTag")) continue;
         Matcher m = VALIDATION_TAG.matcher(content);
         if (m.find()) {
           String name = m.group(1);
@@ -214,7 +232,7 @@ public class ProjectIndexer {
       } catch (IOException e) {
         LOG.fine("Cannot read " + javaFile);
       }
-    });
+    }
     return List.copyOf(validations);
   }
 
@@ -222,10 +240,10 @@ public class ProjectIndexer {
 
   private List<DriverIndex> scanDrivers(Path root) {
     List<DriverIndex> drivers = new ArrayList<>();
-    scanJavaFiles(root).forEach(javaFile -> {
+    for (Path javaFile : scanJavaFiles(root)) {
       try {
         String content = Files.readString(javaFile, StandardCharsets.UTF_8);
-        if (!content.contains("@DriverMetadata")) return;
+        if (!content.contains("@DriverMetadata")) continue;
         Matcher meta = DRIVER_METADATA.matcher(content);
         if (meta.find()) {
           String block = meta.group(1);
@@ -247,7 +265,7 @@ public class ProjectIndexer {
       } catch (IOException e) {
         LOG.fine("Cannot read " + javaFile);
       }
-    });
+    }
     return List.copyOf(drivers);
   }
 
@@ -282,13 +300,30 @@ public class ProjectIndexer {
 
   // ── Utilities ─────────────────────────────────────────────────────
 
-  private Stream<Path> scanJavaFiles(Path root) {
+  private List<Path> scanJavaFiles(Path root) {
+    List<Path> files = new ArrayList<>();
     try {
-      return Files.walk(root)
-          .filter(p -> p.toString().endsWith(".java") && !p.toString().contains("target"));
+      Files.walkFileTree(root, new SimpleFileVisitor<>() {
+        @Override
+        public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
+          String name = dir.getFileName() == null ? "" : dir.getFileName().toString();
+          return name.equals("target") ? FileVisitResult.SKIP_SUBTREE : FileVisitResult.CONTINUE;
+        }
+        @Override
+        public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
+          if (file.toString().endsWith(".java")) files.add(file);
+          return FileVisitResult.CONTINUE;
+        }
+        @Override
+        public FileVisitResult visitFileFailed(Path file, IOException exc) {
+          LOG.fine("Skipping inaccessible path: " + file);
+          return FileVisitResult.CONTINUE;
+        }
+      });
     } catch (IOException e) {
-      return Stream.empty();
+      LOG.warning("Error scanning Java files: " + e.getMessage());
     }
+    return files;
   }
 
   private String extractClassName(String source) {
