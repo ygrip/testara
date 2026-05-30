@@ -38,7 +38,19 @@ public class McpServer {
   private static final Logger LOG = Logger.getLogger(McpServer.class.getName());
 
   private static final String SERVER_NAME    = "testara";
-  private static final String SERVER_VERSION = "2.0.0";
+  private static final String SERVER_VERSION = readVersion();
+
+  private static String readVersion() {
+    try (java.io.InputStream is = McpServer.class.getResourceAsStream(
+        "/META-INF/maven/io.github.ygrip/testara-agent-cli/pom.properties")) {
+      if (is != null) {
+        java.util.Properties p = new java.util.Properties();
+        p.load(is);
+        return p.getProperty("version", "unknown");
+      }
+    } catch (Exception ignored) {}
+    return "unknown";
+  }
 
   private final Path projectRoot;
   private final ObjectMapper mapper = new ObjectMapper();
