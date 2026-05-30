@@ -92,6 +92,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      - uses: actions/checkout@v4
+
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
@@ -100,6 +102,9 @@ jobs:
       - name: Flatten artifacts
         run: |
           find artifacts -type f -exec cp {} . \;
+          cp scripts/install.sh install.sh
+          cp scripts/install.ps1 install.ps1
+          cp scripts/testara-agent.bat testara-agent.bat
           ls -la
 
       - name: Create GitHub Release
@@ -114,3 +119,6 @@ jobs:
             testara-agent-darwin-amd64
             testara-agent-darwin-arm64
             testara-agent-windows-amd64.exe
+            install.sh
+            install.ps1
+            testara-agent.bat
