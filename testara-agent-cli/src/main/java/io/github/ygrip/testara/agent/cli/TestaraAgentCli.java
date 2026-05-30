@@ -21,6 +21,7 @@ import picocli.CommandLine.Command;
         ListCommandsCommand.class,
         ListValidationsCommand.class,
         ListUiCatalogCommand.class,
+        KnowledgeCommand.class,
         McpCommand.class,
         CommandLine.HelpCommand.class
     }
