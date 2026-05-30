@@ -170,15 +170,139 @@ public class TestReviewSkill implements AgentSkill<Path, String> {
             .replaceAll("\\d+", "N")).collect(Collectors.joining("|"));
         byStructure.computeIfAbsent(key, k -> new ArrayList<>()).add(s);
       }
-      byStructure.values().stream()
-          .filter(group -> group.size() >= 2)
-          .forEach(group -> out.add(new ReviewFinding(ReviewSeverity.INFO,
-              "Scenarios with identical step structure (" + group.size() + "×)",
-              "\"" + group.get(0).name() + "\" and " + (group.size() - 1) + " others share the same step pattern.",
-              f.path(), group.get(0).name(),
-              "Convert to a Scenario Outline with Examples table.")));
+      for (var entry : byStructure.entrySet()) {
+        List<ScenarioIndex> group = entry.getValue();
+        if (group.size() < 2) continue;
+
+        // Build suggested Examples table by extracting differing values
+        List<List<String>> exampleRows = buildExampleTable(group);
+        StringBuilder suggestion = new StringBuilder();
+        suggestion.append("\"").append(group.get(0).name()).append("\" and ")
+            .append(group.size() - 1).append(" other(s) share the same step pattern.\n\n");
+        suggestion.append("**Suggested Scenario Outline conversion:**\n\n");
+
+        ScenarioIndex first = group.get(0);
+        suggestion.append("```gherkin\n");
+        suggestion.append("Scenario Outline: ").append(extractCommonName(group)).append("\n");
+        for (int si = 0; si < first.steps().size(); si++) {
+          String text = parameterizeStep(first.steps().get(si).text(), exampleRows, si, group);
+          suggestion.append("  ").append(first.steps().get(si).keyword())
+              .append(" ").append(text).append("\n");
+        }
+        suggestion.append("\n  Examples:\n");
+        // Header row from extracted parameters
+        List<String> params = extractParameters(first.steps(), group);
+        suggestion.append("    | ").append(String.join(" | ", params)).append(" |\n");
+        // Data rows
+        for (List<String> row : exampleRows) {
+          suggestion.append("    | ").append(String.join(" | ", row)).append(" |\n");
+        }
+        suggestion.append("```\n");
+
+        out.add(new ReviewFinding(ReviewSeverity.INFO,
+            "Scenarios with identical step structure (" + group.size() + "\u00D7)",
+            suggestion.toString(),
+            f.path(), group.get(0).name(),
+            "Convert to a Scenario Outline with an Examples table."));
+      }
     }
     return out;
+  }
+
+  /** Build example table rows by extracting differing quoted/numeric values from steps. */
+  private List<List<String>> buildExampleTable(List<ScenarioIndex> group) {
+    List<List<String>> rows = new ArrayList<>();
+    if (group.size() < 2) return rows;
+
+    // Extract all quoted/numeric values from each scenario's steps
+    for (ScenarioIndex s : group) {
+      List<String> row = new ArrayList<>();
+      for (var step : s.steps()) {
+        // Extract quoted strings and numbers as example values
+        var matcher = java.util.regex.Pattern.compile("\"([^\"]+)\"|\\b(\\d+)\\b").matcher(step.text());
+        while (matcher.find()) {
+          row.add(matcher.group(1) != null ? matcher.group(1) : matcher.group(2));
+        }
+      }
+      if (!row.isEmpty()) rows.add(row);
+    }
+    return rows;
+  }
+
+  /** Parameterize a step text by replacing varying values with placeholders. */
+  private String parameterizeStep(String stepText, List<List<String>> exampleRows,
+      int stepIndex, List<ScenarioIndex> group) {
+    if (exampleRows.isEmpty()) return stepText;
+
+    // Extract all values from this step across all scenarios
+    List<String> stepValues = new ArrayList<>();
+    for (ScenarioIndex s : group) {
+      var step = s.steps().size() > stepIndex ? s.steps().get(stepIndex) : null;
+      if (step != null) {
+        var matcher = java.util.regex.Pattern.compile("\"([^\"]+)\"|\\b(\\d+)\\b").matcher(step.text());
+        while (matcher.find()) {
+          stepValues.add(matcher.group(1) != null ? matcher.group(1) : matcher.group(2));
+        }
+      }
+    }
+    if (stepValues.isEmpty()) return stepText;
+
+    // Replace varying values with parameter placeholders
+    String result = stepText;
+    for (String val : stepValues) {
+      String paramName = val.replaceAll("[^a-zA-Z0-9]", "_").toLowerCase();
+      if (paramName.length() > 20) paramName = paramName.substring(0, 20);
+      result = result.replace("\"" + val + "\"", "\"<" + paramName + ">\"");
+      result = result.replaceAll("\\b" + java.util.regex.Pattern.quote(val) + "\\b",
+          "<" + paramName + ">");
+    }
+    return result;
+  }
+
+  /** Extract parameter names from steps for the Examples header. */
+  private List<String> extractParameters(List<StepIndex> steps, List<ScenarioIndex> group) {
+    Set<String> params = new LinkedHashSet<>();
+    for (ScenarioIndex s : group) {
+      for (var step : s.steps()) {
+        var matcher = java.util.regex.Pattern.compile("\"([^\"]+)\"|\\b(\\d+)\\b").matcher(step.text());
+        while (matcher.find()) {
+          String val = matcher.group(1) != null ? matcher.group(1) : matcher.group(2);
+          if (isVaryingAcrossScenarios(val, steps, group)) {
+            String param = val.replaceAll("[^a-zA-Z0-9]", "_").toLowerCase();
+            if (param.length() > 20) param = param.substring(0, 20);
+            params.add(param);
+          }
+        }
+      }
+    }
+    if (params.isEmpty()) params.add("value");
+    return List.copyOf(params);
+  }
+
+  private boolean isVaryingAcrossScenarios(String value, List<StepIndex> templateSteps,
+      List<ScenarioIndex> group) {
+    long unique = group.stream()
+        .flatMap(s -> s.steps().stream())
+        .map(st -> st.text())
+        .filter(t -> t.contains(value))
+        .distinct()
+        .count();
+    return unique > 1;
+  }
+
+  private String extractCommonName(List<ScenarioIndex> group) {
+    // Find common words across scenario names
+    String[] words = group.get(0).name().split("\\s+");
+    if (words.length == 0) return "Combined Scenario";
+
+    List<String> common = new ArrayList<>();
+    for (String word : words) {
+      if (group.stream().allMatch(s -> s.name().toLowerCase().contains(word.toLowerCase()))) {
+        common.add(word);
+      }
+    }
+    return common.isEmpty() ? group.get(0).name() + " Variations"
+        : String.join(" ", common);
   }
 
   // ── Utilities ─────────────────────────────────────────────────────

@@ -88,6 +88,23 @@
                 <version>${project.parent.version}</version>
             </dependency>
 
+            <!-- Agent modules -->
+            <dependency>
+                <groupId>io.github.ygrip</groupId>
+                <artifactId>testara-agent</artifactId>
+                <version>${project.parent.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.github.ygrip</groupId>
+                <artifactId>testara-agent-cli</artifactId>
+                <version>${project.parent.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.github.ygrip</groupId>
+                <artifactId>testara-agent-mcp</artifactId>
+                <version>${project.parent.version}</version>
+            </dependency>
+
             <!-- Third party Modules -->
         </dependencies>
     </dependencyManagement>
