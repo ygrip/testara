@@ -1,0 +1,128 @@
+[
+  {
+    "name": "io.github.ygrip.testara.agent.cli.TestaraAgentCli",
+    "allDeclaredConstructors": true,
+    "allPublicConstructors": true,
+    "allDeclaredMethods": true,
+    "allPublicMethods": true
+  },
+  {
+    "name": "io.github.ygrip.testara.agent.cli.command.TestSummaryCommand",
+    "allDeclaredConstructors": true,
+    "allPublicMethods": true,
+    "fields": [{"name": "target"}, {"name": "scenarioFilter"}, {"name": "projectRoot"}]
+  },
+  {
+    "name": "io.github.ygrip.testara.agent.cli.command.TestOverviewCommand",
+    "allDeclaredConstructors": true,
+    "allPublicMethods": true,
+    "fields": [{"name": "target"}, {"name": "format"}, {"name": "projectRoot"}]
+  },
+  {
+    "name": "io.github.ygrip.testara.agent.cli.command.TestReviewCommand",
+    "allDeclaredConstructors": true,
+    "allPublicMethods": true,
+    "fields": [{"name": "target"}, {"name": "projectRoot"}]
+  },
+  {
+    "name": "io.github.ygrip.testara.agent.cli.command.TestRunCommand",
+    "allDeclaredConstructors": true,
+    "allPublicMethods": true,
+    "fields": [{"name": "intent"}, {"name": "dryRun"}, {"name": "execute"}, {"name": "rerunFailed"}, {"name": "module"}, {"name": "reportFormat"}, {"name": "projectRoot"}]
+  },
+  {
+    "name": "io.github.ygrip.testara.agent.cli.command.TestPlanCommand",
+    "allDeclaredConstructors": true,
+    "allPublicMethods": true
+  },
+  {
+    "name": "io.github.ygrip.testara.agent.cli.command.TestCommandSkillCommand",
+    "allDeclaredConstructors": true,
+    "allPublicMethods": true
+  },
+  {
+    "name": "io.github.ygrip.testara.agent.cli.command.TestValidationCommand",
+    "allDeclaredConstructors": true,
+    "allPublicMethods": true
+  },
+  {
+    "name": "io.github.ygrip.testara.agent.cli.command.TestInitCommand",
+    "allDeclaredConstructors": true,
+    "allPublicMethods": true
+  },
+  {
+    "name": "io.github.ygrip.testara.agent.cli.command.McpCommand",
+    "allDeclaredConstructors": true,
+    "allPublicMethods": true
+  },
+  {
+    "name": "com.fasterxml.jackson.databind.ObjectMapper",
+    "allDeclaredConstructors": true,
+    "allPublicMethods": true
+  },
+  {
+    "name": "com.fasterxml.jackson.databind.node.ObjectNode",
+    "allDeclaredConstructors": true,
+    "allPublicMethods": true
+  },
+  {
+    "name": "com.fasterxml.jackson.databind.node.ArrayNode",
+    "allDeclaredConstructors": true,
+    "allPublicMethods": true
+  },
+  {
+    "name": "java.util.logging.Logger",
+    "allDeclaredConstructors": true,
+    "allPublicMethods": true
+  },
+  {
+    "name": "io.github.ygrip.testara.agent.index.ProjectIndexer",
+    "allDeclaredConstructors": true,
+    "allPublicMethods": true
+  },
+  {
+    "name": "io.github.ygrip.testara.agent.parser.FeatureParser",
+    "allDeclaredConstructors": true,
+    "allPublicMethods": true
+  },
+  {
+    "name": "io.github.ygrip.testara.agent.skill.TestSummarySkill",
+    "allDeclaredConstructors": true,
+    "allPublicMethods": true
+  },
+  {
+    "name": "io.github.ygrip.testara.agent.skill.TestOverviewSkill",
+    "allDeclaredConstructors": true,
+    "allPublicMethods": true
+  },
+  {
+    "name": "io.github.ygrip.testara.agent.skill.TestReviewSkill",
+    "allDeclaredConstructors": true,
+    "allPublicMethods": true
+  },
+  {
+    "name": "io.github.ygrip.testara.agent.skill.TestRunSkill",
+    "allDeclaredConstructors": true,
+    "allPublicMethods": true
+  },
+  {
+    "name": "io.github.ygrip.testara.agent.skill.TestPlanSkill",
+    "allDeclaredConstructors": true,
+    "allPublicMethods": true
+  },
+  {
+    "name": "io.github.ygrip.testara.agent.skill.TestCommandSkill",
+    "allDeclaredConstructors": true,
+    "allPublicMethods": true
+  },
+  {
+    "name": "io.github.ygrip.testara.agent.skill.TestValidationSkill",
+    "allDeclaredConstructors": true,
+    "allPublicMethods": true
+  },
+  {
+    "name": "io.github.ygrip.testara.agent.skill.TestInitSkill",
+    "allDeclaredConstructors": true,
+    "allPublicMethods": true
+  }
+]

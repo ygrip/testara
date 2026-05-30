@@ -25,9 +25,6 @@ import java.util.stream.Collectors;
 public class TestRunSkill implements AgentSkill<String, String> {
 
   private static final Logger LOG = Logger.getLogger(TestRunSkill.class.getName());
-  private static final Pattern JSON_STATUS  = Pattern.compile("\"status\"\\s*:\\s*\"(passed|failed|pending|skipped)\"");
-  private static final Pattern JSON_NAME    = Pattern.compile("\"name\"\\s*:\\s*\"([^\"]+)\"");
-  private static final Pattern JSON_MESSAGE = Pattern.compile("\"message\"\\s*:\\s*\"([^\"]+)\"");
 
   private final TagExpressionResolver resolver;
   private final MavenCommandBuilder cmdBuilder;
@@ -128,11 +125,13 @@ public class TestRunSkill implements AgentSkill<String, String> {
     }
     long duration = System.currentTimeMillis() - start;
 
-    // Try to parse Cucumber JSON report
+    // Try Cucumber JSON / JUnit XML report parsing
     Path reportJson = projectRoot.resolve("target/cucumber.json");
+    Path junitXml = projectRoot.resolve("target/surefire-reports");
     if (Files.exists(reportJson)) {
       try {
-        TestRunReport report = parseJson(Files.readString(reportJson), tagExpr, duration);
+        TestRunReport report = io.github.ygrip.testara.agent.parser.CucumberReportParser
+            .parseCucumberJson(reportJson, tagExpr, duration);
         return report.toMarkdown();
       } catch (IOException e) {
         LOG.warning("Cannot parse cucumber.json: " + e.getMessage());
@@ -143,23 +142,6 @@ public class TestRunSkill implements AgentSkill<String, String> {
     String status = exitCode == 0 ? "PASSED" : "FAILED";
     return "## Test Run Report\n\n**Status:** " + status + "  \n**Duration:** "
         + duration / 1000 + "s  \n**Tag filter:** `" + tagExpr + "`  \n";
-  }
-
-  private TestRunReport parseJson(String json, String tagExpr, long durationMs) {
-    int passed = 0, failed = 0, skipped = 0;
-    List<TestRunReport.FailedScenario> failedScenarios = new ArrayList<>();
-    // Simple scan — avoids full JSON parse dependency
-    Matcher statusMatcher = JSON_STATUS.matcher(json);
-    while (statusMatcher.find()) {
-      switch (statusMatcher.group(1)) {
-        case "passed"  -> passed++;
-        case "failed"  -> failed++;
-        case "skipped", "pending" -> skipped++;
-      }
-    }
-    String status = failed > 0 ? "FAILED" : "PASSED";
-    return new TestRunReport(status, durationMs, tagExpr,
-        passed + failed + skipped, passed, failed, skipped, failedScenarios);
   }
 
   /**

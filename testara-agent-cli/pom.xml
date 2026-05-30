@@ -85,4 +85,39 @@
       </plugin>
     </plugins>
   </build>
+
+  <profiles>
+    <profile>
+      <id>native</id>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.graalvm.buildtools</groupId>
+            <artifactId>native-maven-plugin</artifactId>
+            <version>0.10.3</version>
+            <extensions>true</extensions>
+            <executions>
+              <execution>
+                <id>build-native</id>
+                <goals>
+                  <goal>compile-no-fork</goal>
+                </goals>
+                <phase>package</phase>
+              </execution>
+            </executions>
+            <configuration>
+              <imageName>testara-agent</imageName>
+              <mainClass>io.github.ygrip.testara.agent.cli.TestaraAgentCli</mainClass>
+              <buildArgs>
+                <arg>--no-fallback</arg>
+                <arg>-H:+ReportExceptionStackTraces</arg>
+                <arg>-H:IncludeResources=logging.properties</arg>
+                <arg>-J-Xmx4g</arg>
+              </buildArgs>
+            </configuration>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+  </profiles>
 </project>

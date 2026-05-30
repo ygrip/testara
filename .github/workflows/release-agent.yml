@@ -9,9 +9,9 @@ permissions:
   contents: write
 
 jobs:
-  release-agent:
+  # Fat JAR build (always)
+  release-agent-jar:
     runs-on: ubuntu-latest
-
     steps:
       - uses: actions/checkout@v4
 
@@ -25,9 +25,75 @@ jobs:
       - name: Build agent fat JAR
         run: mvn -pl testara-agent-cli -am package -DskipTests -B --no-transfer-progress
 
-      - name: Prepare release assets
+      - name: Prepare JAR asset
+        run: cp testara-agent-cli/target/testara-agent.jar testara-agent.jar
+
+      - name: Upload JAR artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: testara-agent-jar
+          path: testara-agent.jar
+
+  # Native binary build (matrix across OS/arch)
+  release-agent-native:
+    needs: release-agent-jar
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            arch: linux-amd64
+          - os: ubuntu-24.04-arm
+            arch: linux-arm64
+          - os: macos-13
+            arch: darwin-amd64
+          - os: macos-latest
+            arch: darwin-arm64
+          - os: windows-latest
+            arch: windows-amd64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up GraalVM JDK 21
+        uses: graalvm/setup-graalvm@v1
+        with:
+          java-version: '21'
+          distribution: 'graalvm'
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          native-image-job-reports: 'true'
+
+      - name: Build native binary
+        run: mvn -pl testara-agent-cli -am package -Pnative -DskipTests -B --no-transfer-progress
+
+      - name: Prepare native binary asset
+        shell: bash
         run: |
-          cp testara-agent-cli/target/testara-agent.jar testara-agent.jar
+          if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
+            cp testara-agent-cli/target/testara-agent.exe testara-agent-${{ matrix.arch }}.exe
+          else
+            cp testara-agent-cli/target/testara-agent testara-agent-${{ matrix.arch }}
+          fi
+
+      - name: Upload native artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: testara-agent-${{ matrix.arch }}
+          path: testara-agent-${{ matrix.arch }}*
+
+  # Combined GitHub Release
+  create-release:
+    needs: [release-agent-jar, release-agent-native]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Flatten artifacts
+        run: |
+          find artifacts -type f -exec cp {} . \;
+          ls -la
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -36,3 +102,8 @@ jobs:
           name: "Testara Agent ${{ github.ref_name }}"
           files: |
             testara-agent.jar
+            testara-agent-linux-amd64
+            testara-agent-linux-arm64
+            testara-agent-darwin-amd64
+            testara-agent-darwin-arm64
+            testara-agent-windows-amd64.exe
