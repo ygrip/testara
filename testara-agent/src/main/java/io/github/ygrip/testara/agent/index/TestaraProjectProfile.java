@@ -16,6 +16,7 @@ public record TestaraProjectProfile(
     List<StepDefinitionIndex> stepDefinitions,
     List<CommandIndex> commands,
     List<ValidationIndex> validations,
+    List<DriverIndex> drivers,
     List<TagIndex> tags
 ) {
   public int totalScenarios() {

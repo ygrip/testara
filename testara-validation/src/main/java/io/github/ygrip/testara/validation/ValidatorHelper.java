@@ -13,6 +13,7 @@ import io.github.ygrip.testara.core.support.Stopwatch;
 import io.github.ygrip.testara.core.time.DurationParser;
 import io.github.ygrip.testara.core.transformer.TransformerService;
 import io.github.ygrip.testara.validation.model.DataValidation;
+import io.github.ygrip.testara.validation.model.ValidatorCatalogEntry;
 import io.github.ygrip.testara.validation.model.ValidationTag;
 import io.github.ygrip.testara.validation.model.ValidatorInfo;
 import io.github.ygrip.testara.validation.model.ValidatorLogic;
@@ -28,9 +29,11 @@ import java.io.File;
 import java.security.InvalidParameterException;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
+import java.util.stream.Collectors;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ExecutorService;
@@ -310,6 +313,57 @@ public final class ValidatorHelper {
    */
   public static List<PopulatedTag> getAvailableValidator() {
     return VALIDATOR_LIST;
+  }
+
+  /**
+   * <p>listValidatorCatalog.</p>
+   * Returns a sorted list of all registered validators with their parameter type details.
+   * Only primary validator names (not aliases) are included as top-level entries.
+   *
+   * @return a {@link List} of {@link ValidatorCatalogEntry} objects.
+   */
+  public static List<ValidatorCatalogEntry> listValidatorCatalog() {
+    return REGISTERED_VALIDATORS.entrySet().stream()
+        .filter(e -> {
+          ValidatorInfo info = new ValidatorInfo(e.getValue());
+          return e.getKey().equals(info.name()); // only primary names
+        })
+        .map(e -> {
+          Class<?> clazz = e.getValue();
+          ValidatorInfo info = new ValidatorInfo(clazz);
+          String[] types = extractValidatorTypes(clazz);
+          return new ValidatorCatalogEntry(
+              info.name(),
+              info.aliases(),
+              types[0],
+              types[1]
+          );
+        })
+        .sorted(Comparator.comparing(ValidatorCatalogEntry::name))
+        .collect(Collectors.toList());
+  }
+
+  private static String[] extractValidatorTypes(Class<?> clazz) {
+    // Walk superclass chain to find ValidatorLogic<ACTUAL, EXPECTED>
+    Class<?> current = clazz;
+    while (current != null && !current.getSuperclass().equals(Object.class)) {
+      java.lang.reflect.Type superType = current.getGenericSuperclass();
+      if (superType instanceof java.lang.reflect.ParameterizedType pt) {
+        java.lang.reflect.Type[] args = pt.getActualTypeArguments();
+        if (args.length == 2) {
+          return new String[]{typeSimpleName(args[0]), typeSimpleName(args[1])};
+        }
+      }
+      current = current.getSuperclass();
+    }
+    return new String[]{"Object", "Object"};
+  }
+
+  private static String typeSimpleName(java.lang.reflect.Type type) {
+    if (type instanceof Class<?> c) return c.getSimpleName();
+    String name = type.getTypeName();
+    int lastDot = name.lastIndexOf('.');
+    return lastDot >= 0 ? name.substring(lastDot + 1) : name;
   }
 
   /**

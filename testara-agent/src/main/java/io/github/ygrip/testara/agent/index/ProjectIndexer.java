@@ -31,6 +31,16 @@ public class ProjectIndexer {
       "@CommandTag\\([^)]*command\\s*=\\s*\"([^\"]+)\"[^)]*(?:alias\\s*=\\s*\\{([^}]*)\\})?[^)]*(?:cacheable\\s*=\\s*(true|false))?");
   private static final Pattern VALIDATION_TAG = Pattern.compile(
       "@ValidationTag\\([^)]*command\\s*=\\s*\"([^\"]+)\"[^)]*(?:alias\\s*=\\s*\\{([^}]*)\\})?[^)]*(?:cacheable\\s*=\\s*(true|false))?");
+  private static final Pattern DRIVER_METADATA = Pattern.compile(
+      "@DriverMetadata\\(([^)]+)\\)");
+  private static final Pattern DRIVER_NAME = Pattern.compile(
+      "name\\s*=\\s*\"([^\"]+)\"");
+  private static final Pattern DRIVER_ENGINE = Pattern.compile(
+      "engine\\s*=\\s*(\\S+)\\.class");
+  private static final Pattern DRIVER_PLATFORMS = Pattern.compile(
+      "platforms\\s*=\\s*\\{([^}]*)\\}");
+  private static final Pattern DRIVER_BROWSER = Pattern.compile(
+      "browserName\\s*=\\s*\"([^\"]+)\"");
   private static final Pattern CLASS_NAME = Pattern.compile(
       "(?:public\\s+)?(?:class|interface)\\s+(\\w+)");
 
@@ -52,12 +62,13 @@ public class ProjectIndexer {
     List<StepDefinitionIndex> stepDefs = scanStepDefinitions(projectRoot);
     List<CommandIndex> commands = scanCommands(projectRoot);
     List<ValidationIndex> validations = scanValidations(projectRoot);
+    List<DriverIndex> drivers = scanDrivers(projectRoot);
     List<TagIndex> tags = buildTagIndex(features);
 
     return new TestaraProjectProfile(
         projectRoot, buildTool, javaVersion, modules,
         featureRoots, requestSpecRoots, validationRoots,
-        features, stepDefs, commands, validations, tags);
+        features, stepDefs, commands, validations, drivers, tags);
   }
 
   // ── Module detection ──────────────────────────────────────────────
@@ -204,6 +215,39 @@ public class ProjectIndexer {
       }
     });
     return List.copyOf(validations);
+  }
+
+  // ── Driver scanning ───────────────────────────────────────────────
+
+  private List<DriverIndex> scanDrivers(Path root) {
+    List<DriverIndex> drivers = new ArrayList<>();
+    scanJavaFiles(root).forEach(javaFile -> {
+      try {
+        String content = Files.readString(javaFile, StandardCharsets.UTF_8);
+        if (!content.contains("@DriverMetadata")) return;
+        Matcher meta = DRIVER_METADATA.matcher(content);
+        if (meta.find()) {
+          String block = meta.group(1);
+          Matcher nameMatcher = DRIVER_NAME.matcher(block);
+          String name = nameMatcher.find() ? nameMatcher.group(1) : "";
+          Matcher engineMatcher = DRIVER_ENGINE.matcher(block);
+          String engine = engineMatcher.find() ? engineMatcher.group(1) : "";
+          Matcher platformsMatcher = DRIVER_PLATFORMS.matcher(block);
+          List<String> platforms = platformsMatcher.find()
+              ? parseStringArray(platformsMatcher.group(1).replaceAll("DeviceType\\.", ""))
+              : List.of();
+          Matcher browserMatcher = DRIVER_BROWSER.matcher(block);
+          String browser = browserMatcher.find() ? browserMatcher.group(1) : "";
+          String className = extractClassName(content);
+          if (!name.isBlank()) {
+            drivers.add(new DriverIndex(name, engine, platforms, browser, javaFile, className));
+          }
+        }
+      } catch (IOException e) {
+        LOG.fine("Cannot read " + javaFile);
+      }
+    });
+    return List.copyOf(drivers);
   }
 
   // ── Tag index ─────────────────────────────────────────────────────

@@ -2,6 +2,7 @@ package io.github.ygrip.testara.command;
 
 import io.github.ygrip.testara.command.error.CommandNotFoundException;
 import io.github.ygrip.testara.command.error.InvalidCommandFormatException;
+import io.github.ygrip.testara.command.model.CommandCatalogEntry;
 import io.github.ygrip.testara.command.model.CommandInfo;
 import io.github.ygrip.testara.command.model.CommandLogic;
 import io.github.ygrip.testara.command.model.CommandModel;
@@ -19,12 +20,14 @@ import org.apache.commons.lang3.StringUtils;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.stream.Collectors;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -719,6 +722,62 @@ public final class CommandExecutor {
     } else {
       return true;
     }
+  }
+
+  /**
+   * List all registered commands as a catalog with parameter details.
+   * Only primary command names are included (aliases are omitted as top-level entries).
+   *
+   * @return a sorted {@link List} of {@link CommandCatalogEntry} objects.
+   */
+  public static List<CommandCatalogEntry> listCommandCatalog() {
+    return REGISTERED_COMMANDS.entrySet().stream()
+        .filter(e -> {
+          CommandInfo info = new CommandInfo(e.getValue());
+          return e.getKey().equals(info.name()); // only primary names, not aliases
+        })
+        .map(e -> {
+          Class<? extends CommandLogic<?>> clazz = e.getValue();
+          CommandInfo info = new CommandInfo(clazz);
+          String returnType = extractReturnType(clazz);
+          return new CommandCatalogEntry(
+              info.name(),
+              info.aliases(),
+              info.subCommands(),
+              info.isCacheable(),
+              returnType
+          );
+        })
+        .sorted(Comparator.comparing(CommandCatalogEntry::name))
+        .collect(Collectors.toList());
+  }
+
+  /**
+   * Extract the generic return type of a {@link CommandLogic} implementation.
+   * Walks the superclass chain when the direct interfaces do not carry type arguments.
+   *
+   * @param clazz the command logic class to inspect.
+   * @return the simple name of the return type, or {@code "Object"} if it cannot be determined.
+   */
+  private static String extractReturnType(Class<? extends CommandLogic<?>> clazz) {
+    // Walk the class hierarchy to find the ParameterizedType for CommandLogic<T>
+    Class<?> current = clazz;
+    while (current != null && current != Object.class) {
+      for (java.lang.reflect.Type iface : current.getGenericInterfaces()) {
+        if (iface instanceof java.lang.reflect.ParameterizedType pt) {
+          java.lang.reflect.Type raw = pt.getRawType();
+          if (raw instanceof Class<?> rawClass && CommandLogic.class.isAssignableFrom(rawClass)) {
+            java.lang.reflect.Type typeArg = pt.getActualTypeArguments()[0];
+            if (typeArg instanceof Class<?> c) {
+              return c.getSimpleName();
+            }
+            return typeArg.getTypeName();
+          }
+        }
+      }
+      current = current.getSuperclass();
+    }
+    return "Object";
   }
 
   /**
