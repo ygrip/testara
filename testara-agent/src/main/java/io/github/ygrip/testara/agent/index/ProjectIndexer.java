@@ -68,7 +68,8 @@ public class ProjectIndexer {
     return new TestaraProjectProfile(
         projectRoot, buildTool, javaVersion, modules,
         featureRoots, requestSpecRoots, validationRoots,
-        features, stepDefs, commands, validations, drivers, tags);
+        features, stepDefs, commands, validations, drivers, tags,
+        Map.of(), Map.of());
   }
 
   // ── Module detection ──────────────────────────────────────────────
@@ -185,7 +186,7 @@ public class ProjectIndexer {
           List<String> aliases = parseStringArray(m.group(2));
           boolean cacheable = "true".equals(m.group(3));
           String className = extractClassName(content);
-          commands.add(new CommandIndex(name, aliases, cacheable, javaFile, className));
+          commands.add(new CommandIndex(name, aliases, "String", cacheable, javaFile, className));
         }
       } catch (IOException e) {
         LOG.fine("Cannot read " + javaFile);
@@ -208,7 +209,7 @@ public class ProjectIndexer {
           List<String> aliases = parseStringArray(m.group(2));
           boolean cacheable = "true".equals(m.group(3));
           String className = extractClassName(content);
-          validations.add(new ValidationIndex(name, aliases, cacheable, javaFile, className));
+          validations.add(new ValidationIndex(name, aliases, "Object", "Object", cacheable, javaFile, className));
         }
       } catch (IOException e) {
         LOG.fine("Cannot read " + javaFile);

@@ -6,6 +6,7 @@ import java.util.List;
 public record CommandIndex(
     String command,
     List<String> aliases,
+    String returnType,
     boolean cacheable,
     Path sourcePath,
     String className

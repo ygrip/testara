@@ -17,7 +17,9 @@ public record TestaraProjectProfile(
     List<CommandIndex> commands,
     List<ValidationIndex> validations,
     List<DriverIndex> drivers,
-    List<TagIndex> tags
+    List<TagIndex> tags,
+    Map<String, String> properties,
+    Map<String, Object> conventions
 ) {
   public int totalScenarios() {
     return features().stream().mapToInt(f -> f.scenarios().size()).sum();

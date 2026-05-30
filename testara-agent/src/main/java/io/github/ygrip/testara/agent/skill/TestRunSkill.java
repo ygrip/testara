@@ -161,6 +161,7 @@ public class TestRunSkill implements AgentSkill<String, String> {
         base.javaVersion(), base.mavenModules(), base.featureRoots(),
         base.requestSpecRoots(), base.validationRoots(),
         List.of(fakeFeature), base.stepDefinitions(),
-        base.commands(), base.validations(), base.drivers(), fakeTag);
+        base.commands(), base.validations(), base.drivers(), fakeTag,
+        base.properties(), base.conventions());
   }
 }

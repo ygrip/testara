@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import io.github.ygrip.testara.agent.safety.SecretRedactionGuard;
 
 import java.io.IOException;
 import java.net.URI;
@@ -12,26 +13,18 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
-import java.util.Set;
 import java.util.logging.Logger;
-import java.util.regex.Pattern;
 
 /**
  * OpenAI-compatible HTTP client. Works with OpenAI, Azure OpenAI, Ollama, and
  * any other provider that exposes the /v1/chat/completions endpoint.
+ *
+ * <p>All content (system prompt and user messages) is scrubbed of secrets before
+ * transmission via {@link SecretRedactionGuard}.
  */
 public class OpenAiLlmClient implements LlmClient {
 
   private static final Logger LOG = Logger.getLogger(OpenAiLlmClient.class.getName());
-
-  private static final Set<String> SECRET_KEYS = Set.of(
-      "password", "secret", "token", "authorization", "api-key", "api_key",
-      "client-secret", "client_secret", "private-key", "private_key",
-      "cookie", "session");
-
-  private static final Pattern SECRET_PATTERN = Pattern.compile(
-      "(?i)(" + String.join("|", SECRET_KEYS) + ")\\s*[=:]\\s*\\S+",
-      Pattern.CASE_INSENSITIVE);
 
   private final LlmConfig config;
   private final HttpClient httpClient;
@@ -83,12 +76,14 @@ public class OpenAiLlmClient implements LlmClient {
 
     ArrayNode messages = root.putArray("messages");
     if (request.systemPrompt() != null && !request.systemPrompt().isBlank()) {
-      messages.addObject().put("role", "system").put("content", request.systemPrompt());
+      messages.addObject()
+          .put("role", "system")
+          .put("content", SecretRedactionGuard.sanitize(request.systemPrompt()));
     }
     for (LlmMessage msg : request.messages()) {
       messages.addObject()
           .put("role", msg.role())
-          .put("content", redact(msg.content()));
+          .put("content", SecretRedactionGuard.sanitize(msg.content()));
     }
     return mapper.writeValueAsString(root);
   }
@@ -100,11 +95,5 @@ public class OpenAiLlmClient implements LlmClient {
     int inputTokens = root.path("usage").path("prompt_tokens").asInt(0);
     int outputTokens = root.path("usage").path("completion_tokens").asInt(0);
     return new LlmResponse(content, model, inputTokens, outputTokens);
-  }
-
-  /** Redact secrets from content before sending to the LLM provider. */
-  static String redact(String content) {
-    if (content == null) return null;
-    return SECRET_PATTERN.matcher(content).replaceAll(m -> m.group(1) + "=[REDACTED]");
   }
 }

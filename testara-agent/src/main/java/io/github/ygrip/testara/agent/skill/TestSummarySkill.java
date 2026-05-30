@@ -98,8 +98,14 @@ public class TestSummarySkill implements AgentSkill<TestSummarySkill.Input, Stri
 
       if (!f.backgroundSteps().isEmpty()) {
         sb.append("**Background steps:**\n");
-        f.backgroundSteps().forEach(s ->
-            sb.append("- ").append(s.keyword()).append(" ").append(s.text()).append("\n"));
+        f.backgroundSteps().forEach(s -> {
+            sb.append("- ").append(s.keyword()).append(" ").append(s.text()).append("\n");
+            if (!s.dataTable().isEmpty()) {
+              for (List<String> row : s.dataTable()) {
+                sb.append("    | ").append(String.join(" | ", row)).append(" |\n");
+              }
+            }
+          });
         sb.append("\n");
       }
 
@@ -110,8 +116,14 @@ public class TestSummarySkill implements AgentSkill<TestSummarySkill.Input, Stri
         if (!s.tags().isEmpty()) {
           sb.append("Tags: ").append(String.join(" ", s.tags())).append("\n");
         }
-        s.steps().forEach(step ->
-            sb.append("- ").append(step.keyword()).append(" ").append(step.text()).append("\n"));
+        s.steps().forEach(step -> {
+            sb.append("- ").append(step.keyword()).append(" ").append(step.text()).append("\n");
+            if (!step.dataTable().isEmpty()) {
+              for (List<String> row : step.dataTable()) {
+                sb.append("    | ").append(String.join(" | ", row)).append(" |\n");
+              }
+            }
+          });
         s.examples().forEach(ex ->
             sb.append("  - Examples: ").append(ex.rowCount()).append(" rows (")
                 .append(String.join(", ", ex.headers())).append(")\n"));

@@ -37,6 +37,8 @@ public class FeatureParser {
     List<ExamplesIndex> currentExamples = new ArrayList<>();
     boolean inBackground = false;
     boolean inExamples = false;
+    boolean inStepTable = false;
+    List<List<String>> currentDataTable = new ArrayList<>();
     List<String> exampleHeaders = new ArrayList<>();
     int exampleRowCount = 0;
 
@@ -71,6 +73,8 @@ public class FeatureParser {
         currentExamples = new ArrayList<>();
         inBackground = true;
         inExamples = false;
+        currentDataTable = new ArrayList<>();
+        inStepTable = false;
         pendingTags = new ArrayList<>();
         continue;
       }
@@ -85,6 +89,8 @@ public class FeatureParser {
         currentExamples = new ArrayList<>();
         inBackground = false;
         inExamples = false;
+        currentDataTable = new ArrayList<>();
+        inStepTable = false;
         pendingTags = new ArrayList<>();
         continue;
       }
@@ -97,12 +103,17 @@ public class FeatureParser {
         currentExamples = new ArrayList<>();
         inBackground = false;
         inExamples = false;
+        currentDataTable = new ArrayList<>();
+        inStepTable = false;
         pendingTags = new ArrayList<>();
         continue;
       }
 
       // Examples block
       if (line.startsWith("Examples:") || line.startsWith("Scenarios:")) {
+        flushStepDataTable(currentSteps, currentDataTable);
+        inStepTable = false;
+        currentDataTable = new ArrayList<>();
         inExamples = true;
         exampleHeaders = new ArrayList<>();
         exampleRowCount = 0;
@@ -127,14 +138,41 @@ public class FeatureParser {
         inExamples = false;
       }
 
+      // Step data table rows (pipe line after a step, not in Examples)
+      if (!inExamples && line.startsWith("|")) {
+        Matcher m = EXAMPLES_HEADER.matcher(line);
+        if (m.matches()) {
+          List<String> cells = new ArrayList<>();
+          for (String cell : m.group(1).split("\\|")) {
+            cells.add(cell.strip());
+          }
+          currentDataTable.add(List.copyOf(cells));
+          inStepTable = true;
+          continue;
+        }
+      }
+
       // Step lines
       Matcher stepMatcher = STEP_LINE.matcher(line);
       if (stepMatcher.matches()) {
+        // Flush any pending data table from previous step
+        flushStepDataTable(currentSteps, currentDataTable);
+        inStepTable = false;
+        currentDataTable = new ArrayList<>();
         currentSteps.add(new StepIndex(stepMatcher.group(1), stepMatcher.group(2)));
+        continue;
+      }
+
+      // Non-table, non-step line — flush pending step data table
+      if (inStepTable) {
+        flushStepDataTable(currentSteps, currentDataTable);
+        inStepTable = false;
+        currentDataTable = new ArrayList<>();
       }
     }
 
-    // flush remaining examples table
+    // flush remaining data table and examples
+    flushStepDataTable(currentSteps, currentDataTable);
     if (inExamples && !exampleHeaders.isEmpty()) {
       currentExamples.add(new ExamplesIndex(List.copyOf(exampleHeaders), exampleRowCount));
     }
@@ -159,5 +197,13 @@ public class FeatureParser {
           List.copyOf(steps),
           List.copyOf(examples)));
     }
+  }
+
+  /** If the last step has a pending data table, rebuild the step with the table attached. */
+  private void flushStepDataTable(List<StepIndex> steps, List<List<String>> dataTable) {
+    if (dataTable.isEmpty() || steps.isEmpty()) return;
+    int lastIdx = steps.size() - 1;
+    StepIndex last = steps.get(lastIdx);
+    steps.set(lastIdx, new StepIndex(last.keyword(), last.text(), List.copyOf(dataTable)));
   }
 }
