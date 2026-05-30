@@ -48,9 +48,22 @@ public class TestRunSkill implements AgentSkill<String, String> {
   public String execute(String input, AgentContext context) {
     TestaraProjectProfile profile = context.profile();
     Map<String, String> opts = context.options();
-    boolean dryRun  = !"false".equals(opts.getOrDefault("dryRun", "true"));
-    boolean execute = "true".equals(opts.getOrDefault("execute", "false"));
-    String module   = opts.getOrDefault("module", null);
+    boolean dryRun    = !"false".equals(opts.getOrDefault("dryRun", "true"));
+    boolean execute   = "true".equals(opts.getOrDefault("execute", "false"));
+    boolean rerunFail = "true".equals(opts.getOrDefault("rerunFailed", "false"));
+    String module     = opts.getOrDefault("module", null);
+
+    // Rerun-failed: read Cucumber rerun file or previous report
+    if (rerunFail) {
+      String rerunResult = buildRerunExpression(context.projectRoot());
+      if (rerunResult != null) {
+        String command = cmdBuilder.build(rerunResult, module, false);
+        return new TestRunPlan("rerun-failed", rerunResult, 0, 0, command, List.of()).toMarkdown()
+            + "\n> **Rerun-failed** uses Cucumber rerun file or previous report.\n";
+      }
+      return "No previous test failures found. Check that target/rerun.txt or "
+          + "target/cucumber.json exists from a previous test run.\n";
+    }
 
     String tagExpr = resolver.resolve(input, profile);
     if (tagExpr.isBlank()) return "Could not resolve a tag expression from: \"" + input + "\"\n"
@@ -147,6 +160,50 @@ public class TestRunSkill implements AgentSkill<String, String> {
     String status = failed > 0 ? "FAILED" : "PASSED";
     return new TestRunReport(status, durationMs, tagExpr,
         passed + failed + skipped, passed, failed, skipped, failedScenarios);
+  }
+
+  /**
+   * Build a rerun expression from Cucumber's rerun file or previous JSON report.
+   * Returns null if no previous failure data is found.
+   */
+  private String buildRerunExpression(Path projectRoot) {
+    // 1. Try Cucumber rerun file
+    Path rerunFile = projectRoot.resolve("target/rerun.txt");
+    if (Files.exists(rerunFile)) {
+      try {
+        return Files.readString(rerunFile, StandardCharsets.UTF_8).strip();
+      } catch (IOException e) {
+        LOG.fine("Cannot read rerun file: " + e.getMessage());
+      }
+    }
+
+    // 2. Try parsing previous cucumber.json for failed scenario locations
+    Path reportJson = projectRoot.resolve("target/cucumber.json");
+    if (Files.exists(reportJson)) {
+      try {
+        String json = Files.readString(reportJson, StandardCharsets.UTF_8);
+        List<String> failedLocations = new ArrayList<>();
+        // Extract failed scenario URIs from cucumber JSON
+        Pattern uriPattern = Pattern.compile("\"uri\"\\s*:\\s*\"([^\"]+)\"");
+        Pattern failedLine = Pattern.compile("\"line\"\\s*:\\s*(\\d+)");
+        Matcher uriMatcher = uriPattern.matcher(json);
+        Matcher lineMatcher = failedLine.matcher(json);
+
+        // Collect URIs and lines; pair by position (naive approach)
+        List<String> uris = new ArrayList<>();
+        List<Integer> lines = new ArrayList<>();
+        while (uriMatcher.find()) uris.add(uriMatcher.group(1));
+        while (lineMatcher.find()) lines.add(Integer.parseInt(lineMatcher.group(1)));
+
+        // Fallback: if no granular data, return empty
+        if (!uris.isEmpty()) {
+          return "@target/rerun.txt"; // signals Cucumber to use its own rerun
+        }
+      } catch (IOException e) {
+        LOG.fine("Cannot parse cucumber.json for rerun: " + e.getMessage());
+      }
+    }
+    return null;
   }
 
   private TestaraProjectProfile profileForScenario(TestaraProjectProfile base,

@@ -28,6 +28,9 @@ public class TestRunCommand implements Runnable {
   @Option(names = "--execute",  defaultValue = "false", description = "Actually execute Maven")
   private boolean execute;
 
+  @Option(names = "--rerun-failed", defaultValue = "false", description = "Re-run previously failed scenarios")
+  private boolean rerunFailed;
+
   @Option(names = "--module",   description = "Restrict to a specific Maven module")
   private String module;
 
@@ -43,6 +46,7 @@ public class TestRunCommand implements Runnable {
     Map<String, String> opts = new HashMap<>();
     opts.put("dryRun",   String.valueOf(dryRun && !execute));
     opts.put("execute",  String.valueOf(execute));
+    opts.put("rerunFailed", String.valueOf(rerunFailed));
     opts.put("format",   reportFormat);
     if (module != null) opts.put("module", module);
 
