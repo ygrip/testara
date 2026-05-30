@@ -84,7 +84,7 @@ public class McpServer {
       try {
         JsonNode request  = mapper.readTree(line);
         JsonNode response = handle(request);
-        out.println(mapper.writeValueAsString(response));
+        if (response != null) out.println(mapper.writeValueAsString(response));
       } catch (Exception e) {
         LOG.warning("Error handling request: " + e.getMessage());
         out.println(errorResponse(null, -32700, "Parse error: " + e.getMessage()));
@@ -93,8 +93,8 @@ public class McpServer {
   }
 
   private JsonNode handle(JsonNode req) {
-    String  id     = req.has("id") ? req.get("id").asText() : null;
-    String  method = req.path("method").asText();
+    JsonNode id     = req.has("id") ? req.get("id") : null;
+    String   method = req.path("method").asText();
     JsonNode params = req.path("params");
 
     return switch (method) {
@@ -103,7 +103,8 @@ public class McpServer {
       case "tools/call"    -> toolsCallResponse(id, params);
       case "prompts/list"  -> promptsListResponse(id);
       case "prompts/get"   -> promptsGetResponse(id, params);
-      case "notifications/initialized", "notifications/cancelled" -> mapper.createObjectNode();
+      // Notifications have no id and require no response — return null to skip output
+      case "notifications/initialized", "notifications/cancelled" -> null;
       default -> {
         try { yield mapper.readTree(errorResponse(id, -32601, "Method not found: " + method)); }
         catch (Exception ex) { yield mapper.createObjectNode(); }
@@ -111,7 +112,7 @@ public class McpServer {
     };
   }
 
-  private JsonNode initializeResponse(String id) {
+  private JsonNode initializeResponse(JsonNode id) {
     ObjectNode result = mapper.createObjectNode();
     result.put("protocolVersion", "2024-11-05");
     result.putObject("capabilities").putObject("tools");
@@ -122,7 +123,7 @@ public class McpServer {
     return response(id, result);
   }
 
-  private JsonNode toolsListResponse(String id) {
+  private JsonNode toolsListResponse(JsonNode id) {
     ArrayNode tools = mapper.createArrayNode();
     tools.add(tool("testara_summary",    "Summarize feature files at scenario, feature, or directory level",
         requiredStr("path", "Path to .feature file or directory"),
@@ -160,7 +161,7 @@ public class McpServer {
     return response(id, result);
   }
 
-  private JsonNode toolsCallResponse(String id, JsonNode params) {
+  private JsonNode toolsCallResponse(JsonNode id, JsonNode params) {
     String toolName = params.path("name").asText();
     JsonNode args   = params.path("arguments");
 
@@ -266,19 +267,19 @@ public class McpServer {
     return n;
   }
 
-  private ObjectNode response(String id, JsonNode result) {
+  private ObjectNode response(JsonNode id, JsonNode result) {
     ObjectNode r = mapper.createObjectNode();
     r.put("jsonrpc", "2.0");
-    if (id != null) r.put("id", id);
+    if (id != null) r.set("id", id);
     r.set("result", result);
     return r;
   }
 
-  private String errorResponse(String id, int code, String message) {
+  private String errorResponse(JsonNode id, int code, String message) {
     try {
       ObjectNode r = mapper.createObjectNode();
       r.put("jsonrpc", "2.0");
-      if (id != null) r.put("id", id);
+      if (id != null) r.set("id", id);
       ObjectNode err = r.putObject("error");
       err.put("code", code);
       err.put("message", message);
@@ -290,7 +291,7 @@ public class McpServer {
 
   // ── Prompts ───────────────────────────────────────────────────────
 
-  private JsonNode promptsListResponse(String id) {
+  private JsonNode promptsListResponse(JsonNode id) {
     ArrayNode prompts = mapper.createArrayNode();
     prompts.add(prompt("test-summary",
         "Summarize feature files at scenario, feature, or directory level",
@@ -325,7 +326,7 @@ public class McpServer {
     return response(id, result);
   }
 
-  private JsonNode promptsGetResponse(String id, JsonNode params) {
+  private JsonNode promptsGetResponse(JsonNode id, JsonNode params) {
     String promptName = params.path("name").asText();
     String description = switch (promptName) {
       case "test-summary" -> "Use Testara to summarize tests in the specified path.";
