@@ -48,31 +48,27 @@ Testara is a modular test automation framework built on Java 21 that provides a 
 
 ## Testara Agent
 
-Testara Agent provides AI-assisted tools for analyzing, reviewing, generating, bootstrapping, and running Testara tests. **8 skills + MCP server + knowledge caching.**
+Testara Agent provides AI-assisted tools for analyzing, reviewing, generating, bootstrapping, and running Testara tests. 8 skills + MCP server + knowledge caching.
 
 ```bash
 # Build the agent fat JAR
 mvn -pl testara-agent-cli -am package -DskipTests
-
-# Set an alias
 alias testara-agent='java -jar testara-agent-cli/target/testara-agent.jar'
 
 # Read-only skills (no LLM required)
 testara-agent /test-overview .
-testara-agent /test-summary src/test/resources/features/login.feature
 testara-agent /test-review src/test/resources/features
 
-# Test execution (dry-run by default)
+# Test execution (dry-run by default, rerun-failed supported)
 testara-agent /test-run "run payment smoke tests"
 testara-agent /test-run --rerun-failed
 
 # Generation skills
 testara-agent /test-plan "Create tests for refund approval" --slice api
 testara-agent /test-command "generate customer id with prefix and timestamp"
-testara-agent /test-validation "validate response contains active users sorted by createdDate desc"
 testara-agent /test-init --type api --base-package com.company.automation
 
-# Knowledge cache management
+# Knowledge cache
 testara-agent knowledge status
 
 # MCP server (Claude Code, Cursor, GitHub Copilot)
@@ -82,11 +78,11 @@ testara-agent mcp .
 docker run --rm -v "$PWD:/workspace" -w /workspace ghcr.io/ygrip/testara-agent:latest /test-overview .
 ```
 
-See **[Testara Agent documentation](docs/agentic-skills.md)** for full skill reference, MCP setup, LLM configuration, knowledge store, and security model.
+See **[Testara Agent documentation](docs/agentic-skills.md)** for full skill reference, MCP setup, LLM configuration, knowledge store, Docker, and security model.
 
 ## Documentation
 
-- **[Testara Agent](docs/agentic-skills.md)** — All 8 agentic skills, MCP server, LLM setup, security model
+- **[Testara Agent](docs/agentic-skills.md)** — All 8 agentic skills, MCP tools+prompts, knowledge store, YAML config, Docker, security model
 - **[Command Engine](testara-command/README.md)** — All 50+ built-in commands, syntax reference, and how to create custom commands
 - **[Validation](testara-validation/README.md)** — All 40+ validators, usage patterns, and how to create custom validations
 - **[API Testing](testara-api/README.md)** — Service configuration, request building, load testing, and interceptors
