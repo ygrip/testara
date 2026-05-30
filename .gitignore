@@ -3,6 +3,9 @@ target/
 !**/src/main/**/target/
 !**/src/test/**/target/
 
+# Testara Agent knowledge cache
+.testara-agent/
+
 ### IntelliJ IDEA ###
 .idea/
 *.iws

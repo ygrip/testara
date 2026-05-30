@@ -18,111 +18,96 @@ public class TestOverviewSkill implements AgentSkill<Path, String> {
   @Override
   public String execute(Path target, AgentContext context) {
     TestaraProjectProfile profile = context.profile();
-    return switch (context.options().getOrDefault("format", "markdown")) {
-      case "json" -> renderJson(profile);
-      default     -> renderMarkdown(profile);
+    String format = context.options().getOrDefault("format", "markdown");
+    boolean concise = "true".equals(context.options().getOrDefault("concise", "false"));
+
+    return switch (format) {
+      case "json"   -> renderJson(profile);
+      case "concise", "text" -> renderConcise(profile);
+      default       -> concise ? renderConcise(profile) : renderMarkdown(profile);
     };
   }
 
+  /** Minimal token-efficient output for AI assistant consumption. */
+  private String renderConcise(TestaraProjectProfile p) {
+    long outlines = p.features().stream()
+        .flatMap(f -> f.scenarios().stream())
+        .filter(s -> s.type() == ScenarioType.SCENARIO_OUTLINE).count();
+    double avg = p.totalScenarios() > 0
+        ? (double) p.totalSteps() / p.totalScenarios() : 0;
+
+    return String.format("""
+        Project: %s | Build: %s | Java: %s | Modules: %d
+        Features: %d | Scenarios: %d | Outlines: %d | Examples: %d
+        Steps: %d | StepDefs: %d | Commands: %d | Validators: %d | Tags: %d | AvgSteps: %.1f
+        Tags: %s
+        """,
+        p.projectRoot(), p.buildTool(), p.javaVersion(), p.mavenModules().size(),
+        p.features().size(), p.totalScenarios(), outlines, p.totalExampleRows(),
+        p.totalSteps(), p.stepDefinitions().size(), p.commands().size(),
+        p.validations().size(), p.tags().size(), avg,
+        p.tags().stream().sorted(Comparator.comparingInt(TagIndex::scenarioCount).reversed())
+            .limit(15).map(t -> t.tag() + ":" + t.scenarioCount())
+            .collect(Collectors.joining(" ")));
+  }
+
   private String renderMarkdown(TestaraProjectProfile p) {
-    StringBuilder sb = new StringBuilder();
-    sb.append("# Testara Project Overview\n\n");
-    sb.append("**Project root:** `").append(p.projectRoot()).append("`  \n");
-    sb.append("**Build tool:** ").append(p.buildTool()).append("  \n");
-    sb.append("**Java version:** ").append(p.javaVersion()).append("  \n");
-    if (!p.mavenModules().isEmpty()) {
-      sb.append("**Maven modules:** ").append(p.mavenModules().size()).append("  \n");
-    }
-    sb.append("\n");
-
-    sb.append("## Coverage\n\n");
-    sb.append("| Metric | Count |\n|---|---|\n");
-    sb.append("| Feature files | ").append(p.features().size()).append(" |\n");
-    sb.append("| Scenarios | ").append(p.totalScenarios()).append(" |\n");
-
     long outlines = p.features().stream().flatMap(f -> f.scenarios().stream())
         .filter(s -> s.type() == ScenarioType.SCENARIO_OUTLINE).count();
-    sb.append("| Scenario Outlines | ").append(outlines).append(" |\n");
-    sb.append("| Example rows | ").append(p.totalExampleRows()).append(" |\n");
-    sb.append("| Total steps | ").append(p.totalSteps()).append(" |\n");
-    sb.append("| Step definitions | ").append(p.stepDefinitions().size()).append(" |\n");
-    sb.append("| Custom commands | ").append(p.commands().size()).append(" |\n");
-    sb.append("| Custom validators | ").append(p.validations().size()).append(" |\n");
+    double avg = p.totalScenarios() > 0
+        ? (double) p.totalSteps() / p.totalScenarios() : 0;
 
-    if (p.totalScenarios() > 0) {
-      double avgSteps = (double) p.totalSteps() / p.totalScenarios();
-      sb.append("| Avg steps/scenario | ").append(String.format("%.1f", avgSteps)).append(" |\n");
-    }
-    sb.append("\n");
+    StringBuilder sb = new StringBuilder();
+    sb.append("## Testara Project Overview\n\n");
+    sb.append(String.format("`%s` | %s | Java %s | %d modules\n\n",
+        p.projectRoot(), p.buildTool(), p.javaVersion(), p.mavenModules().size()));
+
+    sb.append("| Metric | Count |\n|---|---|\n");
+    sb.append("| Features | ").append(p.features().size()).append(" |\n");
+    sb.append("| Scenarios | ").append(p.totalScenarios()).append(" |\n");
+    sb.append("| Outlines | ").append(outlines).append(" |\n");
+    sb.append("| Example rows | ").append(p.totalExampleRows()).append(" |\n");
+    sb.append("| Steps | ").append(p.totalSteps()).append(" |\n");
+    sb.append("| Step defs | ").append(p.stepDefinitions().size()).append(" |\n");
+    sb.append("| Commands | ").append(p.commands().size()).append(" |\n");
+    sb.append("| Validators | ").append(p.validations().size()).append(" |\n");
+    sb.append("| Avg steps/scenario | ").append(String.format("%.1f", avg)).append(" |\n");
 
     if (!p.tags().isEmpty()) {
-      sb.append("## Tag Distribution\n\n");
-      sb.append("| Tag | Features | Scenarios |\n|---|---|---|\n");
-      p.tags().stream()
+      sb.append("\n**Top tags:** ");
+      sb.append(p.tags().stream()
           .sorted(Comparator.comparingInt(TagIndex::scenarioCount).reversed())
-          .limit(20)
-          .forEach(t -> sb.append("| ").append(t.tag())
-              .append(" | ").append(t.featureCount())
-              .append(" | ").append(t.scenarioCount()).append(" |\n"));
+          .limit(12)
+          .map(t -> t.tag() + "(" + t.scenarioCount() + ")")
+          .collect(Collectors.joining(" ")));
       sb.append("\n");
     }
-
-    if (!p.commands().isEmpty()) {
-      sb.append("## Custom Commands\n\n");
-      p.commands().forEach(c -> sb.append("- `").append(c.command()).append("`")
-          .append(c.aliases().isEmpty() ? "" : " (aliases: " + String.join(", ", c.aliases()) + ")")
-          .append("\n"));
-      sb.append("\n");
-    }
-
-    if (!p.validations().isEmpty()) {
-      sb.append("## Custom Validators\n\n");
-      p.validations().forEach(v -> sb.append("- `").append(v.validation()).append("`")
-          .append(v.aliases().isEmpty() ? "" : " (aliases: " + String.join(", ", v.aliases()) + ")")
-          .append("\n"));
-      sb.append("\n");
-    }
-
-    // Longest scenarios
-    List<ScenarioIndex> longest = p.features().stream()
-        .flatMap(f -> f.scenarios().stream())
-        .sorted(Comparator.comparingInt((ScenarioIndex s) -> s.steps().size()).reversed())
-        .limit(5)
-        .toList();
-    if (!longest.isEmpty() && longest.get(0).steps().size() > 5) {
-      sb.append("## Longest Scenarios\n\n");
-      longest.forEach(s -> sb.append("- `").append(s.name())
-          .append("` (").append(s.steps().size()).append(" steps)\n"));
-      sb.append("\n");
-    }
-
     return sb.toString();
   }
 
   private String renderJson(TestaraProjectProfile p) {
     long outlines = p.features().stream().flatMap(f -> f.scenarios().stream())
         .filter(s -> s.type() == ScenarioType.SCENARIO_OUTLINE).count();
+    double avg = p.totalScenarios() > 0 ? (double) p.totalSteps() / p.totalScenarios() : 0;
 
     Map<String, Object> out = new LinkedHashMap<>();
-    out.put("projectRoot", p.projectRoot().toString());
-    out.put("buildTool", p.buildTool().name());
-    out.put("javaVersion", p.javaVersion());
-    out.put("mavenModules", p.mavenModules().size());
-    out.put("featureFiles", p.features().size());
+    out.put("project", p.projectRoot().toString());
+    out.put("build", p.buildTool().name());
+    out.put("java", p.javaVersion());
+    out.put("modules", p.mavenModules().size());
+    out.put("features", p.features().size());
     out.put("scenarios", p.totalScenarios());
-    out.put("scenarioOutlines", outlines);
-    out.put("exampleRows", p.totalExampleRows());
-    out.put("totalSteps", p.totalSteps());
-    out.put("stepDefinitions", p.stepDefinitions().size());
-    out.put("customCommands", p.commands().size());
-    out.put("customValidators", p.validations().size());
-
-    Map<String, Integer> tagDist = p.tags().stream()
-        .collect(Collectors.toMap(TagIndex::tag, TagIndex::scenarioCount,
-            (a, b) -> a, LinkedHashMap::new));
-    out.put("tagDistribution", tagDist);
-
-    // Simple JSON serialisation without external library
+    out.put("outlines", outlines);
+    out.put("examples", p.totalExampleRows());
+    out.put("steps", p.totalSteps());
+    out.put("stepDefs", p.stepDefinitions().size());
+    out.put("commands", p.commands().size());
+    out.put("validators", p.validations().size());
+    out.put("tags", p.tags().size());
+    out.put("avgStepsPerScenario", Math.round(avg * 10.0) / 10.0);
+    out.put("topTags", p.tags().stream()
+        .sorted(Comparator.comparingInt(TagIndex::scenarioCount).reversed())
+        .limit(15).map(t -> t.tag() + ":" + t.scenarioCount()).toList());
     return toJson(out, 0);
   }
 

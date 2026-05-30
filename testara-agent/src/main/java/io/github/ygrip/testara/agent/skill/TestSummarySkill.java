@@ -31,7 +31,10 @@ public class TestSummarySkill implements AgentSkill<TestSummarySkill.Input, Stri
         ? features.stream().map(f -> filterScenarios(f, input.scenarioFilter())).toList()
         : features;
 
-    return renderMarkdown(filtered, input.target());
+    boolean concise = "true".equals(context.options().getOrDefault("concise", "false"));
+    boolean asJson  = "json".equals(context.options().getOrDefault("format", ""));
+    if (asJson) return renderJson(filtered, input.target());
+    return concise ? renderConcise(filtered, input.target()) : renderMarkdown(filtered, input.target());
   }
 
   private List<FeatureIndex> loadFeatures(Path target) {
@@ -131,5 +134,59 @@ public class TestSummarySkill implements AgentSkill<TestSummarySkill.Input, Stri
       }
     }
     return sb.toString();
+  }
+
+  /** Minimal token-efficient output. */
+  private String renderConcise(List<FeatureIndex> features, Path target) {
+    int scenarios = features.stream().mapToInt(f -> f.scenarios().size()).sum();
+    long outlines = features.stream().flatMap(f -> f.scenarios().stream())
+        .filter(s -> s.type() == ScenarioType.SCENARIO_OUTLINE).count();
+    Set<String> tags = new TreeSet<>();
+    features.forEach(f -> {
+      tags.addAll(f.tags());
+      f.scenarios().forEach(s -> tags.addAll(s.tags()));
+    });
+
+    StringBuilder sb = new StringBuilder();
+    sb.append(String.format("%s | %d features | %d scenarios",
+        target.getFileName(), features.size(), scenarios));
+    if (outlines > 0) sb.append(" | ").append(outlines).append(" outlines");
+    sb.append("\n");
+    features.forEach(f -> {
+      sb.append("  ").append(f.featureName());
+      if (!f.tags().isEmpty()) sb.append(" [").append(String.join(" ", f.tags())).append("]");
+      sb.append("\n");
+      f.scenarios().forEach(s ->
+          sb.append("    ").append(s.type() == ScenarioType.SCENARIO_OUTLINE ? "◉ " : "◦ ")
+              .append(s.name()).append(" (").append(s.steps().size()).append(" steps)\n"));
+    });
+    return sb.toString();
+  }
+
+  private String renderJson(List<FeatureIndex> features, Path target) {
+    List<Map<String, Object>> list = new ArrayList<>();
+    for (FeatureIndex f : features) {
+      Map<String, Object> m = new LinkedHashMap<>();
+      m.put("feature", f.featureName());
+      m.put("file", f.path().toString());
+      m.put("tags", f.tags());
+      m.put("scenarios", f.scenarios().stream().map(s -> {
+        Map<String, Object> sm = new LinkedHashMap<>();
+        sm.put("name", s.name());
+        sm.put("type", s.type().name());
+        sm.put("tags", s.tags());
+        sm.put("steps", s.steps().size());
+        return sm;
+      }).toList());
+      list.add(m);
+    }
+    // Simple JSON
+    return "[" + list.stream().map(m -> {
+      StringBuilder js = new StringBuilder("{");
+      m.forEach((k, v) -> js.append("\"").append(k).append("\":")
+          .append(v instanceof List ? v.toString() : "\"" + v + "\"").append(","));
+      if (js.charAt(js.length()-1) == ',') js.setLength(js.length()-1);
+      return js.append("}").toString();
+    }).collect(java.util.stream.Collectors.joining(",")) + "]";
   }
 }

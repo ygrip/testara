@@ -50,8 +50,8 @@ public final class JsonlKnowledgeStore implements ProjectKnowledgeService {
 
   @Override
   public ProjectKnowledgeSnapshot loadOrIndex(Path projectRoot) {
+    final var knowledgeDir = projectRoot.resolve(KNOWLEDGE_DIR);
     try {
-      Path knowledgeDir = projectRoot.resolve(KNOWLEDGE_DIR);
       var cached = loadManifest(knowledgeDir);
 
       // Fast path: fingerprints match

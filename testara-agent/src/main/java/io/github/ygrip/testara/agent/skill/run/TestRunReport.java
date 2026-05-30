@@ -15,6 +15,25 @@ public record TestRunReport(
   public record FailedScenario(String feature, String scenario, String error) {}
 
   public String toMarkdown() {
+    return toMarkdown(false);
+  }
+
+  /** Token-efficient concise output for AI assistants. */
+  public String toConcise() {
+    StringBuilder sb = new StringBuilder();
+    sb.append(status).append(" | ").append(durationMs / 1000).append("s | ")
+        .append(tagExpression).append(" | ")
+        .append(passed).append("/").append(failed).append("/").append(skipped);
+    if (!failedScenarios.isEmpty()) {
+      sb.append("\n");
+      failedScenarios.forEach(s ->
+          sb.append("  FAIL: ").append(s.scenario()).append(" — ").append(s.error()).append("\n"));
+    }
+    return sb.toString();
+  }
+
+  public String toMarkdown(boolean concise) {
+    if (concise) return toConcise();
     StringBuilder sb = new StringBuilder();
     sb.append("## Test Run Report\n\n");
     sb.append("**Status:** ").append(status).append("  \n");

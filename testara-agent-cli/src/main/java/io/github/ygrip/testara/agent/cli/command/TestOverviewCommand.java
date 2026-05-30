@@ -11,6 +11,7 @@ import picocli.CommandLine.Option;
 import picocli.CommandLine.Parameters;
 
 import java.nio.file.Path;
+import java.util.HashMap;
 import java.util.Map;
 
 @Command(
@@ -25,17 +26,25 @@ public class TestOverviewCommand implements Runnable {
   private Path target;
 
   @Option(names = "--format", defaultValue = "markdown",
-      description = "Output format: markdown (default), json")
+      description = "Output format: markdown (default), json, concise")
   private String format;
+
+  @Option(names = "--concise", defaultValue = "false",
+      description = "Token-efficient output for AI assistants")
+  private boolean concise;
 
   @Override
   public void run() {
     Path projectRoot = target.toAbsolutePath().normalize();
     TestaraProjectProfile profile = JsonlKnowledgeStore.loadProfile(projectRoot);
 
+    Map<String, String> opts = new HashMap<>();
+    opts.put("format", format);
+    opts.put("concise", String.valueOf(concise));
+
     AgentContext context = new AgentContext(
         projectRoot, profile, AgentMode.READ_ONLY,
-        new DisabledLlmClient(), Map.of("format", format));
+        new DisabledLlmClient(), opts);
 
     TestOverviewSkill skill = new TestOverviewSkill();
     System.out.println(skill.execute(projectRoot, context));
