@@ -73,24 +73,21 @@ public final class RootRegistry {
   public <T> void register(Class<T> type, RegistryScope scope) {
     // Don't eagerly create instance - register the type for lazy creation
     ScopedProvider<T> provider = new ScopedProvider<>(scope);
-    
-    // Map the interfaces if has any
+
+    // Map the interfaces if has any — putIfAbsent avoids TOCTOU race with concurrent @BeforeAll
     for (Class<?> iFace : type.getInterfaces()) {
-      if (!mappedTypes.containsKey(iFace)) {
-        mappedTypes.put(iFace, type);
-      }
+      mappedTypes.putIfAbsent(iFace, type);
     }
 
     // Map by abstract class if has any
     Class<?> abstractClass = findAbstractSuperclass(type);
     if (ObjectUtils.isNotEmpty(abstractClass)) {
-      if (!mappedTypes.containsKey(abstractClass)) {
-        mappedTypes.put(abstractClass, type);
-      }
+      mappedTypes.putIfAbsent(abstractClass, type);
     }
 
-    // Register by concrete class
-    providers.put(type, provider);
+    // putIfAbsent: never replace an existing provider — replacing would discard its cached
+    // instances and cause concurrent get() calls to return different objects for the same key.
+    providers.putIfAbsent(type, provider);
   }
 
   /**
@@ -102,23 +99,16 @@ public final class RootRegistry {
     Class<?> concreteClass = instance.getClass();
     ScopedProvider<T> provider = new ScopedProvider<>(scope, () -> instance);
 
-    // Map the interfaces if has any
     for (Class<?> iFace : concreteClass.getInterfaces()) {
-      if (!mappedTypes.containsKey(iFace)) {
-        mappedTypes.put(iFace, concreteClass);
-      }
+      mappedTypes.putIfAbsent(iFace, concreteClass);
     }
 
-    // Map by abstract class if has any
     Class<?> abstractClass = findAbstractSuperclass(concreteClass);
     if (ObjectUtils.isNotEmpty(abstractClass)) {
-      if (!mappedTypes.containsKey(abstractClass)) {
-        mappedTypes.put(abstractClass, concreteClass);
-      }
+      mappedTypes.putIfAbsent(abstractClass, concreteClass);
     }
 
-    // Register by concrete class
-    providers.put(concreteClass, provider);
+    providers.putIfAbsent(concreteClass, provider);
   }
 
   /**
