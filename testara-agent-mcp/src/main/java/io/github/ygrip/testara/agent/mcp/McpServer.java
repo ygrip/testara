@@ -67,6 +67,11 @@ public class McpServer {
   private final TestInitSkill       initSkill       = new TestInitSkill();
   private final ListCommandsSkill   listCommandsSkill    = new ListCommandsSkill();
   private final ListValidationsSkill listValidationsSkill = new ListValidationsSkill();
+  private final TestaraContextSkill  contextSkill  = new TestaraContextSkill();
+  private final TestaraPropertySkill propertySkill = new TestaraPropertySkill();
+  private final TestaraApiSkill      apiSkill      = new TestaraApiSkill();
+  private final TestaraUiSkill       uiSkill       = new TestaraUiSkill();
+  private final TestaraDbSkill       dbSkill       = new TestaraDbSkill();
 
   public McpServer(Path projectRoot) {
     this.projectRoot = projectRoot.toAbsolutePath().normalize();
@@ -88,7 +93,7 @@ public class McpServer {
       profile = new TestaraProjectProfile(projectRoot, null, "unknown",
           List.of(), List.of(), List.of(), List.of(),
           List.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
-          Map.of(), Map.of(), List.of());
+          Map.of(), Map.of(), List.of(), List.of());
     }
 
     String line;
@@ -170,6 +175,28 @@ public class McpServer {
         requiredStr("intent", "Test plan intent"),
         optionalStr("slice", "Layer: api, ui, database, streaming, fullstack"),
         optionalStr("domain", "Domain name override")));
+    tools.add(tool("testara_context",    "Return full Testara runtime context — slices installed, config coverage, available steps, commands, validations"));
+    tools.add(tool("testara_property",   "Manage property keys — list, suggest key for a value, generate config block, or explain properties() rules",
+        optionalStr("mode", "list | suggest | generate | rules"),
+        optionalStr("domain", "Domain name for generated keys"),
+        optionalStr("value", "Value to suggest a property key for"),
+        optionalStr("slice", "Slice for config block generation: api, ui, sql, mongo, kafka")));
+    tools.add(tool("testara_api",        "Explain API config, generate api.service block, or generate request spec JSON",
+        optionalStr("mode", "explain | config | request-spec"),
+        optionalStr("domain", "Service/domain name"),
+        optionalStr("flow", "Request spec flow name"),
+        optionalStr("method", "HTTP method: GET, POST, PUT, PATCH, DELETE"),
+        optionalStr("endpoint", "Endpoint URL or path")));
+    tools.add(tool("testara_ui",         "Generate Testara UI artifacts — Page class, UserAction class, or engine config",
+        optionalStr("mode", "explain | page | action | config"),
+        optionalStr("pageName", "Page name (e.g. login)"),
+        optionalStr("actionName", "Action description (e.g. login with credential)"),
+        optionalStr("engine", "UI engine: selenium | playwright | appium"),
+        optionalStr("basePackage", "Base Java package")));
+    tools.add(tool("testara_db",         "Explain and generate DB (SQL/Mongo) or Kafka config and feature templates",
+        optionalStr("slice", "sql | mongo | kafka"),
+        optionalStr("mode", "explain | config | feature"),
+        optionalStr("name", "Service name (e.g. settlementDb, paymentKafka)")));
     tools.add(tool("testara_init",       "Bootstrap or integrate a Testara automation project",
         optionalStr("type", "api, ui, database, streaming, fullstack"),
         optionalStr("basePackage", "Base Java package"),
@@ -226,6 +253,21 @@ public class McpServer {
           args.path("basePackage").asText("com.company.automation"),
           args.path("engine").asText("selenium"),
           args.path("integrateExisting").asBoolean(false)), ctx);
+      case "testara_context"  -> contextSkill.execute(null, ctx);
+      case "testara_property" -> propertySkill.execute(new TestaraPropertySkill.Input(
+          args.path("mode").asText("list"), args.path("domain").asText(null),
+          args.path("value").asText(null), args.path("slice").asText(null)), ctx);
+      case "testara_api"      -> apiSkill.execute(new TestaraApiSkill.Input(
+          args.path("mode").asText("explain"), args.path("domain").asText(null),
+          args.path("flow").asText(null), args.path("method").asText(null),
+          args.path("endpoint").asText(null)), ctx);
+      case "testara_ui"       -> uiSkill.execute(new TestaraUiSkill.Input(
+          args.path("mode").asText("explain"), args.path("pageName").asText(null),
+          args.path("actionName").asText(null), args.path("engine").asText(null),
+          args.path("basePackage").asText(null)), ctx);
+      case "testara_db"       -> dbSkill.execute(new TestaraDbSkill.Input(
+          args.path("slice").asText("sql"), args.path("mode").asText("explain"),
+          args.path("name").asText(null)), ctx);
       default -> throw new IllegalArgumentException("Unknown tool: " + name);
     };
   }

@@ -1,5 +1,6 @@
 package io.github.ygrip.testara.agent.index;
 
+import io.github.ygrip.testara.agent.catalog.RuntimeCatalogEntry;
 import io.github.ygrip.testara.agent.flavor.FlavorEntry;
 
 import java.nio.file.Path;
@@ -23,8 +24,20 @@ public record TestaraProjectProfile(
     List<TagIndex> tags,
     Map<String, String> properties,
     Map<String, Object> conventions,
-    List<FlavorEntry> flavorSteps
+    List<FlavorEntry> flavorSteps,
+    List<RuntimeCatalogEntry> runtimeCatalog
 ) {
+  /** Returns catalog entries for a given slice. */
+  public List<RuntimeCatalogEntry> catalogForSlice(String slice) {
+    return runtimeCatalog.stream()
+        .filter(e -> e.slice().equalsIgnoreCase(slice))
+        .collect(Collectors.toList());
+  }
+
+  /** All known config prefixes from the runtime catalog. */
+  public List<String> knownConfigPrefixes() {
+    return runtimeCatalog.stream().map(RuntimeCatalogEntry::prefix).distinct().collect(Collectors.toList());
+  }
   /** Returns all flavor steps for a given slice (api, ui, sql, mongo, kafka, elastic, core). */
   public List<FlavorEntry> flavorStepsForSlice(String slice) {
     return flavorSteps.stream()

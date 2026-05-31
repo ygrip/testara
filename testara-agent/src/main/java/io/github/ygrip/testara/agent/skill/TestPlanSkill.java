@@ -1,5 +1,6 @@
 package io.github.ygrip.testara.agent.skill;
 
+import io.github.ygrip.testara.agent.catalog.PropertyRuleEngine;
 import io.github.ygrip.testara.agent.flavor.FlavorEntry;
 import io.github.ygrip.testara.agent.index.TestaraProjectProfile;
 
@@ -56,6 +57,7 @@ public class TestPlanSkill implements AgentSkill<TestPlanSkill.Input, String> {
     int totalStepLines = countStepLines(featureContent);
     int missingCount = countMissing(featureContent);
     int score = totalStepLines > 0 ? (builtInCount * 100 / totalStepLines) : 100;
+    int runtimeScore = computeRuntimeContextScore(featureContent, generatedArtifacts, slice);
 
     if (concise) {
       StringBuilder sb = new StringBuilder();
@@ -66,7 +68,7 @@ public class TestPlanSkill implements AgentSkill<TestPlanSkill.Input, String> {
       }
       sb.append(featureContent);
       if (missingCount > 0) sb.append("\nmissing: ").append(missingCount).append(" steps need implementation");
-      sb.append("\nflavor-score: ").append(score).append("%");
+      sb.append("\nflavor-score: ").append(score).append("% | runtime-context-score: ").append(runtimeScore).append("%");
       return sb.toString();
     }
 
@@ -80,7 +82,7 @@ public class TestPlanSkill implements AgentSkill<TestPlanSkill.Input, String> {
       sb.append("\n");
     }
     sb.append("```gherkin\n").append(featureContent).append("\n```\n\n");
-    sb.append("**Testara Flavor Score: ").append(score).append("%**  \n");
+    sb.append("**Testara Flavor Score: ").append(score).append("% | Runtime Context Score: ").append(runtimeScore).append("%**  \n");
     sb.append("Built-in steps: ").append(builtInCount).append("  | Missing: ").append(missingCount).append("\n");
     if (write && writtenPath != null) {
       sb.append("\nNext: `testara-agent test-run '").append(input.intent()).append("' --execute`\n");
@@ -157,29 +159,33 @@ public class TestPlanSkill implements AgentSkill<TestPlanSkill.Input, String> {
     String verb = extractVerb(intent);
     String flow = domain + "/" + verb;
 
-    // Given: prepare request
+    // Use properties() for path param IDs — they're test data
+    String idProp = "properties(test." + domain + ".id)";
     String pathParamStep = findExample(flavorSteps, "Given", "prepare pathParam");
     if (pathParamStep != null) {
-      sb.append("    Given ").append(sub(pathParamStep, "id", "uuid()")).append("\n");
+      sb.append("    Given ").append(sub(pathParamStep, "id", idProp)).append("\n");
     }
 
     if (negative) {
       String bodyStep = findExample(flavorSteps, "Given", "prepare body request");
       if (bodyStep != null) {
+        // Payload path is a file path — not env-specific, OK as literal
         sb.append("    Given ").append(sub(bodyStep,
-            domain + "/payload/" + verb + "-invalid.json", null)).append("\n");
+            "files/" + domain + "/payload/" + verb + "-invalid.json", null)).append("\n");
       }
     }
 
-    // When: send request
+    // Prefer request spec (files/{domain}/request/{flow}) over inline when possible
     String requestStep = findExample(flavorSteps, "When", "process request");
     if (requestStep != null) {
       sb.append("    When ").append(sub(requestStep,
-          domain + "/request/" + verb + "-" + domain, null)).append("\n");
+          "files/" + domain + "/request/" + verb + "-" + domain, null)).append("\n");
     } else {
+      // Fallback: direct HTTP step — endpoint should come from properties
       String httpStep = findExample(flavorSteps, "When", "try");
       if (httpStep != null) {
-        sb.append("    When ").append(sub(httpStep, "/" + domain + "/" + verb, null)).append("\n");
+        sb.append("    When ").append(sub(httpStep,
+            "properties(api." + domain + ".endpoint)", null)).append("\n");
       }
     }
 
@@ -214,45 +220,47 @@ public class TestPlanSkill implements AgentSkill<TestPlanSkill.Input, String> {
   private String buildUiSteps(String intent, String domain, List<FlavorEntry> flavorSteps, boolean negative) {
     StringBuilder sb = new StringBuilder();
 
+    // Open page always from base steps
     String openStep = findExample(flavorSteps, "When", "open .* page");
     if (openStep != null) {
       sb.append("    When ").append(openStep.replace("{value}", domain)).append("\n");
     }
 
     if (!negative) {
-      String enterStep = findExample(flavorSteps, "When", "enter value .* on");
-      if (enterStep != null) {
-        sb.append("    When ").append(enterStep
-            .replace("{value}", "validInput").replace("{name}", "inputField")).append("\n");
-      }
-      String clickStep = findExample(flavorSteps, "When", "click the");
-      if (clickStep != null) {
-        sb.append("    When ").append(clickStep.replace("{value}", "submitButton")).append("\n");
+      // 3+ operations → prefer UserAction pattern over inline steps
+      String actionDesc = extractVerb(intent) + " " + domain;
+      String doStep = findExample(flavorSteps, "When", "do .* in .* page");
+      if (doStep != null) {
+        sb.append("    When ").append(doStep
+            .replace("{value}", actionDesc).replace("{name}", domain)).append("\n");
+        sb.append("      | username | properties(test.").append(domain).append(".username) |\n");
+        sb.append("      | password | properties(test.").append(domain).append(".password) |\n");
+        sb.append("    # Generate UserAction class for this: testara-agent testara-ui action --page=")
+            .append(domain).append(" --action=\"").append(actionDesc).append("\" --write\n");
+      } else {
+        // Fallback: individual steps with properties() values
+        String enterStep = findExample(flavorSteps, "When", "enter value .* on");
+        if (enterStep != null) {
+          sb.append("    When ").append(sub(enterStep,
+              "properties(test." + domain + ".inputValue)", "inputField")).append("\n");
+        }
+        String clickStep = findExample(flavorSteps, "When", "click the");
+        if (clickStep != null) sb.append("    When ").append(clickStep.replace("{value}", "submitButton")).append("\n");
       }
       String pageStep = findExample(flavorSteps, "Then", "is in .* page");
-      if (pageStep != null) {
-        sb.append("    Then ").append(pageStep.replace("{value}", domain + "-success")).append("\n");
-      }
+      if (pageStep != null) sb.append("    Then ").append(pageStep.replace("{value}", domain + "-result")).append("\n");
       String seeStep = findExample(flavorSteps, "Then", "should see .* is");
-      if (seeStep != null) {
-        sb.append("    Then ").append(seeStep
-            .replace("{value}", "successMessage").replace("{param}", "displayed")).append("\n");
-      }
+      if (seeStep != null) sb.append("    Then ").append(seeStep.replace("{value}", "successMessage").replace("{param}", "displayed")).append("\n");
     } else {
       String enterStep = findExample(flavorSteps, "When", "enter value .* on");
       if (enterStep != null) {
-        sb.append("    When ").append(enterStep
-            .replace("{value}", "invalidInput").replace("{name}", "inputField")).append("\n");
+        sb.append("    When ").append(sub(enterStep,
+            "properties(test." + domain + ".invalidValue)", "inputField")).append("\n");
       }
       String clickStep = findExample(flavorSteps, "When", "click the");
-      if (clickStep != null) {
-        sb.append("    When ").append(clickStep.replace("{value}", "submitButton")).append("\n");
-      }
+      if (clickStep != null) sb.append("    When ").append(clickStep.replace("{value}", "submitButton")).append("\n");
       String seeStep = findExample(flavorSteps, "Then", "should see .* is");
-      if (seeStep != null) {
-        sb.append("    Then ").append(seeStep
-            .replace("{value}", "errorMessage").replace("{param}", "displayed")).append("\n");
-      }
+      if (seeStep != null) sb.append("    Then ").append(seeStep.replace("{value}", "errorMessage").replace("{param}", "displayed")).append("\n");
     }
     return sb.toString();
   }
@@ -265,8 +273,9 @@ public class TestPlanSkill implements AgentSkill<TestPlanSkill.Input, String> {
     sb.append("    Given [sql] prepare query with value :\n");
     sb.append("      \"\"\"\n");
     sb.append("      select *\n      from ").append(domain).append("\n");
+    // Use properties() for test data values — IDs are test-specific
     if (negative) sb.append("      where status = 'INVALID'\n");
-    else sb.append("      where id = 'uuid()'\n");
+    else sb.append("      where id = 'properties(test.").append(domain).append(".id)'\n");
     sb.append("      \"\"\"\n");
     sb.append("    When [sql] execute database query\n");
     sb.append("    Then [sql] assign previous database response to ").append(domain).append("Rows\n");
@@ -280,7 +289,9 @@ public class TestPlanSkill implements AgentSkill<TestPlanSkill.Input, String> {
     sb.append("    Given [mongo] connect to database with name ").append(domain).append("Db\n");
     sb.append("    Given [mongo] select collection with name ").append(domain).append("\n");
     sb.append("    When [mongo] select data with query :\n");
-    sb.append("      | query | {").append(negative ? "\"status\":\"INVALID\"" : "\"_id\":\"uuid()\"").append("} |\n");
+    // Use properties() for query values — test data
+    if (negative) sb.append("      | query | {\"status\":\"INVALID\"} |\n");
+    else sb.append("      | query | {\"_id\":\"properties(test.").append(domain).append(".id)\"} |\n");
     sb.append("      | limit | 1 |\n");
     sb.append("    Then [mongo] assign previous database response to ").append(domain).append("Rows\n");
     return sb.toString();
@@ -326,25 +337,26 @@ public class TestPlanSkill implements AgentSkill<TestPlanSkill.Input, String> {
     // Request spec
     String requestDir = "src/test/resources/files/" + domain + "/request";
     String requestFile = requestDir + "/" + flowName + ".json";
+    // Use properties() for URL and test data — not hardcoded values
     String requestSpec = """
         {
           "specification": "%s-api",
           "httpMethod": "POST",
-          "url": "/%s/%s",
+          "url": "properties(api.%s.endpoint)",
           "contentType": "application/json",
           "pathParameters": {
-            "id": "uuid()"
+            "id": "properties(test.%s.id)"
           }
         }
-        """.formatted(domain, domain, verb);
+        """.formatted(domain, domain, domain);
     writeJsonIfAbsent(projectRoot, requestFile, requestSpec, generated);
 
-    // Success payload
+    // Payload stubs — values should come from properties() in production tests
     String payloadDir = "src/test/resources/files/" + domain + "/payload";
     writeJsonIfAbsent(projectRoot, payloadDir + "/" + flowName + "-success.json",
-        "{}", generated);
+        "{\n  \"field\": \"properties(test." + domain + ".field)\"\n}\n", generated);
     writeJsonIfAbsent(projectRoot, payloadDir + "/" + flowName + "-invalid.json",
-        "{\"invalid\": true}", generated);
+        "{\n  \"field\": null\n}\n", generated);
 
     return generated;
   }
@@ -372,6 +384,42 @@ public class TestPlanSkill implements AgentSkill<TestPlanSkill.Input, String> {
       LOG.warning("Cannot write feature file: " + e.getMessage());
       return null;
     }
+  }
+
+  /** Runtime Context Score: measures correct use of properties(), request specs, UserAction. */
+  private int computeRuntimeContextScore(String feature, List<String> artifacts, String slice) {
+    int points = 0, total = 0;
+
+    // 1. properties() usage for non-status-code quoted values
+    long quotedValues = Arrays.stream(feature.split("\n"))
+        .filter(l -> l.contains("\"") && (l.trim().startsWith("Given") || l.trim().startsWith("When")))
+        .count();
+    long propertiesUsed = Arrays.stream(feature.split("\n"))
+        .filter(l -> l.contains("properties(") || l.contains("prop(")).count();
+    long hardcodedUrls = Arrays.stream(feature.split("\n"))
+        .filter(l -> l.contains("localhost") || (l.contains("http://") && !l.contains("properties("))).count();
+
+    if (quotedValues > 0) { total += 40; points += hardcodedUrls == 0 ? 40 : Math.max(0, 40 - (int)(hardcodedUrls * 20)); }
+    if (propertiesUsed > 0) { total += 20; points += 20; }
+
+    // 2. Request spec for API (not inline inline params)
+    if ("api".equals(slice)) {
+      total += 20;
+      boolean usesRequestSpec = feature.contains("process request to");
+      points += usesRequestSpec ? 20 : 0;
+    }
+
+    // 3. UserAction for UI
+    if ("ui".equals(slice)) {
+      total += 20;
+      boolean usesAction = feature.contains("user do \"") && feature.contains("in \"") && feature.contains("page");
+      points += usesAction ? 20 : 10; // partial credit if using base steps
+    }
+
+    // 4. Generated support artifacts (request spec, action files)
+    if (!artifacts.isEmpty()) { total += 20; points += 20; }
+
+    return total == 0 ? 100 : (points * 100 / total);
   }
 
   private int countBuiltInLines(String feature) {

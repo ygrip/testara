@@ -1,5 +1,7 @@
 package io.github.ygrip.testara.agent.index;
 
+import io.github.ygrip.testara.agent.catalog.RuntimeCatalogEntry;
+import io.github.ygrip.testara.agent.catalog.RuntimeCatalogIndexer;
 import io.github.ygrip.testara.agent.flavor.FlavorEntry;
 import io.github.ygrip.testara.agent.flavor.TestaraFlavorIndexer;
 import io.github.ygrip.testara.agent.parser.FeatureParser;
@@ -51,6 +53,7 @@ public class ProjectIndexer {
 
   private final FeatureParser featureParser = new FeatureParser();
   private final TestaraFlavorIndexer flavorIndexer = new TestaraFlavorIndexer();
+  private final RuntimeCatalogIndexer catalogIndexer = new RuntimeCatalogIndexer();
 
   public TestaraProjectProfile index(Path projectRoot) {
     LOG.info("Indexing project at " + projectRoot);
@@ -77,15 +80,16 @@ public class ProjectIndexer {
     List<DriverIndex> drivers = scanDrivers(javaSourceRoots);
     List<TagIndex> tags = buildTagIndex(features);
     List<FlavorEntry> flavorSteps = flavorIndexer.index(projectRoot, modules);
-    LOG.info("Flavor index: " + flavorSteps.size() + " built-in steps across "
-        + flavorSteps.stream().map(FlavorEntry::slice).distinct().count() + " slices");
+    List<RuntimeCatalogEntry> runtimeCatalog = catalogIndexer.index(projectRoot, modules);
+    LOG.info("Flavor index: " + flavorSteps.size() + " built-in steps, "
+        + runtimeCatalog.size() + " config catalog entries");
 
     return new TestaraProjectProfile(
         projectRoot, buildTool, javaVersion, modules,
         featureRoots, requestSpecRoots, validationRoots,
         features, stepDefs, commands, validations, drivers, tags,
         Map.of("scanPackages", String.join(",", scanPackages)), Map.of(),
-        flavorSteps);
+        flavorSteps, runtimeCatalog);
   }
 
   // ── Source root collection ────────────────────────────────────────
