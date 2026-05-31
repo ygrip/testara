@@ -1,6 +1,6 @@
 package io.github.ygrip.testara.agent.skill;
 
-import io.github.ygrip.testara.agent.index.StepDefinitionIndex;
+import io.github.ygrip.testara.agent.flavor.FlavorEntry;
 import io.github.ygrip.testara.agent.index.TestaraProjectProfile;
 
 import java.io.IOException;
@@ -12,10 +12,13 @@ import java.util.logging.Logger;
 import java.util.stream.Collectors;
 
 /**
- * Skill: generate a Testara-compatible Cucumber .feature file from user intent.
- * Unknown steps are explicitly marked as MISSING to prevent hallucination.
+ * Skill: generate a Testara-flavor Cucumber .feature file from user intent.
  *
- * When context option "write=true", the feature file is saved to disk at the resolved placement path.
+ * Priority order (from plan):
+ *   1. Testara built-in steps (from FlavorCatalog)
+ *   2. Project-specific steps (from profile.stepDefinitions)
+ *   3. Generate extension artifact (command, validation, request spec)
+ *   4. Mark as MISSING only as last resort
  */
 public class TestPlanSkill implements AgentSkill<TestPlanSkill.Input, String> {
 
@@ -29,55 +32,333 @@ public class TestPlanSkill implements AgentSkill<TestPlanSkill.Input, String> {
   @Override
   public String execute(Input input, AgentContext context) {
     TestaraProjectProfile profile = context.profile();
-    String slice  = input.slice() != null ? input.slice() : "api";
+    String slice  = input.slice() != null ? input.slice() : inferSlice(input.intent());
     String domain = input.domain() != null ? input.domain() : inferDomain(input.intent());
     List<String> tags = buildTags(input.tags(), slice, domain);
     boolean write = "true".equals(context.options().get("write"));
-
-    String featureContent = generateFeature(input.intent(), domain, tags, slice, profile);
-    String placement      = resolvePlacement(slice, domain);
-    String fileName       = toFileName(input.intent());
     boolean concise = "concise".equals(context.options().get("format"));
 
+    List<FlavorEntry> flavorSteps = profile.flavorStepsForSlice(slice);
+    String featureContent = generateFlavorFeature(input.intent(), domain, tags, slice, flavorSteps, profile);
+    String placement = resolvePlacement(slice, domain);
+    String fileName  = toFileName(input.intent());
+
     String writtenPath = null;
+    List<String> generatedArtifacts = new ArrayList<>();
     if (write) {
       writtenPath = writeFeatureFile(context.projectRoot(), placement, fileName, featureContent);
+      if ("api".equals(slice)) {
+        generatedArtifacts.addAll(generateRequestSpecs(context.projectRoot(), domain, input.intent()));
+      }
     }
+
+    int builtInCount = countBuiltInLines(featureContent);
+    int totalStepLines = countStepLines(featureContent);
+    int missingCount = countMissing(featureContent);
+    int score = totalStepLines > 0 ? (builtInCount * 100 / totalStepLines) : 100;
 
     if (concise) {
       StringBuilder sb = new StringBuilder();
       if (write) {
         sb.append(writtenPath != null ? "written: " + writtenPath : "write failed");
+        generatedArtifacts.forEach(a -> sb.append("\ngenerated: ").append(a));
         sb.append("\n\n");
       }
       sb.append(featureContent);
-      List<String> missing = extractMissingSteps(featureContent);
-      if (!missing.isEmpty()) {
-        sb.append("\nmissing steps (").append(missing.size()).append("): ");
-        sb.append(String.join(", ", missing));
-      }
+      if (missingCount > 0) sb.append("\nmissing: ").append(missingCount).append(" steps need implementation");
+      sb.append("\nflavor-score: ").append(score).append("%");
       return sb.toString();
     }
 
     StringBuilder sb = new StringBuilder();
     sb.append("## Test Plan: ").append(input.intent()).append("\n\n");
+    sb.append("**Slice:** ").append(slice).append("  **Domain:** ").append(domain).append("  \n");
     sb.append("**Placement:** `").append(placement).append(fileName).append("`\n\n");
     if (write) {
-      sb.append(writtenPath != null
-          ? "> Written to `" + writtenPath + "`\n\n"
-          : "> Warning: could not write feature file.\n\n");
+      sb.append(writtenPath != null ? "> Written to `" + writtenPath + "`\n" : "> Warning: could not write.\n");
+      generatedArtifacts.forEach(a -> sb.append("> Generated: `").append(a).append("`\n"));
+      sb.append("\n");
     }
     sb.append("```gherkin\n").append(featureContent).append("\n```\n\n");
-    List<String> missingSteps = extractMissingSteps(featureContent);
-    if (!missingSteps.isEmpty()) {
-      sb.append("**Missing steps:** ");
-      missingSteps.forEach(s -> sb.append("`").append(s).append("` "));
-      sb.append("\nImplement in `StepDefinitions.java` before running.\n");
-    }
+    sb.append("**Testara Flavor Score: ").append(score).append("%**  \n");
+    sb.append("Built-in steps: ").append(builtInCount).append("  | Missing: ").append(missingCount).append("\n");
     if (write && writtenPath != null) {
       sb.append("\nNext: `testara-agent test-run '").append(input.intent()).append("' --execute`\n");
     }
     return sb.toString();
+  }
+
+  // ── Feature generation ────────────────────────────────────────────────────
+
+  private String generateFlavorFeature(String intent, String domain, List<String> tags,
+      String slice, List<FlavorEntry> flavorSteps, TestaraProjectProfile profile) {
+    StringBuilder sb = new StringBuilder();
+    sb.append("# Generated by Testara Agent — review before committing.\n\n");
+    sb.append(tags.stream().collect(Collectors.joining(" "))).append("\n");
+    sb.append("Feature: ").append(toFeatureName(intent)).append("\n\n");
+
+    // Background
+    String background = buildBackground(domain, slice, flavorSteps);
+    if (!background.isBlank()) {
+      sb.append("  Background:\n").append(background).append("\n");
+    }
+
+    // Positive scenario
+    sb.append("  @P1 @positive\n");
+    sb.append("  Scenario: ").append(toFeatureName(intent)).append(" — happy path\n");
+    sb.append(buildScenarioSteps(intent, domain, slice, flavorSteps, profile, false));
+    sb.append("\n");
+
+    // Negative scenario
+    sb.append("  @P2 @negative\n");
+    sb.append("  Scenario: ").append(toFeatureName(intent)).append(" — failure case\n");
+    sb.append(buildScenarioSteps(intent, domain, slice, flavorSteps, profile, true));
+
+    return sb.toString();
+  }
+
+  private String buildBackground(String domain, String slice, List<FlavorEntry> flavorSteps) {
+    return switch (slice) {
+      case "api" -> {
+        String initStep = findExample(flavorSteps, "Given", "using service with alias");
+        if (initStep != null) {
+          String step = initStep.replace("{name}", domain + "-api");
+          yield "    Given " + step + "\n";
+        }
+        yield "";
+      }
+      case "ui" -> {
+        String sessionStep = findExample(flavorSteps, "Given", "using");
+        if (sessionStep != null) {
+          String step = sessionStep.replace("{name}", "web").replace("{param}", "desktop");
+          yield "    Given " + step + "\n";
+        }
+        yield "";
+      }
+      default -> "";
+    };
+  }
+
+  private String buildScenarioSteps(String intent, String domain, String slice,
+      List<FlavorEntry> flavorSteps, TestaraProjectProfile profile, boolean negative) {
+    return switch (slice) {
+      case "api" -> buildApiSteps(intent, domain, flavorSteps, negative);
+      case "ui"  -> buildUiSteps(intent, domain, flavorSteps, negative);
+      case "sql" -> buildSqlSteps(domain, negative);
+      case "mongo" -> buildMongoSteps(domain, negative);
+      default    -> buildGenericSteps(intent, domain, negative);
+    };
+  }
+
+  // ── API scenario steps ────────────────────────────────────────────────────
+
+  private String buildApiSteps(String intent, String domain, List<FlavorEntry> flavorSteps, boolean negative) {
+    StringBuilder sb = new StringBuilder();
+    String verb = extractVerb(intent);
+    String flow = domain + "/" + verb;
+
+    // Given: prepare request
+    String pathParamStep = findExample(flavorSteps, "Given", "prepare pathParam");
+    if (pathParamStep != null) {
+      sb.append("    Given ").append(sub(pathParamStep, "id", "uuid()")).append("\n");
+    }
+
+    if (negative) {
+      String bodyStep = findExample(flavorSteps, "Given", "prepare body request");
+      if (bodyStep != null) {
+        sb.append("    Given ").append(sub(bodyStep,
+            domain + "/payload/" + verb + "-invalid.json", null)).append("\n");
+      }
+    }
+
+    // When: send request
+    String requestStep = findExample(flavorSteps, "When", "process request");
+    if (requestStep != null) {
+      sb.append("    When ").append(sub(requestStep,
+          domain + "/request/" + verb + "-" + domain, null)).append("\n");
+    } else {
+      String httpStep = findExample(flavorSteps, "When", "try");
+      if (httpStep != null) {
+        sb.append("    When ").append(sub(httpStep, "/" + domain + "/" + verb, null)).append("\n");
+      }
+    }
+
+    // Then: assert response
+    String statusStep = findExample(flavorSteps, "Then", "statusCode should be");
+    if (statusStep != null) {
+      sb.append("    Then ").append(statusStep
+          .replaceAll("\\{\\w+\\}", negative ? "400" : "200")).append("\n");
+    }
+
+    if (!negative) {
+      String successStep = findExample(flavorSteps, "Then", "response success should be");
+      if (successStep != null) {
+        sb.append("    Then ").append(successStep.replaceAll("\\{\\w+\\}", "true")).append("\n");
+      }
+      String assignStep = findExample(flavorSteps, "Then", "assign previous response data");
+      if (assignStep != null) {
+        sb.append("    Then ").append(assignStep.replaceAll("\\{\\w+\\}", domain + "Response")).append("\n");
+      }
+    } else {
+      String successStep = findExample(flavorSteps, "Then", "response success should be");
+      if (successStep != null) {
+        sb.append("    Then ").append(successStep.replaceAll("\\{\\w+\\}", "false")).append("\n");
+      }
+    }
+
+    return sb.toString();
+  }
+
+  // ── UI scenario steps ─────────────────────────────────────────────────────
+
+  private String buildUiSteps(String intent, String domain, List<FlavorEntry> flavorSteps, boolean negative) {
+    StringBuilder sb = new StringBuilder();
+
+    String openStep = findExample(flavorSteps, "When", "open .* page");
+    if (openStep != null) {
+      sb.append("    When ").append(openStep.replace("{value}", domain)).append("\n");
+    }
+
+    if (!negative) {
+      String enterStep = findExample(flavorSteps, "When", "enter value .* on");
+      if (enterStep != null) {
+        sb.append("    When ").append(enterStep
+            .replace("{value}", "validInput").replace("{name}", "inputField")).append("\n");
+      }
+      String clickStep = findExample(flavorSteps, "When", "click the");
+      if (clickStep != null) {
+        sb.append("    When ").append(clickStep.replace("{value}", "submitButton")).append("\n");
+      }
+      String pageStep = findExample(flavorSteps, "Then", "is in .* page");
+      if (pageStep != null) {
+        sb.append("    Then ").append(pageStep.replace("{value}", domain + "-success")).append("\n");
+      }
+      String seeStep = findExample(flavorSteps, "Then", "should see .* is");
+      if (seeStep != null) {
+        sb.append("    Then ").append(seeStep
+            .replace("{value}", "successMessage").replace("{param}", "displayed")).append("\n");
+      }
+    } else {
+      String enterStep = findExample(flavorSteps, "When", "enter value .* on");
+      if (enterStep != null) {
+        sb.append("    When ").append(enterStep
+            .replace("{value}", "invalidInput").replace("{name}", "inputField")).append("\n");
+      }
+      String clickStep = findExample(flavorSteps, "When", "click the");
+      if (clickStep != null) {
+        sb.append("    When ").append(clickStep.replace("{value}", "submitButton")).append("\n");
+      }
+      String seeStep = findExample(flavorSteps, "Then", "should see .* is");
+      if (seeStep != null) {
+        sb.append("    Then ").append(seeStep
+            .replace("{value}", "errorMessage").replace("{param}", "displayed")).append("\n");
+      }
+    }
+    return sb.toString();
+  }
+
+  // ── SQL scenario steps ────────────────────────────────────────────────────
+
+  private String buildSqlSteps(String domain, boolean negative) {
+    StringBuilder sb = new StringBuilder();
+    sb.append("    Given [sql] connect to database with name ").append(domain).append("Db\n");
+    sb.append("    Given [sql] prepare query with value :\n");
+    sb.append("      \"\"\"\n");
+    sb.append("      select *\n      from ").append(domain).append("\n");
+    if (negative) sb.append("      where status = 'INVALID'\n");
+    else sb.append("      where id = 'uuid()'\n");
+    sb.append("      \"\"\"\n");
+    sb.append("    When [sql] execute database query\n");
+    sb.append("    Then [sql] assign previous database response to ").append(domain).append("Rows\n");
+    return sb.toString();
+  }
+
+  // ── Mongo scenario steps ──────────────────────────────────────────────────
+
+  private String buildMongoSteps(String domain, boolean negative) {
+    StringBuilder sb = new StringBuilder();
+    sb.append("    Given [mongo] connect to database with name ").append(domain).append("Db\n");
+    sb.append("    Given [mongo] select collection with name ").append(domain).append("\n");
+    sb.append("    When [mongo] select data with query :\n");
+    sb.append("      | query | {").append(negative ? "\"status\":\"INVALID\"" : "\"_id\":\"uuid()\"").append("} |\n");
+    sb.append("      | limit | 1 |\n");
+    sb.append("    Then [mongo] assign previous database response to ").append(domain).append("Rows\n");
+    return sb.toString();
+  }
+
+  // ── Generic fallback steps ────────────────────────────────────────────────
+
+  private String buildGenericSteps(String intent, String domain, boolean negative) {
+    String verb = extractVerb(intent);
+    StringBuilder sb = new StringBuilder();
+    sb.append("    Given the system is ready for ").append(domain).append(" # MISSING\n");
+    sb.append("    When the ").append(verb).append(" operation is performed on ").append(domain).append(" # MISSING\n");
+    sb.append("    Then the result should be ").append(negative ? "an error" : "success").append(" # MISSING\n");
+    return sb.toString();
+  }
+
+  // ── Utilities ─────────────────────────────────────────────────────────────
+
+  /** Substitutes first and optionally second {placeholder} in an example step. */
+  private String sub(String example, String first, String second) {
+    String s = example.replaceFirst("\\{\\w+\\}", first != null ? first : "");
+    if (second != null) s = s.replaceFirst("\\{\\w+\\}", second);
+    return s;
+  }
+
+  /** Find the first flavor step whose example matches a key phrase (supports simple regex). */
+  private String findExample(List<FlavorEntry> steps, String keyword, String phrasePattern) {
+    return steps.stream()
+        .filter(e -> e.keyword().equalsIgnoreCase(keyword))
+        .filter(e -> e.example().matches(".*" + phrasePattern + ".*")
+            || e.expression().matches(".*" + phrasePattern.replace(".*", "\\S*") + ".*"))
+        .map(FlavorEntry::example)
+        .findFirst()
+        .orElse(null);
+  }
+
+  /** Generates request spec and payload JSON files for API flows. */
+  private List<String> generateRequestSpecs(Path projectRoot, String domain, String intent) {
+    List<String> generated = new ArrayList<>();
+    String verb = extractVerb(intent);
+    String flowName = verb + "-" + domain;
+
+    // Request spec
+    String requestDir = "src/test/resources/files/" + domain + "/request";
+    String requestFile = requestDir + "/" + flowName + ".json";
+    String requestSpec = """
+        {
+          "specification": "%s-api",
+          "httpMethod": "POST",
+          "url": "/%s/%s",
+          "contentType": "application/json",
+          "pathParameters": {
+            "id": "uuid()"
+          }
+        }
+        """.formatted(domain, domain, verb);
+    writeJsonIfAbsent(projectRoot, requestFile, requestSpec, generated);
+
+    // Success payload
+    String payloadDir = "src/test/resources/files/" + domain + "/payload";
+    writeJsonIfAbsent(projectRoot, payloadDir + "/" + flowName + "-success.json",
+        "{}", generated);
+    writeJsonIfAbsent(projectRoot, payloadDir + "/" + flowName + "-invalid.json",
+        "{\"invalid\": true}", generated);
+
+    return generated;
+  }
+
+  private void writeJsonIfAbsent(Path root, String relative, String content, List<String> generated) {
+    try {
+      Path target = root.resolve(relative);
+      if (Files.exists(target)) return;
+      Files.createDirectories(target.getParent());
+      Files.writeString(target, content, StandardCharsets.UTF_8);
+      generated.add(relative);
+    } catch (IOException e) {
+      LOG.fine("Cannot write " + relative + ": " + e.getMessage());
+    }
   }
 
   private String writeFeatureFile(Path projectRoot, String placement, String fileName, String content) {
@@ -93,120 +374,65 @@ public class TestPlanSkill implements AgentSkill<TestPlanSkill.Input, String> {
     }
   }
 
-  private String generateFeature(String intent, String domain, List<String> tags,
-      String slice, TestaraProjectProfile profile) {
-    String featureName = toFeatureName(intent);
-    String tagLine     = tags.stream().collect(Collectors.joining(" "));
-    boolean isApi      = "api".equalsIgnoreCase(slice);
-
-    Set<String> knownExpressions = profile.stepDefinitions().stream()
-        .map(StepDefinitionIndex::expression).collect(Collectors.toSet());
-
-    StringBuilder sb = new StringBuilder();
-    sb.append("# Generated by Testara Agent.\n");
-    sb.append("# Source request: ").append(intent).append("\n");
-    sb.append("# Review before committing.\n\n");
-    sb.append(tagLine).append("\n");
-    sb.append("Feature: ").append(featureName).append("\n\n");
-
-    if (isApi) {
-      String service = domain + "-service";
-      sb.append("  Background:\n");
-      String bgStep = "the API service \"" + service + "\" is available";
-      String bgKeyword = matchStep(bgStep, knownExpressions) ? "Given" : "Given # MISSING";
-      sb.append("    ").append(bgKeyword).append(" ").append(bgStep).append("\n\n");
-    }
-
-    sb.append("  @P1 @positive\n");
-    sb.append("  Scenario: ").append(featureName).append(" — happy path\n");
-    appendSliceSteps(sb, intent, domain, slice, knownExpressions, false);
-    sb.append("\n");
-
-    sb.append("  @P2 @negative\n");
-    sb.append("  Scenario: ").append(featureName).append(" — failure case\n");
-    appendSliceSteps(sb, intent, domain, slice, knownExpressions, true);
-
-    return sb.toString();
+  private int countBuiltInLines(String feature) {
+    return (int) Arrays.stream(feature.split("\n"))
+        .filter(l -> (l.trim().startsWith("Given") || l.trim().startsWith("When")
+            || l.trim().startsWith("Then") || l.trim().startsWith("And"))
+            && !l.contains("# MISSING"))
+        .count();
   }
 
-  private void appendSliceSteps(StringBuilder sb, String intent, String domain,
-      String slice, Set<String> known, boolean negative) {
-    List<String[]> steps = generateSteps(intent, domain, slice, negative);
-    for (String[] step : steps) {
-      String keyword = step[0];
-      String text    = step[1];
-      String suffix  = matchStep(text, known) ? "" : " # MISSING";
-      sb.append("    ").append(keyword).append(" ").append(text).append(suffix).append("\n");
-    }
+  private int countStepLines(String feature) {
+    return (int) Arrays.stream(feature.split("\n"))
+        .filter(l -> {
+          String t = l.trim();
+          return t.startsWith("Given") || t.startsWith("When")
+              || t.startsWith("Then") || t.startsWith("And");
+        })
+        .count();
   }
 
-  private List<String[]> generateSteps(String intent, String domain, String slice, boolean negative) {
-    String verb = extractVerb(intent);
-    String noun = extractNoun(intent, domain);
-
-    return switch (slice.toLowerCase(Locale.ROOT)) {
-      case "api" -> negative
-          ? List.of(
-              new String[]{"Given", "a request to " + verb + " " + noun + " with invalid data"},
-              new String[]{"When",  "the request is sent"},
-              new String[]{"Then",  "the response status should be 400"},
-              new String[]{"And",   "the response should contain an error message"})
-          : List.of(
-              new String[]{"Given", "a valid request to " + verb + " " + noun},
-              new String[]{"When",  "the request is sent"},
-              new String[]{"Then",  "the response status should be 200"},
-              new String[]{"And",   "the response should contain the expected " + noun + " data"});
-      case "ui" -> negative
-          ? List.of(
-              new String[]{"Given", "the user is on the " + domain + " page"},
-              new String[]{"When",  "the user attempts to " + verb + " " + noun + " with invalid input"},
-              new String[]{"Then",  "an error message should be displayed"})
-          : List.of(
-              new String[]{"Given", "the user is on the " + domain + " page"},
-              new String[]{"When",  "the user " + verb + "s " + noun},
-              new String[]{"Then",  "the " + noun + " should be successfully " + verb + "d"},
-              new String[]{"And",   "a success notification should appear"});
-      default -> List.of(
-          new String[]{"Given", "the system is in a valid state for " + noun},
-          new String[]{"When",  "the " + verb + " operation is performed on " + noun},
-          new String[]{"Then",  "the expected result should be " + (negative ? "an error" : "success")});
-    };
-  }
-
-  private boolean matchStep(String text, Set<String> known) {
-    return known.stream().anyMatch(expr -> {
-      String pattern = expr.replaceAll("\\{[^}]+\\}", ".*").replaceAll("\\(.*?\\)", ".*");
-      return text.toLowerCase(Locale.ROOT).matches(".*" + pattern.toLowerCase(Locale.ROOT) + ".*");
-    });
-  }
-
-  private List<String> extractMissingSteps(String featureContent) {
-    return Arrays.stream(featureContent.split("\n"))
-        .filter(l -> l.contains("# MISSING"))
-        .map(l -> l.replaceAll(".*(?:Given|When|Then|And|But)\\s+", "")
-            .replace("# MISSING", "").strip())
-        .collect(Collectors.toList());
+  private int countMissing(String feature) {
+    return (int) Arrays.stream(feature.split("\n"))
+        .filter(l -> l.contains("# MISSING")).count();
   }
 
   private String resolvePlacement(String slice, String domain) {
     return switch (slice.toLowerCase(Locale.ROOT)) {
       case "api"       -> "src/test/resources/features/api/" + domain + "/";
       case "ui"        -> "src/test/resources/features/ui/" + domain + "/";
-      case "database"  -> "src/test/resources/features/database/" + domain + "/";
-      case "streaming" -> "src/test/resources/features/streaming/" + domain + "/";
+      case "sql", "database" -> "src/test/resources/features/database/" + domain + "/";
+      case "mongo"     -> "src/test/resources/features/database/" + domain + "/";
+      case "kafka", "streaming" -> "src/test/resources/features/streaming/" + domain + "/";
+      case "elastic"   -> "src/test/resources/features/elastic/" + domain + "/";
       default          -> "src/test/resources/features/" + domain + "/";
     };
   }
 
   private String toFileName(String intent) {
-    return intent.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]+", "-")
-        .replaceAll("^-|-$", "").substring(0, Math.min(50, intent.length())) + ".feature";
+    String slug = intent.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]+", "-").replaceAll("^-|-$", "");
+    return slug.substring(0, Math.min(50, slug.length())) + ".feature";
+  }
+
+  private String inferSlice(String intent) {
+    String lower = intent.toLowerCase(Locale.ROOT);
+    if (lower.contains("sql") || lower.contains("database") || lower.contains("db")
+        || lower.contains("query") || lower.contains("table") || lower.contains("settlement")
+        || lower.contains("row")) return "sql";
+    if (lower.contains("mongo") || lower.contains("collection") || lower.contains("document")) return "mongo";
+    if (lower.contains("kafka") || lower.contains("topic") || lower.contains("consumer")
+        || lower.contains("producer") || lower.contains("streaming")) return "kafka";
+    if (lower.contains("ui") || lower.contains("page") || lower.contains("click")
+        || lower.contains("button") || lower.contains("login") || lower.contains("browser")
+        || lower.contains("selenium") || lower.contains("playwright")) return "ui";
+    return "api"; // default
   }
 
   private String inferDomain(String intent) {
     String lower = intent.toLowerCase(Locale.ROOT);
     for (String word : new String[]{"payment","order","user","product","cart","checkout",
-        "login","auth","refund","search","catalog","notification","inventory"}) {
+        "login","auth","refund","search","catalog","notification","inventory","settlement",
+        "transaction","account","customer","report","approval","validation"}) {
       if (lower.contains(word)) return word;
     }
     return intent.replaceAll("[^a-zA-Z0-9]+", "-").toLowerCase(Locale.ROOT)
@@ -215,30 +441,20 @@ public class TestPlanSkill implements AgentSkill<TestPlanSkill.Input, String> {
 
   private String extractVerb(String intent) {
     String lower = intent.toLowerCase(Locale.ROOT);
-    for (String verb : new String[]{"create","update","delete","get","fetch","submit",
-        "approve","reject","cancel","confirm","process","validate","search"}) {
+    for (String verb : new String[]{"approve","reject","create","update","delete","get","fetch",
+        "submit","cancel","confirm","process","validate","search","refund","pay","transfer"}) {
       if (lower.contains(verb)) return verb;
     }
     return "process";
   }
 
-  private String extractNoun(String intent, String domain) {
-    String lower = intent.toLowerCase(Locale.ROOT).replace(domain, "").strip();
-    String[] words = lower.split("\\s+");
-    for (int i = words.length - 1; i >= 0; i--) {
-      String w = words[i].replaceAll("[^a-z]", "");
-      if (w.length() > 3) return w;
-    }
-    return domain;
-  }
-
   private List<String> buildTags(List<String> userTags, String slice, String domain) {
-    List<String> tags = new ArrayList<>();
-    tags.add("@" + slice.toLowerCase(Locale.ROOT));
-    tags.add("@" + domain.toLowerCase(Locale.ROOT));
-    tags.add("@regression");
-    if (userTags != null) userTags.forEach(t -> tags.add(t.startsWith("@") ? t : "@" + t));
-    return tags;
+    List<String> t = new ArrayList<>();
+    t.add("@" + slice.toLowerCase(Locale.ROOT));
+    t.add("@" + domain.toLowerCase(Locale.ROOT));
+    t.add("@regression");
+    if (userTags != null) userTags.forEach(tag -> t.add(tag.startsWith("@") ? tag : "@" + tag));
+    return t;
   }
 
   private String toFeatureName(String intent) {

@@ -201,6 +201,6 @@ public class TestRunSkill implements AgentSkill<String, String> {
         base.requestSpecRoots(), base.validationRoots(),
         List.of(fakeFeature), base.stepDefinitions(),
         base.commands(), base.validations(), base.drivers(), fakeTag,
-        base.properties(), base.conventions());
+        base.properties(), base.conventions(), base.flavorSteps());
   }
 }

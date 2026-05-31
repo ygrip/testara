@@ -1,5 +1,6 @@
 package io.github.ygrip.testara.agent.skill;
 
+import io.github.ygrip.testara.agent.flavor.FlavorEntry;
 import io.github.ygrip.testara.agent.index.*;
 import io.github.ygrip.testara.agent.parser.FeatureParser;
 import io.github.ygrip.testara.agent.skill.review.ReviewFinding;
@@ -40,7 +41,79 @@ public class TestReviewSkill implements AgentSkill<Path, String> {
     findings.addAll(suggestBackgroundExtraction(features));
     findings.addAll(suggestScenarioOutlines(features));
 
-    return renderMarkdown(findings, target, features);
+    // Phase 6: flavor score using built-in step catalog
+    List<FlavorEntry> flavorSteps = context.profile().flavorSteps();
+    FlavorScore flavorScore = computeFlavorScore(features, flavorSteps);
+    findings.addAll(flavorScore.migratableFindings());
+
+    return renderMarkdown(findings, target, features, flavorScore);
+  }
+
+  // ── Flavor score ──────────────────────────────────────────────────
+
+  private record FlavorScore(int total, int builtIn, int migratable, int custom,
+      List<ReviewFinding> migratableFindings) {
+    int score() { return total == 0 ? 100 : builtIn * 100 / total; }
+  }
+
+  private FlavorScore computeFlavorScore(List<FeatureIndex> features, List<FlavorEntry> catalog) {
+    int total = 0, builtIn = 0, migratable = 0;
+    List<ReviewFinding> findings = new ArrayList<>();
+
+    for (FeatureIndex feature : features) {
+      for (ScenarioIndex scenario : feature.scenarios()) {
+        for (StepIndex step : scenario.steps()) {
+          total++;
+          String stepText = step.keyword() + " " + step.text();
+          // Check if any built-in flavor step expression matches this step
+          boolean isBuiltIn = catalog.stream().anyMatch(e ->
+              matchesFlavorStep(stepText, e));
+          if (isBuiltIn) {
+            builtIn++;
+          } else {
+            // Check if any flavor step COULD replace this generic step
+            String generic = detectGenericPattern(step.text());
+            if (generic != null) {
+              migratable++;
+              FlavorEntry suggested = catalog.stream()
+                  .filter(e -> e.capability().contains(generic))
+                  .findFirst().orElse(null);
+              findings.add(new ReviewFinding(ReviewSeverity.INFO,
+                  "MIGRATABLE: generic step where Testara built-in exists",
+                  "Step `" + step.text() + "` could be replaced with a Testara built-in step."
+                      + (suggested != null ? " Suggested: `" + suggested.example() + "`" : ""),
+                  feature.path(), scenario.name(),
+                  suggested != null ? "Replace with: " + suggested.example() : "Check testara-agent test-command --list for available steps"));
+            }
+          }
+        }
+      }
+    }
+    int custom = total - builtIn - migratable;
+    return new FlavorScore(total, builtIn, migratable, custom, List.copyOf(findings));
+  }
+
+  private boolean matchesFlavorStep(String stepText, FlavorEntry entry) {
+    try {
+      String expr = entry.expression()
+          .replace("(.+)", ".*").replace("(\\w+)", "\\w+")
+          .replace("(\\d+)", "\\d+").replace("\"([^\"]*)\"", "\"[^\"]*\"")
+          .replace("([^\"]*)", "[^\"]*").replaceAll("\\(\\|[^)]+\\)", "[^\\s]+")
+          .replaceAll("\\\\", "");
+      return stepText.toLowerCase().matches("(?i).*" + expr.toLowerCase() + ".*");
+    } catch (Exception e) {
+      return false;
+    }
+  }
+
+  private String detectGenericPattern(String stepText) {
+    String lower = stepText.toLowerCase();
+    if (lower.contains("response status") || lower.contains("status code")) return "statuscode";
+    if (lower.contains("process request") || lower.contains("api call")) return "process request";
+    if (lower.contains("click") && !lower.contains("[ui]")) return "click";
+    if (lower.contains("enter value") || lower.contains("type value")) return "enter value";
+    if (lower.contains("sql") || lower.contains("execute query")) return "execute query";
+    return null;
   }
 
   // ── Detectors ─────────────────────────────────────────────────────
@@ -327,32 +400,43 @@ public class TestReviewSkill implements AgentSkill<Path, String> {
     return out;
   }
 
-  private String renderMarkdown(List<ReviewFinding> findings, Path target, List<FeatureIndex> features) {
+  private String renderMarkdown(List<ReviewFinding> findings, Path target,
+      List<FeatureIndex> features, FlavorScore flavorScore) {
     StringBuilder sb = new StringBuilder();
     sb.append("# Test Review: ").append(target.getFileName()).append("\n\n");
     sb.append("**Feature files reviewed:** ").append(features.size()).append("  \n");
     sb.append("**Total findings:** ").append(findings.size()).append("  \n\n");
 
+    // Flavor score block
+    sb.append("## Testara Flavor Score: ").append(flavorScore.score()).append("%\n\n");
+    sb.append("| Metric | Count |\n|--------|-------|\n");
+    sb.append("| Total steps | ").append(flavorScore.total()).append(" |\n");
+    sb.append("| Built-in Testara steps | ").append(flavorScore.builtIn()).append(" |\n");
+    sb.append("| Migratable (generic where built-in exists) | ").append(flavorScore.migratable()).append(" |\n");
+    sb.append("| Custom steps | ").append(flavorScore.custom()).append(" |\n\n");
+    if (flavorScore.score() >= 80) {
+      sb.append("> Flavor score >= 80% — good Testara adoption.\n\n");
+    } else {
+      sb.append("> Flavor score below 80% — consider migrating generic steps to Testara built-ins.\n\n");
+    }
+
     if (findings.isEmpty()) {
-      sb.append("> No issues found. Looks good!\n");
+      sb.append("> No quality issues found.\n");
       return sb.toString();
     }
 
     for (ReviewSeverity sev : ReviewSeverity.values()) {
-      List<ReviewFinding> group = findings.stream()
-          .filter(f -> f.severity() == sev).toList();
+      List<ReviewFinding> group = findings.stream().filter(f -> f.severity() == sev).toList();
       if (group.isEmpty()) continue;
       sb.append("## ").append(sev).append(" (").append(group.size()).append(")\n\n");
       group.forEach(f -> sb.append(f.toMarkdown()).append("\n"));
     }
-    // Priority recommendations
     long blocker = findings.stream().filter(f -> f.severity() == ReviewSeverity.BLOCKER).count();
-    long high     = findings.stream().filter(f -> f.severity() == ReviewSeverity.HIGH).count();
+    long high    = findings.stream().filter(f -> f.severity() == ReviewSeverity.HIGH).count();
     if (blocker > 0 || high > 0) {
       sb.append("## Priority Recommendations\n\n");
-      if (blocker > 0) sb.append("- **P0** — Fix ").append(blocker).append(" BLOCKER issue(s) before any release.\n");
-      if (high > 0)    sb.append("- **P1** — Resolve ").append(high).append(" HIGH issue(s) in the next sprint.\n");
-      sb.append("- **P2–P3** — Schedule remaining MEDIUM/LOW findings for backlog grooming.\n\n");
+      if (blocker > 0) sb.append("- **P0** — Fix ").append(blocker).append(" BLOCKER issue(s).\n");
+      if (high > 0)    sb.append("- **P1** — Resolve ").append(high).append(" HIGH issue(s).\n");
     }
     return sb.toString();
   }

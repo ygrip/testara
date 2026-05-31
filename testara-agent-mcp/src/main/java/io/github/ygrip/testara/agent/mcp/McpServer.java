@@ -88,7 +88,7 @@ public class McpServer {
       profile = new TestaraProjectProfile(projectRoot, null, "unknown",
           List.of(), List.of(), List.of(), List.of(),
           List.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
-          Map.of(), Map.of());
+          Map.of(), Map.of(), List.of());
     }
 
     String line;

@@ -1,8 +1,11 @@
 package io.github.ygrip.testara.agent.index;
 
+import io.github.ygrip.testara.agent.flavor.FlavorEntry;
+
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 public record TestaraProjectProfile(
     Path projectRoot,
@@ -19,8 +22,24 @@ public record TestaraProjectProfile(
     List<DriverIndex> drivers,
     List<TagIndex> tags,
     Map<String, String> properties,
-    Map<String, Object> conventions
+    Map<String, Object> conventions,
+    List<FlavorEntry> flavorSteps
 ) {
+  /** Returns all flavor steps for a given slice (api, ui, sql, mongo, kafka, elastic, core). */
+  public List<FlavorEntry> flavorStepsForSlice(String slice) {
+    return flavorSteps.stream()
+        .filter(e -> e.slice().equalsIgnoreCase(slice))
+        .collect(Collectors.toList());
+  }
+
+  /** Finds the best-matching flavor step for a given keyword and intent text. */
+  public java.util.Optional<FlavorEntry> findFlavorStep(String slice, String keyword, String intentText) {
+    String lower = intentText.toLowerCase();
+    return flavorSteps.stream()
+        .filter(e -> e.slice().equalsIgnoreCase(slice) && e.keyword().equalsIgnoreCase(keyword))
+        .filter(e -> e.matchesIntent(lower))
+        .findFirst();
+  }
   public int totalScenarios() {
     return features().stream().mapToInt(f -> f.scenarios().size()).sum();
   }

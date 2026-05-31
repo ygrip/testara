@@ -21,7 +21,7 @@ class TagExpressionResolverTest {
         Path.of("."), BuildTool.MAVEN, "21", List.of(),
         List.of(), List.of(), List.of(),
         List.of(), List.of(), List.of(), List.of(), List.of(), tagIndices,
-        Map.of(), Map.of());
+        Map.of(), Map.of(), List.of());
   }
 
   @Test
