@@ -31,6 +31,7 @@ public final class JsonlKnowledgeStore implements ProjectKnowledgeService {
   private static final String KNOWLEDGE_DIR = ".testara-agent/knowledge";
   private static final String MANIFEST = "manifest.json";
   private static final String FINGERPRINTS = "file-fingerprints.jsonl";
+  private static final String PROFILE_CACHE = "profile-cache.json";
 
   private final ProjectIndexer indexer = new ProjectIndexer();
 
@@ -51,23 +52,31 @@ public final class JsonlKnowledgeStore implements ProjectKnowledgeService {
   @Override
   public ProjectKnowledgeSnapshot loadOrIndex(Path projectRoot) {
     final var knowledgeDir = projectRoot.resolve(KNOWLEDGE_DIR);
-    try {
-      var cached = loadManifest(knowledgeDir);
 
-      // Fast path: fingerprints match
-      if (cached.isPresent()) {
+    // Fast path: compare fingerprints, restore serialized profile if fresh
+    try {
+      var savedFpMap = loadFingerprints(knowledgeDir);
+      if (!savedFpMap.isEmpty()) {
         var currentFp = scanFingerprints(projectRoot);
-        if (currentFp.equals(cached.get().fingerprint())) {
-          LOG.fine("Knowledge cache is fresh — reusing");
-          return cached.get();
+        var savedFp   = ProjectFingerprint.of(savedFpMap, computeHash(savedFpMap));
+        if (currentFp.projectHash().equals(savedFp.projectHash())) {
+          TestaraProjectProfile cached = ProfileSerializer.load(knowledgeDir.resolve(PROFILE_CACHE));
+          if (cached != null) {
+            LOG.fine("Knowledge cache hit — skipping indexing");
+            var stats = KnowledgeStats.from(0, 0, cached.stepDefinitions().size(),
+                cached.commands().size(), cached.validations().size(), cached.tags().size(),
+                savedFpMap.size(), KnowledgeStatus.FRESH);
+            return new ProjectKnowledgeSnapshot(SCHEMA_VERSION, Instant.now(), Instant.now(),
+                currentFp, cached, stats);
+          }
         }
       }
     } catch (Exception e) {
-      LOG.warning("Knowledge cache load failed, falling back to direct index: " + e.getMessage());
+      LOG.fine("Cache check failed, re-indexing: " + e.getMessage());
     }
 
-    // Full reindex (also serves as failsafe fallback)
-    LOG.info("Indexing project (full) at " + projectRoot);
+    // Full reindex
+    LOG.info("Indexing project at " + projectRoot);
     TestaraProjectProfile profile = indexer.index(projectRoot);
     var fp = scanFingerprints(projectRoot);
     Instant now = Instant.now();
@@ -78,11 +87,12 @@ public final class JsonlKnowledgeStore implements ProjectKnowledgeService {
         profile.validations().size(), profile.tags().size(),
         fp.fingerprints().size(), KnowledgeStatus.FRESH);
 
-    var snapshot = new ProjectKnowledgeSnapshot(
-        SCHEMA_VERSION, now, now, fp, profile, stats);
+    var snapshot = new ProjectKnowledgeSnapshot(SCHEMA_VERSION, now, now, fp, profile, stats);
 
+    // Persist to disk for next run
     saveManifest(knowledgeDir, snapshot);
     saveFingerprints(knowledgeDir, fp);
+    ProfileSerializer.save(knowledgeDir.resolve(PROFILE_CACHE), profile);
     return snapshot;
   }
 
@@ -188,7 +198,8 @@ public final class JsonlKnowledgeStore implements ProjectKnowledgeService {
       // Load profile via full index (simplified — in production we'd load from JSONL)
       // For MVP, we reindex if fingerprint doesn't match
 
-      return Optional.empty(); // simplified: always reindex if fingerprint check fails
+      // Snapshot restoration handled by loadOrIndex via ProfileSerializer
+      return Optional.empty();
     } catch (IOException e) {
       return Optional.empty();
     }

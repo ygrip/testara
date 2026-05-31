@@ -68,6 +68,7 @@ public class McpServer {
   private final ListCommandsSkill   listCommandsSkill    = new ListCommandsSkill();
   private final ListValidationsSkill listValidationsSkill = new ListValidationsSkill();
   private final TestaraContextSkill  contextSkill  = new TestaraContextSkill();
+  private final TestaraGuideSkill    guideSkill    = new TestaraGuideSkill();
   private final TestaraPropertySkill propertySkill = new TestaraPropertySkill();
   private final TestaraApiSkill      apiSkill      = new TestaraApiSkill();
   private final TestaraUiSkill       uiSkill       = new TestaraUiSkill();
@@ -175,6 +176,8 @@ public class McpServer {
         requiredStr("intent", "Test plan intent"),
         optionalStr("slice", "Layer: api, ui, database, streaming, fullstack"),
         optionalStr("domain", "Domain name override")));
+    tools.add(tool("testara_guide",      "Return Testara agent guide and generation rules. Call at session start or before generating any artifact.",
+        optionalStr("section", "Rule section to retrieve: properties | request-spec | ui | db | kafka | all (default)")));
     tools.add(tool("testara_context",    "Return full Testara runtime context — slices installed, config coverage, available steps, commands, validations"));
     tools.add(tool("testara_property",   "Manage property keys — list, suggest key for a value, generate config block, or explain properties() rules",
         optionalStr("mode", "list | suggest | generate | rules"),
@@ -253,6 +256,7 @@ public class McpServer {
           args.path("basePackage").asText("com.company.automation"),
           args.path("engine").asText("selenium"),
           args.path("integrateExisting").asBoolean(false)), ctx);
+      case "testara_guide"    -> guideSkill.execute(args.path("section").asText(null), ctx);
       case "testara_context"  -> contextSkill.execute(null, ctx);
       case "testara_property" -> propertySkill.execute(new TestaraPropertySkill.Input(
           args.path("mode").asText("list"), args.path("domain").asText(null),

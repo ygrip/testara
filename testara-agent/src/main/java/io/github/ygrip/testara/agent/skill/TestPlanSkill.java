@@ -1,5 +1,6 @@
 package io.github.ygrip.testara.agent.skill;
 
+import io.github.ygrip.testara.agent.catalog.GenerationGuard;
 import io.github.ygrip.testara.agent.catalog.PropertyRuleEngine;
 import io.github.ygrip.testara.agent.flavor.FlavorEntry;
 import io.github.ygrip.testara.agent.index.TestaraProjectProfile;
@@ -69,6 +70,11 @@ public class TestPlanSkill implements AgentSkill<TestPlanSkill.Input, String> {
       sb.append(featureContent);
       if (missingCount > 0) sb.append("\nmissing: ").append(missingCount).append(" steps need implementation");
       sb.append("\nflavor-score: ").append(score).append("% | runtime-context-score: ").append(runtimeScore).append("%");
+      var violations = GenerationGuard.validateFeature(featureContent);
+      if (!violations.isEmpty()) {
+        sb.append("\nguardrail-violations: ").append(violations.size()).append("\n");
+        violations.forEach(v -> sb.append("  ").append(v.format()).append("\n"));
+      }
       return sb.toString();
     }
 
@@ -87,7 +93,9 @@ public class TestPlanSkill implements AgentSkill<TestPlanSkill.Input, String> {
     if (write && writtenPath != null) {
       sb.append("\nNext: `testara-agent test-run '").append(input.intent()).append("' --execute`\n");
     }
-    return sb.toString();
+    // Guardrail check
+    var violations = GenerationGuard.validateFeature(featureContent);
+    return GenerationGuard.annotate(sb.toString(), violations);
   }
 
   // ── Feature generation ────────────────────────────────────────────────────
