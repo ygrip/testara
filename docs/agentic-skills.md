@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="https://readynaz.com/content/assets/images/gallery/testara-brand-logo/01-testara-brand.webp" alt="Testara" width="320" />
+</p>
+
 # Testara Agent — Agentic Skills Guide
 
 Testara Agent is an AI-assisted CLI and MCP server that scaffolds, reviews, plans, and executes Testara automation projects. It understands the Testara runtime — properties, commands, validations, request specs, pages, actions, and Cucumber steps — and generates artifacts that follow Testara conventions without writing generic Cucumber glue.
@@ -55,7 +59,7 @@ The installer:
 1. Downloads the agent JAR to `~/.testara/testara-agent.jar`
 2. Writes a `~/.local/bin/testara-agent` wrapper (honors `$JAVA_HOME`)
 3. Adds the bin dir to your shell profile
-4. **Automatically configures MCP** for VS Code, Cursor, Claude Desktop, and Claude Code
+4. **Automatically configures MCP** for VS Code, Cursor, Claude Desktop, and Claude Code (optional — pass `--no-mcp` or set `TESTARA_SKIP_MCP=1` to skip)
 
 ### Manual install
 

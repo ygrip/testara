@@ -2,9 +2,11 @@
 # Testara Agent installer
 # Usage:
 #   curl -fsSL https://github.com/ygrip/testara/releases/latest/download/install.sh | bash
-#   TESTARA_AGENT_VERSION=2.0.0 bash install.sh   # pin a version
+#   TESTARA_AGENT_VERSION=2.0.0 bash install.sh       # pin a version
 #   TESTARA_AGENT_INSTALL_DIR=/opt/testara bash install.sh
 #   TESTARA_AGENT_BIN_DIR=/usr/local/bin bash install.sh
+#   bash install.sh --no-mcp                           # skip MCP auto-configuration
+#   TESTARA_SKIP_MCP=1 bash install.sh                 # same, via env var (useful with curl | bash)
 
 set -e
 
@@ -79,8 +81,18 @@ else
   JAR_URL="https://github.com/${GITHUB_REPO}/releases/download/v${VERSION}/testara-agent.jar"
 fi
 
+# ── Argument parsing ─────────────────────────────────────────────
+SKIP_MCP="${TESTARA_SKIP_MCP:-0}"
+UNINSTALL=0
+for _arg in "$@"; do
+  case "$_arg" in
+    --uninstall) UNINSTALL=1 ;;
+    --no-mcp)    SKIP_MCP=1 ;;
+  esac
+done
+
 # ── Uninstall ─────────────────────────────────────────────────────
-if [ "${1:-}" = "--uninstall" ]; then
+if [ "$UNINSTALL" = "1" ]; then
   info "Uninstalling testara-agent..."
   rm -f "$BIN_DIR/testara-agent"
   rm -f "$INSTALL_DIR/testara-agent.jar"
@@ -163,11 +175,15 @@ ENTRY_EOF
     if [ -f "$config_file" ]; then
       # Insert into existing servers block using Python (safe JSON edit)
       if command -v python3 >/dev/null 2>&1; then
-        python3 - "$config_file" "$WRAPPER" << 'PYEOF'
+        python3 - "$config_file" "$WRAPPER" << 'PYEOF' || { warn "$provider: failed to update $config_file — configure manually (see docs/agentic-skills.md)"; return 0; }
 import sys, json
 path, wrapper = sys.argv[1], sys.argv[2]
-with open(path) as f:
-    cfg = json.load(f)
+cfg = {}
+try:
+    with open(path) as f:
+        cfg = json.load(f)
+except Exception:
+    pass
 cfg.setdefault("servers", {})["testara"] = {
     "type": "stdio", "command": wrapper, "args": ["mcp"],
     "env": {"TESTARA_AGENT_RUN_ENABLED": "true"}
@@ -204,11 +220,15 @@ CFG_EOF
   # Claude Desktop style: { "mcpServers": { ... } }
   if [ -f "$config_file" ]; then
     if command -v python3 >/dev/null 2>&1; then
-      python3 - "$config_file" "$WRAPPER" << 'PYEOF'
+      python3 - "$config_file" "$WRAPPER" << 'PYEOF' || { warn "$provider: failed to update $config_file — configure manually (see docs/agentic-skills.md)"; return 0; }
 import sys, json
 path, wrapper = sys.argv[1], sys.argv[2]
-with open(path) as f:
-    cfg = json.load(f)
+cfg = {}
+try:
+    with open(path) as f:
+        cfg = json.load(f)
+except Exception:
+    pass
 cfg.setdefault("mcpServers", {})["testara"] = {
     "command": wrapper, "args": ["mcp"],
     "env": {"TESTARA_AGENT_RUN_ENABLED": "true"}
@@ -239,8 +259,12 @@ CFG_EOF
   fi
 }
 
+if [ "$SKIP_MCP" = "1" ]; then
+  info "Skipping MCP auto-configuration (--no-mcp). See docs/agentic-skills.md for manual setup."
+else
+
 info ""
-info "Configuring MCP servers for agentic providers..."
+info "Configuring MCP servers for agentic providers (skip with --no-mcp or TESTARA_SKIP_MCP=1)..."
 
 # Detect OS
 _os="$(uname -s)"
@@ -262,7 +286,7 @@ if [ -d "$HOME/.claude" ]; then
   if [ -f "$CLAUDE_SETTINGS" ] && grep -q '"testara"' "$CLAUDE_SETTINGS" 2>/dev/null; then
     info "Claude Code: testara MCP already configured"
   elif command -v python3 >/dev/null 2>&1; then
-    python3 - "$CLAUDE_SETTINGS" "$WRAPPER" << 'PYEOF'
+    python3 - "$CLAUDE_SETTINGS" "$WRAPPER" << 'PYEOF' || warn "Claude Code: failed to update $CLAUDE_SETTINGS — configure manually (see docs/agentic-skills.md)"
 import sys, json, os
 path, wrapper = sys.argv[1], sys.argv[2]
 cfg = {}
@@ -283,6 +307,8 @@ PYEOF
     info "Claude Code: testara MCP server configured in $CLAUDE_SETTINGS"
   fi
 fi
+
+fi  # end SKIP_MCP check
 
 info ""
 info "Quick start:"

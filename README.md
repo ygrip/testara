@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="https://readynaz.com/content/assets/images/gallery/testara-brand-logo/01-testara-brand.webp" alt="Testara" width="320" />
+</p>
+
 # Testara
 
 **Persistent and assurance-driven full-stack automation framework for Java.**
@@ -56,7 +60,7 @@ Testara Agent is an AI-assisted CLI and MCP server that scaffolds, reviews, plan
 curl -fsSL https://github.com/ygrip/testara/releases/latest/download/install.sh | bash
 ```
 
-The installer downloads the agent, writes a wrapper, and **automatically configures MCP** for VS Code, Cursor, Claude Desktop, and Claude Code.
+The installer downloads the agent, writes a wrapper, and **automatically configures MCP** for VS Code, Cursor, Claude Desktop, and Claude Code. Pass `--no-mcp` (or set `TESTARA_SKIP_MCP=1`) to skip MCP auto-configuration.
 
 ### 3-Step Quick Start
 
