@@ -56,10 +56,10 @@ build/
 AGENTS.md
 CLAUDE.md
 
-# Plan/analysis documents
-mitmproxy-grid-java-client-extraction-plan.md
-testara-agentic-skill-integration-plan*.md
-testara-ghcr-docker-deployment-plan.md
+# Plan/analysis documents — never track
+*-plan.md
+*-plan-*.md
+testara-agent-*.md
 
 # Java version / Claude config
 .java-version
