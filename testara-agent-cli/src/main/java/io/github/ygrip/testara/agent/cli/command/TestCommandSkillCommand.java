@@ -28,7 +28,7 @@ public class TestCommandSkillCommand implements Runnable {
   @Option(names = {"--detail", "-d"}, description = "Show source and usage docs for a specific command")
   private String detail;
 
-  @Option(names = "--package", defaultValue = "com.company.automation.commands",
+  @Option(names = "--package", defaultValue = "io.github.ygrip.testara.command",
       description = "Target package for generated class")
   private String pkg;
 

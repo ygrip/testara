@@ -37,37 +37,45 @@ public class TestPlanSkill implements AgentSkill<TestPlanSkill.Input, String> {
     String featureContent = generateFeature(input.intent(), domain, tags, slice, profile);
     String placement      = resolvePlacement(slice, domain);
     String fileName       = toFileName(input.intent());
+    boolean concise = "concise".equals(context.options().get("format"));
+
+    String writtenPath = null;
+    if (write) {
+      writtenPath = writeFeatureFile(context.projectRoot(), placement, fileName, featureContent);
+    }
+
+    if (concise) {
+      StringBuilder sb = new StringBuilder();
+      if (write) {
+        sb.append(writtenPath != null ? "written: " + writtenPath : "write failed");
+        sb.append("\n\n");
+      }
+      sb.append(featureContent);
+      List<String> missing = extractMissingSteps(featureContent);
+      if (!missing.isEmpty()) {
+        sb.append("\nmissing steps (").append(missing.size()).append("): ");
+        sb.append(String.join(", ", missing));
+      }
+      return sb.toString();
+    }
 
     StringBuilder sb = new StringBuilder();
     sb.append("## Test Plan: ").append(input.intent()).append("\n\n");
-    sb.append("**Slice:** ").append(slice).append("  \n");
-    sb.append("**Domain:** ").append(domain).append("  \n");
-    sb.append("**Placement:** `").append(placement).append(fileName).append("`  \n\n");
-
+    sb.append("**Placement:** `").append(placement).append(fileName).append("`\n\n");
     if (write) {
-      String writtenPath = writeFeatureFile(context.projectRoot(), placement, fileName, featureContent);
       sb.append(writtenPath != null
-          ? "> Feature file written to `" + writtenPath + "`\n\n"
-          : "> **Warning:** Could not write feature file — check write permissions.\n\n");
-    } else {
-      sb.append("> **Review before committing.** Steps marked `# MISSING` need step definitions.\n\n");
+          ? "> Written to `" + writtenPath + "`\n\n"
+          : "> Warning: could not write feature file.\n\n");
     }
-
-    sb.append("### Generated Feature\n\n```gherkin\n");
-    sb.append(featureContent);
-    sb.append("\n```\n\n");
-
+    sb.append("```gherkin\n").append(featureContent).append("\n```\n\n");
     List<String> missingSteps = extractMissingSteps(featureContent);
     if (!missingSteps.isEmpty()) {
-      sb.append("### Missing Step Definitions\n\n");
-      missingSteps.forEach(s -> sb.append("- `").append(s).append("`\n"));
-      sb.append("\nThese steps must be implemented in `StepDefinitions.java` before the feature can run.\n");
+      sb.append("**Missing steps:** ");
+      missingSteps.forEach(s -> sb.append("`").append(s).append("` "));
+      sb.append("\nImplement in `StepDefinitions.java` before running.\n");
     }
-
-    if (write) {
-      sb.append("\n### Next step\n\n");
-      sb.append("Run your tests:\n```\ntestara-agent test-run '").append(input.intent())
-          .append("' --execute\n```\n");
+    if (write && writtenPath != null) {
+      sb.append("\nNext: `testara-agent test-run '").append(input.intent()).append("' --execute`\n");
     }
     return sb.toString();
   }

@@ -20,7 +20,7 @@ public class TestInitCommand implements Runnable {
       description = "Project type: api, ui, database, streaming, fullstack")
   private String type;
 
-  @Option(names = "--base-package", defaultValue = "com.company.automation",
+  @Option(names = "--base-package", defaultValue = "io.github.ygrip.testara",
       description = "Base Java package for generated classes")
   private String basePackage;
 

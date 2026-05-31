@@ -32,7 +32,7 @@ public class TestValidationCommand implements Runnable {
       description = "Generation mode: auto (default), json, java")
   private String mode;
 
-  @Option(names = "--package", defaultValue = "com.company.automation.validators")
+  @Option(names = "--package", defaultValue = "io.github.ygrip.testara.validation")
   private String pkg;
 
   @Option(names = "--project", defaultValue = ".", description = "Project root")

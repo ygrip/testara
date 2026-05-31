@@ -27,7 +27,7 @@ public class TestInitSkill implements AgentSkill<TestInitSkill.Input, String> {
   @Override
   public String execute(Input input, AgentContext context) {
     String type    = input.type() != null ? input.type() : "api";
-    String basePkg = input.basePackage() != null ? input.basePackage() : "com.company.automation";
+    String basePkg = input.basePackage() != null ? input.basePackage() : "io.github.ygrip.testara";
     String pkgPath = basePkg.replace('.', '/');
     boolean integrate = input.integrateExisting();
     boolean write  = "true".equals(context.options().get("write"));

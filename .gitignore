@@ -55,3 +55,12 @@ build/
 # AI agent instruction files
 AGENTS.md
 CLAUDE.md
+
+# Plan/analysis documents
+mitmproxy-grid-java-client-extraction-plan.md
+testara-agentic-skill-integration-plan*.md
+testara-ghcr-docker-deployment-plan.md
+
+# Java version / Claude config
+.java-version
+.claude/

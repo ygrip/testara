@@ -22,7 +22,11 @@ public class ListCommandsSkill implements AgentSkill<Void, String> {
         .collect(Collectors.toList());
 
     String format = context.options().getOrDefault("format", "markdown");
-    return "json".equals(format) ? renderJson(commands) : renderMarkdown(commands);
+    return switch (format) {
+      case "json"    -> renderJson(commands);
+      case "concise" -> renderConcise(commands);
+      default        -> renderMarkdown(commands);
+    };
   }
 
   private String renderMarkdown(List<CommandIndex> commands) {
@@ -45,6 +49,23 @@ public class ListCommandsSkill implements AgentSkill<Void, String> {
     sb.append("Commands are used inside Testara step expressions:\n\n");
     sb.append("```\n${commandName(param1, param2)}\n```\n\n");
     sb.append("Aliases are interchangeable with the primary command name.\n");
+    return sb.toString();
+  }
+
+  private String renderConcise(List<CommandIndex> commands) {
+    if (commands.isEmpty()) return "no commands indexed. Generate with: test-command 'description'";
+    StringBuilder sb = new StringBuilder();
+    sb.append(commands.size()).append(" commands. usage: ${name(params)} | detail: test-command detail:<name>\n");
+    sb.append(commands.stream().sorted(Comparator.comparing(CommandIndex::command))
+        .map(c -> {
+          String entry = c.command();
+          if (!"Object".equals(c.returnType()) && !"String".equals(c.returnType()))
+            entry += "→" + c.returnType();
+          if (c.cacheable()) entry += "*";
+          return entry;
+        })
+        .collect(Collectors.joining(", ")));
+    sb.append("\n(* = cacheable)");
     return sb.toString();
   }
 

@@ -235,7 +235,8 @@ public class McpServer {
     // Secure defaults: no execution, no writes
     opts.put("dryRun", args.path("dryRun").asBoolean(true) ? "true" : "false");
     opts.put("execute", args.path("execute").asBoolean(false) ? "true" : "false");
-    if (args.has("format")) opts.put("format", args.path("format").asText("markdown"));
+    // Default to concise for MCP — agents don't need decorative markdown
+    opts.put("format", args.has("format") ? args.path("format").asText() : "concise");
     if (args.has("mode"))   opts.put("mode",   args.path("mode").asText("auto"));
     if (args.has("package")) opts.put("package", args.path("package").asText());
     if (args.has("returnType")) opts.put("returnType", args.path("returnType").asText("String"));

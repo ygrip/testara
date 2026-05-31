@@ -22,7 +22,11 @@ public class ListValidationsSkill implements AgentSkill<Void, String> {
         .collect(Collectors.toList());
 
     String format = context.options().getOrDefault("format", "markdown");
-    return "json".equals(format) ? renderJson(validations) : renderMarkdown(validations);
+    return switch (format) {
+      case "json"    -> renderJson(validations);
+      case "concise" -> renderConcise(validations);
+      default        -> renderMarkdown(validations);
+    };
   }
 
   private String renderMarkdown(List<ValidationIndex> validations) {
@@ -42,6 +46,17 @@ public class ListValidationsSkill implements AgentSkill<Void, String> {
     sb.append("\n## Usage\n\n");
     sb.append("Validations are used in JSON validation files or step expressions:\n\n");
     sb.append("```json\n{\n  \"validation\": \"VALIDATION_NAME\",\n  \"actual\": \"${someCommand()}\",\n  \"expected\": \"expectedValue\"\n}\n```\n");
+    return sb.toString();
+  }
+
+  private String renderConcise(List<ValidationIndex> validations) {
+    if (validations.isEmpty()) return "no validations indexed. Run test-validation 'description' to generate one.";
+    StringBuilder sb = new StringBuilder();
+    sb.append(validations.size()).append(" validations. detail: test-validation detail:<name>\n");
+    sb.append(validations.stream()
+        .sorted(Comparator.comparing(ValidationIndex::validation))
+        .map(v -> v.validation() + "(" + v.actualType() + "→" + v.expectedType() + ")")
+        .collect(Collectors.joining(", ")));
     return sb.toString();
   }
 
