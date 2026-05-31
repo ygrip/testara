@@ -92,28 +92,35 @@ public class DefaultTestContext implements TestContext {
    * </p>
    */
   public <T> T get(Class<T> type, RegistryScope scope) {
-    if (scope == RegistryScope.TEST && hasDynamicScope()) {
-      // Dynamic scope is active - use RootRegistry's scope resolution
-      // This supports Cucumber parallel execution where each thread has its own scope
-      return RootRegistry.instance().get(type);
-    }
-    // No dynamic scope or non-TEST scope - use explicit scope key
-    return RootRegistry.instance().get(type, resolveScopeKey(scope));
+    // Always resolve the scope key once and pass it explicitly.
+    // Avoids a TOCTOU race where hasDynamicScope() and RootRegistry.resolveScopeName()
+    // would each re-read the CURRENT_TEST ThreadLocal independently — a concurrent
+    // @AfterEach on the same ForkJoin worker (via work-stealing) can clear CURRENT_TEST
+    // between those two reads, causing two consecutive get() calls to use different keys
+    // and return different instances even on the same thread.
+    return RootRegistry.instance().get(type, resolveEffectiveScopeKey(scope));
   }
 
   /**
-   * Check if a dynamic scope is currently active.
-   * A dynamic scope is considered active if the ScopeContext returns
-   * something other than the default/fallback scope.
+   * Resolves the scope key to use for the given scope, reading the dynamic scope
+   * key exactly once. Falls back to the explicit scopeId when no active dynamic
+   * scope is set, or when the scope context returns a well-known fallback value.
    */
-  private boolean hasDynamicScope() {
-    String currentScope = scopeContext.currentScopeKey();
-    // Check if scope is not a default/fallback value
-    // Common default patterns: "default", "*-default", "singleton"
-    return currentScope != null 
-        && !currentScope.endsWith("-default") 
-        && !currentScope.equals("default")
-        && !currentScope.equals("singleton");
+  private String resolveEffectiveScopeKey(RegistryScope scope) {
+    if (scope != RegistryScope.TEST) {
+      return resolveScopeKey(scope);
+    }
+    String dynamicKey = scopeContext.currentScopeKey();
+    // Exclude all known fallback/singleton scope values — including GLOBAL,
+    // which is what SingletonScopeContext returns when no test framework is active.
+    if (dynamicKey != null
+        && !dynamicKey.endsWith("-default")
+        && !dynamicKey.equals("default")
+        && !dynamicKey.equals("singleton")
+        && !dynamicKey.equals(RegistryScope.GLOBAL.name())) {
+      return dynamicKey;
+    }
+    return scopeId();
   }
 
   private String resolveScopeKey(RegistryScope scope) {
