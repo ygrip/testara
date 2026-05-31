@@ -8,9 +8,65 @@ properties -> command conversion -> config binding -> base steps -> request spec
 - Place reusable project Java under `src/main/java/{basePackage}`. Use singular package names that match the example projects: `page`, `action`, `command`, `validation`, `data`, `model`.
 - Keep runners and glue-only test bootstrap under `src/test/java/{basePackage}/runner` and `src/test/java/{basePackage}/steps`.
 - Use `src/test/resources/features` for Gherkin, `src/test/resources/files/{domain}/request` for API request specs, `src/test/resources/templates` for reusable payload/template files, and `src/test/resources/schemas` for JSON schemas.
-- Use horizontal DataTables for mapped data. Row 0 is headers, row 1+ are values.
 - Do not create direct Selenium/Playwright/Appium drivers. Use Testara driver/session abstractions, built-in UI steps, `UserAction`, and `Locator` fields.
 - Do not generate helper classes that duplicate `MapperHelper`, `TransformerService`, `CommandExecutor`, `ValidatorHelper`, `DataHolder`, `RestApiFacade`, `SqlHelper`, `MongoHelper`, `Kafka*Helper`, `ElasticSearchHelper`, `PageFinder`, or `Actor`.
+
+## DataTable format rules
+TransformerService processes DataTables. The required format depends on the target output type.
+
+### Pattern 1 — vertical key-value `|key|value|`: use when the step builds a `Map` from multiple rows
+The header row MUST be exactly `| key | value |`. Each subsequent row becomes one map entry.
+Steps that use this: API headers, API form/query params, Mongo query (`select/delete/count/update/distinct`), Elastic query (`assign data ... with query`), UI proxy rules.
+```gherkin
+# API headers
+And [api] prepare header with value
+  | key           | value            |
+  | Content-Type  | application/json |
+  | Authorization | Bearer token123  |
+
+# Mongo select query — fields: query, sort, project, limit, skip
+When [mongo] select data with query :
+  | key    | value                             |
+  | query  | {"sku": "properties(test.x.sku)"} |
+  | sort   | {"_id": -1}                       |
+  | limit  | 1                                 |
+
+# Elastic search query — fields: luceneQuery, routing, type, sortBy, from, size
+When [elastic-search] assign data results from index products with query :
+  | key         | value                              |
+  | luceneQuery | {"term":{"id":"properties(x.id)"}} |
+  | size        | 10                                 |
+```
+Without `|key|value|` headers, a 2-column table interprets row 0 as column identifiers and silently produces a wrong map.
+
+### Pattern 2 — horizontal multi-column: use when each row is one object/record or binds a template
+Row 0 = field/column names; each subsequent row = one record. For template binding, column names are JSONPath keys.
+Steps that use this: `toList(Class)` targets (API cookies, multipart, Kafka batch), DataManipulationSteps, validation tables.
+```gherkin
+# Template binding — column names match template JSONPath keys
+And [api] prepare request data payload from template "OrderTemplate" with value
+  | id                           | amount                         |
+  | properties(test.order.id)    | properties(test.order.amount)  |
+
+# List target — column names match bean fields (CookieModel, MultiPartData, KafkaMessage)
+And [api] prepare cookies with value
+  | name | value                       | domain   |
+  | sid  | properties(test.user.token) | .example |
+
+# Validation table — fixed 3-column shape
+Then [api] do these validations
+  | actual                    | validation | expectation |
+  | response($['orderId'])    | NOT_EMPTY  | true        |
+  | response($['amount'])     | EQUALS     | 100         |
+```
+
+### Pattern 3 — horizontal single-row (for Elastic insert/update document)
+Row 0 = field names, row 1 = values. The last row becomes the document map.
+```gherkin
+When [elastic-search] insert to index "products" with data :
+  | name           | status | price |
+  | Sample Product | active | 99.9  |
+```
 
 ## Utilities and helpers
 - `MapperHelper`: convert JSON/string/maps/lists to typed Java objects and serialize objects. Use inside commands, validators, DB/Kafka/Elastic helpers, and request/response conversions.
@@ -43,11 +99,11 @@ properties -> command conversion -> config binding -> base steps -> request spec
 - Page/action: for UI, represent locators in Page classes and reusable flows in `UserAction` classes; do not create Selenium/Playwright helper wrappers.
 
 ## DB Kafka Elastic patterns
-- SQL: configure `sql.datasource.{alias}.url|username|password|driver`; connect with `Given [sql] connect to database with name {alias}`; use `Given [sql] prepare query with value :` for multiline SQL; execute; assign with `Then [sql] assign previous database response to {alias}`. Use `sqlQuery(alias,query)` command only inside expressions/custom Java when built-in steps are not enough.
-- Mongo: configure `mongo.datasource.{alias}.uri`; connect with `Given [mongo] connect to database with name {alias}`; select collection; use DataTable query bodies for select/delete/count/aggregate/update/distinct; assign with `Then [mongo] assign previous database response to {alias}`.
+- SQL: configure `sql.service.{alias}.host-name|db-name|username|password|db-type`; connect with `Given [sql] connect to database with name {alias}`; use `Given [sql] prepare query with value :` for multiline SQL; execute; assign with `Then [sql] assign previous database response to {alias}`. Use `sqlQuery(alias,query)` command only inside expressions/custom Java when built-in steps are not enough.
+- Mongo: configure `mongo.service.{alias}.hosts|db-name|username|password`; connect with `Given [mongo] connect to database with name {alias}`; select collection; DataTable query bodies use **Pattern 1** (`|key|value|` headers) — supported keys: `query`, `sort`, `project`, `limit`, `skip` (select), `query`+`useMany` (delete), `query`+`update`+`useMany` (update), `field`+`query` (distinct); assign with `Then [mongo] assign previous database response to {alias}`.
 - Kafka producer: configure `kafka.service.{alias}.servers`; start with `Given user start kafka producer for {alias}`; send with `When user send kafka message to topic "properties(kafka.topic.{name})" with data "request($['event'])"` or key+data; always stop producer.
 - Kafka consumer: start with `Given user start kafka consumer for {alias}`; listen with `Given user listen kafka from topic {topicAlias}`; assign count/latest/filter results; always stop consumer. Use filter tables instead of custom polling code.
-- Elastic: configure `elastic-search.service.{alias}.host|port|scheme`; connect with `Given [elastic-search] connect to elastic search with name {alias}`; use built-in count/get/insert/update/delete/assign/index-exists steps; assign with `Then [elastic-search] assign previous elastic search response to {alias}`.
+- Elastic: configure `elastic-search.service.{alias}.host|port|scheme`; connect with `Given [elastic-search] connect to elastic search with name {alias}`; search/assign uses **Pattern 1** (`|key|value|` headers) — supported keys: `luceneQuery`, `routing`, `type`, `sortBy`, `from`, `size`; insert/update uses **Pattern 3** (horizontal single-row document); assign with `Then [elastic-search] assign previous elastic search response to {alias}`.
 - Use `properties(...)` for hosts, ports, credentials, topic names, index names, document IDs, and query literals that vary by environment.
 
 ## RULE 1: properties() for env-specific values
@@ -121,6 +177,6 @@ and validator.helper.scan-locations in configuration.properties include the targ
 API:    Given [api] using service with alias {name} | [api] prepare pathParam for id with value "properties(test.{domain}.id)" | When [api] process request to "files/{domain}/request/{flow}" | Then [api] response statusCode should be 200 | [api] assign previous response data to {alias}
 UI:     Given user using chrome in desktop | When user open "{page}" page | Then user is in "{page}" page | When user do "{action}" in "{page}" page with parameter | Then user should see "{element}" is displayed
 SQL:    Given [sql] connect to database with name {name}Db | [sql] prepare query with value : | When [sql] execute database query | Then [sql] assign previous database response to {alias}Rows
-Mongo:  Given [mongo] connect to database with name {name}Db | [mongo] select collection with name {col} | When [mongo] select data with query : | Then [mongo] assign previous database response to {alias}Rows
+Mongo:  Given [mongo] connect to database with name {name}Db | [mongo] select collection with name {col} | When [mongo] select data with query : (|key|value| table — keys: query/sort/project/limit/skip) | Then [mongo] assign previous database response to {alias}Rows
 Kafka:  Given user start kafka producer for {name} | When user send kafka message to topic "properties(kafka.topic.{alias})" with data "request($['event'])" | Then user stop kafka producer
-Elastic: Given [elastic-search] connect to elastic search with name {name} | When [elastic-search] assign data results from index products with query : | Then [elastic-search] assign previous elastic search response to {alias}
+Elastic: Given [elastic-search] connect to elastic search with name {name} | When [elastic-search] assign data {alias} from index {index} with query : (|key|value| table — keys: luceneQuery/routing/type/sortBy/from/size) | Then [elastic-search] assign previous elastic search response to {alias}

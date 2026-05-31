@@ -37,7 +37,12 @@ public class TestaraDbSkill implements AgentSkill<TestaraDbSkill.Input, String> 
         case "feature" -> kafkaFeature(name, concise);
         default        -> kafkaExplain(concise);
       };
-      default -> sqlExplain(concise) + "\n" + mongoExplain(concise) + "\n" + kafkaExplain(concise);
+      case "elastic", "elastic-search" -> switch (mode) {
+        case "config"  -> elasticConfig(name, concise);
+        case "feature" -> elasticFeature(name, concise);
+        default        -> elasticExplain(concise);
+      };
+      default -> sqlExplain(concise) + "\n" + mongoExplain(concise) + "\n" + kafkaExplain(concise) + "\n" + elasticExplain(concise);
     };
   }
 
@@ -106,25 +111,32 @@ public class TestaraDbSkill implements AgentSkill<TestaraDbSkill.Input, String> 
   // ── Mongo ─────────────────────────────────────────────────────────────────
 
   private String mongoExplain(boolean concise) {
-    if (concise) return "mongo steps: [mongo] connect to database with name {name} | [mongo] select collection with name {col} | [mongo] select data with query : (DataTable: query/sort/project/limit/skip) | [mongo] assign previous database response to {alias}. Config: mongo.service.{name}.* Use properties() for hosts/user/password/db-name.";
+    if (concise) return "mongo steps: [mongo] connect to database with name {name} | [mongo] select collection with name {col} | [mongo] select data with query : (|key|value| table — keys: query/sort/project/limit/skip) | [mongo] assign previous database response to {alias}. Config: mongo.service.{name}.* Use properties() for hosts/user/password/db-name. IMPORTANT: query DataTable MUST use |key|value| headers — without them the map is built wrong.";
     return """
         ## MongoDB Guide
 
         Config:
         ```properties
-        mongo.service.{name}.hosts=properties(db.{name}.hosts)
-        mongo.service.{name}.db-name=properties(db.{name}.name)
-        mongo.service.{name}.username=properties(db.{name}.username)
-        mongo.service.{name}.password=properties(db.{name}.password)
+        mongo.service.{name}.hosts=properties(mongo.{name}.hosts)
+        mongo.service.{name}.db-name=properties(mongo.{name}.name)
+        mongo.service.{name}.username=properties(mongo.{name}.username)
+        mongo.service.{name}.password=properties(mongo.{name}.password)
         ```
+
+        DataTable format for query steps — MUST use |key|value| headers:
+        Supported keys: query, sort, project, limit, skip (select)
+                        query, useMany (delete/count)
+                        query, update, useMany (update)
+                        field, query (distinct)
 
         Feature:
         ```gherkin
         Given [mongo] connect to database with name {name}Db
         Given [mongo] select collection with name {collection}
         When [mongo] select data with query :
-          | query | {"sku": "properties(test.{domain}.sku)"} |
-          | limit | 1 |
+          | key    | value                                    |
+          | query  | {"sku": "properties(test.{domain}.sku)"} |
+          | limit  | 1                                        |
         Then [mongo] assign previous database response to {alias}Rows
         ```
         """;
@@ -132,16 +144,16 @@ public class TestaraDbSkill implements AgentSkill<TestaraDbSkill.Input, String> 
 
   private String mongoConfig(String name, boolean concise) {
     String block = """
-        mongo.service.%sDb.hosts=properties(db.%s.hosts)
-        mongo.service.%sDb.db-name=properties(db.%s.name)
-        mongo.service.%sDb.username=properties(db.%s.username)
-        mongo.service.%sDb.password=properties(db.%s.password)
+        mongo.service.%sDb.hosts=properties(mongo.%s.hosts)
+        mongo.service.%sDb.db-name=properties(mongo.%s.name)
+        mongo.service.%sDb.username=properties(mongo.%s.username)
+        mongo.service.%sDb.password=properties(mongo.%s.password)
         mongo.service.%sDb.ssl-enabled=false
 
-        db.%s.hosts=localhost:27017
-        db.%s.name=%s
-        db.%s.username=
-        db.%s.password=
+        mongo.%s.hosts=localhost:27017
+        mongo.%s.name=%s
+        mongo.%s.username=
+        mongo.%s.password=
         """.formatted(name, name, name, name, name, name, name, name, name, name, name, name, name, name);
     return concise ? block : "```properties\n" + block + "```";
   }
@@ -151,8 +163,9 @@ public class TestaraDbSkill implements AgentSkill<TestaraDbSkill.Input, String> 
         Given [mongo] connect to database with name %sDb
         Given [mongo] select collection with name %s
         When [mongo] select data with query :
-          | query | {"_id": "properties(test.%s.id)"} |
-          | limit | 1                                  |
+          | key    | value                              |
+          | query  | {"_id": "properties(test.%s.id)"} |
+          | limit  | 1                                  |
         Then [mongo] assign previous database response to %sRows
         """.formatted(name, name, name, name);
     return concise ? feature : "```gherkin\n" + feature + "```";
@@ -209,6 +222,69 @@ public class TestaraDbSkill implements AgentSkill<TestaraDbSkill.Input, String> 
         When [kafka] send kafka message to topic "properties(kafka.topic.%s-event)" with key "properties(test.%s.id)" and data "properties(test.%s.payload)"
         Then [kafka] stop kafka producer
         """.formatted(name, name, name, name);
+    return concise ? feature : "```gherkin\n" + feature + "```";
+  }
+
+  // ── Elastic ───────────────────────────────────────────────────────────────
+
+  private String elasticExplain(boolean concise) {
+    if (concise) return "elastic steps: [elastic-search] connect to elastic search with name {name} | assign data {alias} from index {index} with query : (|key|value| table — keys: luceneQuery/routing/type/sortBy/from/size) | insert to index \"{index}\" with data : (horizontal single-row doc) | assign previous elastic search response to {alias}. Config: elastic-search.service.{name}.* IMPORTANT: search query DataTable MUST use |key|value| headers.";
+    return """
+        ## ElasticSearch Guide
+
+        Config:
+        ```properties
+        elastic-search.service.{name}.host=properties(elastic.{name}.host)
+        elastic-search.service.{name}.port=properties(elastic.{name}.port)
+        elastic-search.service.{name}.scheme=https
+        ```
+
+        DataTable format for search/assign steps — MUST use |key|value| headers:
+        Supported keys: luceneQuery (Lucene query string or JSON), routing, type,
+                        sortBy (field:ASC or JSON map), from (offset), size (page size)
+
+        DataTable format for insert/update steps — horizontal single-row document:
+        Row 0 = field names, row 1 = values (last row used as document map)
+
+        Feature:
+        ```gherkin
+        # Search
+        Given [elastic-search] connect to elastic search with name {name}
+        When [elastic-search] assign data {alias} from index {index} with query :
+          | key         | value                               |
+          | luceneQuery | {"term":{"id":"properties(x.id)"}}  |
+          | size        | 10                                  |
+        Then [elastic-search] assign previous elastic search response to {alias}
+
+        # Insert document
+        When [elastic-search] insert to index "{index}" with data :
+          | name           | status | price |
+          | Sample Product | active | 99.9  |
+        ```
+        """;
+  }
+
+  private String elasticConfig(String name, boolean concise) {
+    String block = """
+        elastic-search.service.%s.host=properties(elastic.%s.host)
+        elastic-search.service.%s.port=properties(elastic.%s.port)
+        elastic-search.service.%s.scheme=https
+
+        elastic.%s.host=localhost
+        elastic.%s.port=9200
+        """.formatted(name, name, name, name, name, name, name);
+    return concise ? block : "```properties\n" + block + "```";
+  }
+
+  private String elasticFeature(String name, boolean concise) {
+    String feature = """
+        Given [elastic-search] connect to elastic search with name %s
+        When [elastic-search] assign data %sResults from index %s with query :
+          | key         | value                                       |
+          | luceneQuery | {"term":{"id":"properties(test.%s.id)"}}    |
+          | size        | 10                                          |
+        Then [elastic-search] assign previous elastic search response to %sResults
+        """.formatted(name, name, name, name, name);
     return concise ? feature : "```gherkin\n" + feature + "```";
   }
 }

@@ -196,10 +196,10 @@ public class McpServer {
         optionalStr("actionName", "Action description (e.g. login with credential)"),
         optionalStr("engine", "UI engine: selenium | playwright | appium"),
         optionalStr("basePackage", "Base Java package")));
-    tools.add(tool("testara_db",         "Explain and generate DB (SQL/Mongo) or Kafka config and feature templates",
-        optionalStr("slice", "sql | mongo | kafka"),
+    tools.add(tool("testara_db",         "Explain and generate DB (SQL/Mongo/Elastic) or Kafka config and feature templates",
+        optionalStr("slice", "sql | mongo | kafka | elastic"),
         optionalStr("mode", "explain | config | feature"),
-        optionalStr("name", "Service name (e.g. settlementDb, paymentKafka)")));
+        optionalStr("name", "Service name (e.g. settlementDb, paymentKafka, catalogElastic)")));
     tools.add(tool("testara_init",       "Bootstrap or integrate a Testara automation project",
         optionalStr("type", "api, ui, database, streaming, fullstack"),
         optionalStr("groupId", "Maven groupId. Defaults to io.github.ygrip when omitted."),

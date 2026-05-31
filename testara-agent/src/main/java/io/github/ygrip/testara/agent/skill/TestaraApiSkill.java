@@ -50,6 +50,8 @@ public class TestaraApiSkill implements AgentSkill<TestaraApiSkill.Input, String
           - response: [api] response statusCode should be 200 | [api] assign previous response data to alias
           - validations: [api] do these validations with response($['alias']) / request($['alias'])
           - properties() for all URLs, credentials, and test data values
+          - DataTable for header/form/query param steps: MUST use |key|value| headers (each row = one entry)
+          - DataTable for template binding (prepare request data ... from template): horizontal multi-column (column names = JSONPath keys in template)
           """;
     }
     return """
@@ -84,6 +86,33 @@ public class TestaraApiSkill implements AgentSkill<TestaraApiSkill.Input, String
           "payload": { "field": "properties(test.{domain}.field)" },
           "autoCloseConnection": true
         }
+        ```
+
+        ## DataTable formats for inline API steps
+        Steps that add headers, query params, path params, or form params to the current request
+        all use TransformerService.toMap() — they REQUIRE the |key|value| header format.
+        Each row after the header becomes one map entry.
+        ```gherkin
+        And [api] prepare header with value
+          | key           | value            |
+          | Content-Type  | application/json |
+          | X-Request-Id  | uuid()           |
+
+        And [api] prepare query parameter with value
+          | key     | value                       |
+          | include | details                     |
+          | page    | 1                           |
+
+        And [api] prepare form param with value
+          | key    | value                          |
+          | userId | properties(test.{domain}.id)   |
+        ```
+
+        Template binding (DataManipulationSteps) uses horizontal multi-column — column names are JSONPath keys:
+        ```gherkin
+        And [api] prepare request data payload from template "{TemplateName}" with value
+          | id                           | field                           |
+          | properties(test.{domain}.id) | properties(test.{domain}.field) |
         ```
 
         ## Built-in API flow

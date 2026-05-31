@@ -56,7 +56,7 @@ class TestaraGuideSkillTest {
   void guideDocumentsDbKafkaElasticPatterns() {
     String guide = new TestaraGuideSkill().execute("DB Kafka Elastic", context("markdown"));
 
-    assertTrue(guide.contains("sql.datasource.{alias}.url"));
+    assertTrue(guide.contains("sql.service.{alias}") || guide.contains("sql.service.{name}"));
     assertTrue(guide.contains("Given [mongo] connect to database with name {alias}"));
     assertTrue(guide.contains("Given user start kafka producer for {alias}"));
     assertTrue(guide.contains("Then [elastic-search] assign previous elastic search response to {alias}"));
