@@ -22,12 +22,12 @@ public class TestaraUiSkill implements AgentSkill<TestaraUiSkill.Input, String> 
   @Override
   public String execute(Input input, AgentContext context) {
     String mode = input.mode() != null ? input.mode() : "explain";
-    String basePkg = input.basePackage() != null ? input.basePackage() : "io.github.ygrip.testara";
+    String basePkg = input.basePackage() != null ? input.basePackage() : "io.github.ygrip.automation";
     boolean concise = "concise".equals(context.options().get("format"));
     boolean write = "true".equals(context.options().get("write"));
 
     return switch (mode) {
-      case "page"    -> generatePage(input.pageName(), basePkg, context.projectRoot(), write, concise);
+      case "page"    -> generatePage(input.pageName(), input.engine(), basePkg, context.projectRoot(), write, concise);
       case "action"  -> generateAction(input.pageName(), input.actionName(), basePkg, context.projectRoot(), write, concise);
       case "config"  -> generateUiConfig(input.engine(), basePkg, concise);
       default        -> explainUi(concise);
@@ -39,9 +39,9 @@ public class TestaraUiSkill implements AgentSkill<TestaraUiSkill.Input, String> 
       return """
           testara-ui concepts:
           - UIBaseSteps: basic interactions (click, enter, wait, see) — use these first
-          - UserAction: 3+ operations on same page → @OnPage + @Action methods → user do "action" in "page" page
-          - Page: @Page(name="login", url="") + web.page.desktop.login.url=properties(app.web.login-url)
-          - PageFinder: resolves elements by name from @Page class (prefer named elements over raw selectors)
+          - UserAction: 3+ operations on same page -> @OnPage + @Action methods -> user do "action" in "page" page
+          - Page: @Page(name="login", url="") + Locator fields + web.page.desktop.login.url=properties(app.web.login-url)
+          - PageFinder: resolves Locator/By/WebElement fields by field-name aliases such as "username field"
           - DriverSessionManager: never create WebDriver directly, use Testara session abstractions
           - ActorManager: currentActor().attemptsTo(Click.on("element"), Enter.text("value").into("field"))
           """;
@@ -59,6 +59,9 @@ public class TestaraUiSkill implements AgentSkill<TestaraUiSkill.Input, String> 
         ```java
         @Page(name = "login", url = "", platforms = {DeviceType.DEFAULT, DeviceType.DESKTOP})
         public class LoginPage extends SeleniumPage {
+          private static final Locator USERNAME_FIELD = Locator.id("user-name");
+          private static final Locator PASSWORD_FIELD = Locator.id("password");
+          private static final Locator BUTTON_LOGIN = Locator.id("login-button");
         }
         ```
         URL in properties:
@@ -69,14 +72,14 @@ public class TestaraUiSkill implements AgentSkill<TestaraUiSkill.Input, String> 
 
         ## UserAction class
         ```java
-        @OnPage(LoginPage.class)
+        @OnPage(value = {LoginPage.class})
         public class LoginActions extends UserAction {
           @Action("login with credential")
           public void loginWithCredential(Map<String, Object> params) {
             attemptsTo(
-                Enter.text(String.valueOf(params.get("username"))).into("emailInput"),
-                Enter.text(String.valueOf(params.get("password"))).into("passwordInput"),
-                Click.on("loginButton")
+                Enter.text(String.valueOf(params.get("username"))).into("username field"),
+                Enter.text(String.valueOf(params.get("password"))).into("password field"),
+                Click.on("button login")
             );
           }
         }
@@ -84,36 +87,46 @@ public class TestaraUiSkill implements AgentSkill<TestaraUiSkill.Input, String> 
         Feature usage:
         ```gherkin
         When user do "login with credential" in "login" page with parameter
-          | username | properties(test.user.email)    |
-          | password | properties(test.user.password) |
+          | username                    | password                       |
+          | properties(test.user.email) | properties(test.user.password) |
         ```
         """;
   }
 
-  private String generatePage(String pageName, String basePkg, Path root, boolean write, boolean concise) {
+  private String generatePage(String pageName, String engine, String basePkg, Path root, boolean write,
+      boolean concise) {
     if (pageName == null) pageName = "sample";
     String pName = pageName.toLowerCase(Locale.ROOT);
     String pClass = toClassName(pageName) + "Page";
     String pkgPath = basePkg.replace('.', '/');
+    String pageBaseClass = "playwright".equalsIgnoreCase(engine) ? "PlaywrightPage" : "SeleniumPage";
+    String pageBaseImport = "playwright".equalsIgnoreCase(engine)
+        ? "io.github.ygrip.testara.ui.playwright.page.PlaywrightPage"
+        : "io.github.ygrip.testara.ui.selenium.page.SeleniumPage";
 
     String source = """
-        package %s.pages;
+        package %s.page;
 
-        import io.github.ygrip.testara.ui.page.DeviceType;
-        import io.github.ygrip.testara.ui.page.Page;
-        import io.github.ygrip.testara.ui.selenium.SeleniumPage;
+        import io.github.ygrip.testara.ui.model.DeviceType;
+        import io.github.ygrip.testara.ui.model.Locator;
+        import io.github.ygrip.testara.ui.model.Page;
+        import %s;
 
         /**
          * Page: %s
          * URL configured via: web.page.desktop.%s.url=properties(app.web.%s-url)
+         * Element names are resolved from Locator field names, e.g. USERNAME_FIELD -> "username field".
          */
         @Page(name = "%s", url = "", platforms = {DeviceType.DEFAULT, DeviceType.DESKTOP})
-        public class %s extends SeleniumPage {
+        public class %s extends %s {
+          private static final Locator USERNAME_FIELD = Locator.id("user-name");
+          private static final Locator PASSWORD_FIELD = Locator.id("password");
+          private static final Locator BUTTON_LOGIN = Locator.id("login-button");
         }
-        """.formatted(basePkg, pageName, pName, pName, pName, pClass);
+        """.formatted(basePkg, pageBaseImport, pageName, pName, pName, pName, pClass, pageBaseClass);
 
     String propEntry = "web.page.desktop." + pName + ".url=properties(app.web." + pName + "-url)\napp.web." + pName + "-url=http://localhost:3000/" + pName;
-    String relativePath = "src/test/java/" + pkgPath + "/pages/" + pClass + ".java";
+    String relativePath = "src/main/java/" + pkgPath + "/page/" + pClass + ".java";
 
     if (write) {
       try {
@@ -139,33 +152,37 @@ public class TestaraUiSkill implements AgentSkill<TestaraUiSkill.Input, String> 
     String pkgPath = basePkg.replace('.', '/');
 
     String source = """
-        package %s.actions;
+        package %s.action;
 
-        import %s.pages.%s;
-        import io.github.ygrip.testara.ui.actor.UserAction;
-        import io.github.ygrip.testara.ui.actor.OnPage;
-        import io.github.ygrip.testara.ui.actor.Action;
+        import %s.page.%s;
+        import io.github.ygrip.testara.ui.executor.UserAction;
         import io.github.ygrip.testara.ui.interaction.Click;
         import io.github.ygrip.testara.ui.interaction.Enter;
+        import io.github.ygrip.testara.ui.model.Action;
+        import io.github.ygrip.testara.ui.model.OnPage;
 
         import java.util.Map;
 
-        @OnPage(%s.class)
+        @OnPage(value = {%s.class})
         public class %s extends UserAction {
 
           @Action("%s")
           public void %s(Map<String, Object> params) {
-            // TODO: implement using Testara interactions
-            // attemptsTo(
-            //     Enter.text(String.valueOf(params.get("field"))).into("element"),
-            //     Click.on("submitButton")
-            // );
+            attemptsTo(
+                Enter.text(String.valueOf(params.get("username"))).into("username field"),
+                Enter.text(String.valueOf(params.get("password"))).into("password field"),
+                Click.on("button login")
+            );
           }
         }
         """.formatted(basePkg, basePkg, pClass, pClass, aClass, actionName, methodName);
 
-    String relativePath = "src/test/java/" + pkgPath + "/actions/" + aClass + ".java";
-    String featureStep = "When user do \"" + actionName + "\" in \"" + pageName.toLowerCase(Locale.ROOT) + "\" page with parameter";
+    String relativePath = "src/main/java/" + pkgPath + "/action/" + aClass + ".java";
+    String featureStep = """
+        When user do "%s" in "%s" page with parameter
+          | username                    | password                       |
+          | properties(test.user.email) | properties(test.user.password) |\
+        """.formatted(actionName, pageName.toLowerCase(Locale.ROOT));
 
     if (write) {
       try {
@@ -190,7 +207,10 @@ public class TestaraUiSkill implements AgentSkill<TestaraUiSkill.Input, String> 
           automation.engine.active-engines=playwright
           playwright.browser.headless=true
           playwright.browser.browserType=chromium
-          """;
+          class.loader.default-scan-locations=io.github.ygrip.testara,%s
+          playwright.browser.page-scan-locations=io.github.ygrip.testara,%s
+          playwright.browser.action-scan-locations=io.github.ygrip.testara,%s
+          """.formatted(basePkg, basePkg, basePkg);
       case "appium" -> """
           automation.engine.default-engine=appium
           automation.engine.active-engines=appium
@@ -200,10 +220,11 @@ public class TestaraUiSkill implements AgentSkill<TestaraUiSkill.Input, String> 
       default -> """
           automation.engine.default-engine=selenium
           automation.engine.active-engines=selenium
+          class.loader.default-scan-locations=io.github.ygrip.testara,%s
           selenium.driver.headless=true
-          selenium.driver.page-scan-locations=io.github.ygrip.testara,%s.pages
-          selenium.driver.action-scan-locations=io.github.ygrip.testara,%s.actions
-          """.formatted(basePkg, basePkg);
+          selenium.driver.page-scan-locations=io.github.ygrip.testara,%s
+          selenium.driver.action-scan-locations=io.github.ygrip.testara,%s
+          """.formatted(basePkg, basePkg, basePkg);
     };
     return concise ? block : "## UI Config — " + engine + "\n\n```properties\n" + block + "```\n";
   }

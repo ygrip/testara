@@ -202,9 +202,13 @@ public class McpServer {
         optionalStr("name", "Service name (e.g. settlementDb, paymentKafka)")));
     tools.add(tool("testara_init",       "Bootstrap or integrate a Testara automation project",
         optionalStr("type", "api, ui, database, streaming, fullstack"),
+        optionalStr("groupId", "Maven groupId. Defaults to io.github.ygrip when omitted."),
+        optionalStr("artifactId", "Maven artifactId. Defaults to the project directory name when omitted."),
         optionalStr("basePackage", "Base Java package"),
         optionalStr("engine", "UI engine: selenium, playwright, appium"),
-        optionalBool("integrateExisting", "Integrate into existing project")));
+        optionalBool("integrateExisting", "Integrate into existing project"),
+        optionalBool("write", "Create files on disk. Default false."),
+        optionalBool("compile", "Run test-compile after writing files. Default true.")));
 
     ObjectNode result = mapper.createObjectNode();
     result.set("tools", tools);
@@ -253,9 +257,11 @@ public class McpServer {
           List.of()), ctx);
       case "testara_init" -> initSkill.execute(new TestInitSkill.Input(
           args.path("type").asText("api"),
-          args.path("basePackage").asText("com.company.automation"),
+          args.path("basePackage").asText(null),
           args.path("engine").asText("selenium"),
-          args.path("integrateExisting").asBoolean(false)), ctx);
+          args.path("integrateExisting").asBoolean(false),
+          args.path("groupId").asText(null),
+          args.path("artifactId").asText(null)), ctx);
       case "testara_guide"    -> guideSkill.execute(args.path("section").asText(null), ctx);
       case "testara_context"  -> contextSkill.execute(null, ctx);
       case "testara_property" -> propertySkill.execute(new TestaraPropertySkill.Input(
@@ -289,6 +295,7 @@ public class McpServer {
     if (args.has("module"))  opts.put("module", args.path("module").asText());
     if (args.has("detail"))  opts.put("detail", args.path("detail").asText());
     if (args.has("write"))   opts.put("write", args.path("write").asBoolean(false) ? "true" : "false");
+    if (args.has("compile")) opts.put("compile", args.path("compile").asBoolean(true) ? "true" : "false");
 
     AgentMode mode = toolName.equals("testara_run") ? AgentMode.PLAN : AgentMode.READ_ONLY;
 

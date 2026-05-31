@@ -42,6 +42,7 @@ build/
 
 ### Cursor / plan files ###
 **/cursor/
+.cursor/
 **/plan/
 *.plan.md
 *.versionsBackup
@@ -59,7 +60,9 @@ CLAUDE.md
 # Plan/analysis documents — never track
 *-plan.md
 *-plan-*.md
+*-plan*.md
 testara-agent-*.md
+testara-agentic-*.md
 
 # Agent-specific local docs
 docs/agent/
@@ -67,3 +70,4 @@ docs/agent/
 # Java version / Claude config
 .java-version
 .claude/
+.codex/

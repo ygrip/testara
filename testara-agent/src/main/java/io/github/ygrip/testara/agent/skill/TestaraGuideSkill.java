@@ -35,7 +35,7 @@ public class TestaraGuideSkill implements AgentSkill<String, String> {
     StringBuilder sb = new StringBuilder();
     boolean inSection = false;
     for (String line : lines) {
-      if (line.startsWith("## RULE") || line.startsWith("## Quick")) {
+      if (line.startsWith("## ")) {
         inSection = line.toLowerCase(Locale.ROOT).contains(lower);
       }
       if (inSection) sb.append(line).append("\n");
@@ -47,10 +47,15 @@ public class TestaraGuideSkill implements AgentSkill<String, String> {
     // Concise: just the rule lines (## RULE N: ...) without examples
     StringBuilder sb = new StringBuilder();
     for (String line : guide.split("\n")) {
-      if (line.startsWith("## RULE") || line.startsWith("## Quick") || line.startsWith("## Testara")) {
+      if (line.startsWith("## RULE") || line.startsWith("## Quick") || line.startsWith("## Testara")
+          || line.startsWith("## Utilities") || line.startsWith("## Code") || line.startsWith("## Built-in")
+          || line.startsWith("## Helper")) {
+        sb.append(line).append("\n");
+      } else if (line.startsWith("## DB Kafka Elastic")) {
         sb.append(line).append("\n");
       } else if (line.startsWith("MUST") || line.startsWith("ALLOWED") || line.startsWith("NEVER")
-          || line.startsWith("WRONG") || line.startsWith("RIGHT")) {
+          || line.startsWith("WRONG") || line.startsWith("RIGHT") || line.startsWith("- Reuse")
+          || line.startsWith("- Prefer") || line.startsWith("- Do not")) {
         sb.append("  ").append(line).append("\n");
       }
     }

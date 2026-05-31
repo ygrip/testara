@@ -19,32 +19,32 @@ public class DataManipulationSteps {
 
   @RetryableMethod
   @Given("^(.+) (set|define) (\\w+) (to|=) \"([^\"]*)\"$")
-  public void defineRequestData(String identifier, String key, String value) throws Throwable {
+  public void defineRequestData(String identifier, String set, String key, String sign, String value) throws Throwable {
     dataHolder.setRequest(key, value);
   }
 
   @RetryableMethod
   @Given("^(.+) (set|define) (\\w+) (to|=)$")
-  public void defineRequestDataFromMultiline(String identifier, String key, String value) throws Throwable {
+  public void defineRequestDataFromMultiline(String identifier, String set, String key, String value) throws Throwable {
     dataHolder.setRequest(key, value);
   }
 
   @RetryableMethod
   @Given("^(.+) (set|define) (\\w+) with$")
-  public void defineRequestDataFromDatatable(String identifier, String key, DataTable value) throws Throwable {
+  public void defineRequestDataFromDatatable(String identifier, String set, String key, DataTable value) throws Throwable {
     dataHolder.setRequest(key, new TransformerService().sourceData(value.cells()));
   }
 
   @RetryableMethod
   @And("^(.+) (set|define) (\\w+) from \"([^\"]*)\" with$")
-  public void defineRequestDataFromTemplate(String identifier, String key, String template, DataTable value)
+  public void defineRequestDataFromTemplate(String identifier, String set, String key, String template, DataTable value)
       throws Throwable {
     dataHolder.setRequest(key, new TransformerService().sourceData(value.cells()).fromTemplate(template));
   }
 
   @RetryableMethod
   @And("^(.+) (set|define) (\\w+) from \"([^\"]*)\"$")
-  public void defineRequestDataFromTemplate(String identifier, String key, String template) throws Throwable {
+  public void defineRequestDataFromTemplate(String identifier, String set, String key, String template) throws Throwable {
     dataHolder.setRequest(key, new TransformerService().fromTemplate(template));
   }
 

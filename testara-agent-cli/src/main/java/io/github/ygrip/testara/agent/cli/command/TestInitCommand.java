@@ -54,12 +54,15 @@ public class TestInitCommand implements Runnable {
       description = "Skip interactive prompts and use defaults or provided values")
   private boolean nonInteractive;
 
+  @Option(names = "--interactive", defaultValue = "false",
+      description = "Force interactive prompts even when no console is detected")
+  private boolean forceInteractive;
+
   @Override
   public void run() {
     Path root = projectRoot.toAbsolutePath().normalize();
 
-    // Interactive mode when running in a terminal and --yes not passed
-    boolean interactive = !nonInteractive && System.console() != null && !preview;
+    boolean interactive = !nonInteractive && (forceInteractive || System.console() != null);
     if (interactive) {
       prompt(root);
     } else {
@@ -93,8 +96,16 @@ public class TestInitCommand implements Runnable {
       System.out.println("│  Press ENTER to accept the default value [...]  │");
       System.out.println("└────────────────────────────────────────────────┘\n");
 
-      groupId = ask(reader, "Group ID", defaultGroupId);
-      artifactId = ask(reader, "Artifact ID", defaultArtifactId);
+      String coordinateMode = askChoice(reader, "Maven coordinates", "auto",
+          new String[]{"auto", "manual"});
+      if ("manual".equals(coordinateMode)) {
+        groupId = ask(reader, "Group ID", defaultGroupId);
+        artifactId = ask(reader, "Artifact ID", defaultArtifactId);
+      } else {
+        groupId = defaultGroupId;
+        artifactId = defaultArtifactId;
+        System.out.printf("  Using generated coordinates: %s:%s%n", groupId, artifactId);
+      }
       type = askChoice(reader, "Project type", defaultType,
           new String[]{"api", "ui", "sql", "mongo", "kafka", "fullstack"});
 

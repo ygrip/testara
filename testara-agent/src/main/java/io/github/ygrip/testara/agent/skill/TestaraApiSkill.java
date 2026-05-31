@@ -43,9 +43,12 @@ public class TestaraApiSkill implements AgentSkill<TestaraApiSkill.Input, String
           testara-api concepts:
           - api.service.{name}.host/basePath/default_specification — service config
           - spec.api.{name}.header.* — default headers applied to all requests for service
-          - request spec JSON: files/{domain}/request/{flow}.json — use when request has payload/params
-          - direct step: [api] try POST to "/url" — use only for simple no-payload requests
+          - request spec JSON: src/test/resources/files/{domain}/request/{flow}.json
+          - feature step: [api] process request to "files/{domain}/request/{flow}"
+          - direct step: [api] try GET request to "/url" — use only for simple no-payload/no-param requests
+          - spec fields map to CreateRequestSpecification: specification, httpMethod, url, contentType, cookies, queryParameters, formParameters, headers, pathParameters, multiPartData, payload, requestLog, responseLog, autoCloseConnection
           - response: [api] response statusCode should be 200 | [api] assign previous response data to alias
+          - validations: [api] do these validations with response($['alias']) / request($['alias'])
           - properties() for all URLs, credentials, and test data values
           """;
     }
@@ -63,20 +66,39 @@ public class TestaraApiSkill implements AgentSkill<TestaraApiSkill.Input, String
 
         ## When to use request spec vs direct step
         - **Direct step** — simple GET without payload/params:
-          `When [api] try GET request to "/health"`
+          `When [api] try GET request to "properties({name}.health-endpoint)"`
         - **Request spec** — any request with payload, path params, headers, or reuse:
           `When [api] process request to "files/{domain}/request/{flow}"`
 
-        ## Request Spec JSON structure
+        ## Request Spec JSON structure (`CreateRequestSpecification`)
         ```json
         {
           "specification": "{name}",
           "httpMethod": "POST",
           "url": "properties({name}.endpoint)",
           "contentType": "application/json",
+          "headers": { "X-Request-Id": "uuid()" },
+          "queryParameters": { "include": "details" },
           "pathParameters": { "id": "properties(test.{domain}.id)" },
-          "payload": { "field": "properties(test.{domain}.field)" }
+          "multiPartData": { "file": "properties(test.{domain}.upload-file)" },
+          "payload": { "field": "properties(test.{domain}.field)" },
+          "autoCloseConnection": true
         }
+        ```
+
+        ## Built-in API flow
+        ```gherkin
+        Given [api] using service with alias {domain}-api
+        And [api] prepare request data payload from template "{TemplateName}" with value
+          | id                           | field                           |
+          | properties(test.{domain}.id) | properties(test.{domain}.field) |
+        And [api] prepare body request with value "request($['payload'])"
+        When [api] process request to "files/{domain}/request/{flow}"
+        Then [api] response statusCode should be 200
+        Then [api] assign previous response data to {domain}Response
+        Then [api] do these validations
+          | actual                          | validation | expectation |
+          | response($['{domain}Response']) | NOT_EMPTY  | true        |
         ```
 
         ## Response steps
@@ -92,7 +114,7 @@ public class TestaraApiSkill implements AgentSkill<TestaraApiSkill.Input, String
   private String generateApiConfig(String domain, Path projectRoot, boolean write, boolean concise) {
     if (domain == null) domain = "sample";
     String d = domain;
-    String block = """
+    String configBlock = """
         # API service — %s
         api.service.%s-api.host=properties(%s.api.host)
         api.service.%s-api.basePath=properties(%s.api.basePath)
@@ -101,16 +123,29 @@ public class TestaraApiSkill implements AgentSkill<TestaraApiSkill.Input, String
         spec.api.%s-api.header.Accept=application/json
         api.enable-request-log=true
         api.enable-response-log=true
+        """.formatted(d, d, d, d, d, d, d, d, d);
 
+    String applicationBlock = """
         # Environment values
         %s.api.host=http://localhost:8080
         %s.api.basePath=/api/v1
-        """.formatted(d, d, d, d, d, d, d, d, d, d, d);
+        %s.api.endpoint=/sample/{id}
+        test.%s.id=00000000-0000-0000-0000-000000000001
+        test.%s.field=sample-value
+        test.%s.include=details
+        """.formatted(d, d, d, d, d, d);
+
+    String block = configBlock + "\n" + applicationBlock;
 
     if (write) {
-      appendToProperties(projectRoot, block);
-      return concise ? "appended api config for '" + d + "' to configuration.properties"
-          : "## API Config Written\n\nAppended to `configuration.properties`:\n```properties\n" + block + "```\n";
+      appendToProperties(projectRoot, configBlock,
+          List.of("src/test/resources/configuration.properties", "configuration.properties"));
+      appendToProperties(projectRoot, applicationBlock,
+          List.of("src/test/resources/application.properties", "application.properties"));
+      return concise ? "appended api config for '" + d + "' to configuration.properties and application.properties"
+          : "## API Config Written\n\nAppended runtime config to `configuration.properties`:\n```properties\n"
+              + configBlock + "```\n\nAppended environment values to `application.properties`:\n```properties\n"
+              + applicationBlock + "```\n";
     }
     return concise ? block : "## API Config — " + d + "\n\n```properties\n" + block + "```\n";
   }
@@ -123,7 +158,25 @@ public class TestaraApiSkill implements AgentSkill<TestaraApiSkill.Input, String
     if (endpoint == null) endpoint = "properties(" + domain + ".api.endpoint)";
     String d = domain, f = flow, m = method.toUpperCase(Locale.ROOT), e = endpoint;
 
-    String spec = """
+    boolean payloadMethod = List.of("POST", "PUT", "PATCH").contains(m);
+    String spec = payloadMethod ? """
+        {
+          "specification": "%s-api",
+          "httpMethod": "%s",
+          "url": "%s",
+          "contentType": "application/json",
+          "headers": {
+            "X-Request-Id": "uuid()"
+          },
+          "pathParameters": {
+            "id": "properties(test.%s.id)"
+          },
+          "payload": {
+            "field": "properties(test.%s.field)"
+          },
+          "autoCloseConnection": true
+        }
+        """.formatted(d, m, e, d, d) : """
         {
           "specification": "%s-api",
           "httpMethod": "%s",
@@ -132,8 +185,8 @@ public class TestaraApiSkill implements AgentSkill<TestaraApiSkill.Input, String
           "pathParameters": {
             "id": "properties(test.%s.id)"
           },
-          "payload": {
-            "field": "properties(test.%s.field)"
+          "queryParameters": {
+            "include": "properties(test.%s.include)"
           },
           "autoCloseConnection": true
         }
@@ -158,8 +211,8 @@ public class TestaraApiSkill implements AgentSkill<TestaraApiSkill.Input, String
     return "## Request Spec — " + f + "\n\n**Path:** `" + path + "`\n\n```json\n" + spec + "```\n\n**Feature step:**\n```gherkin\n" + featureStep + "\n```\n";
   }
 
-  private void appendToProperties(Path root, String block) {
-    for (String c : List.of("src/test/resources/configuration.properties", "configuration.properties")) {
+  private void appendToProperties(Path root, String block, List<String> candidates) {
+    for (String c : candidates) {
       Path p = root.resolve(c);
       if (Files.exists(p)) {
         try { Files.writeString(p, Files.readString(p, StandardCharsets.UTF_8) + "\n" + block, StandardCharsets.UTF_8); }
