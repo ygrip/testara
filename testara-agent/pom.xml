@@ -13,6 +13,15 @@
   <name>Testara Agent Core</name>
   <description>Agentic skill engine for Testara: project indexing, feature parsing, and skill execution</description>
 
+  <build>
+    <resources>
+      <resource>
+        <directory>src/main/resources</directory>
+        <filtering>true</filtering>
+      </resource>
+    </resources>
+  </build>
+
   <dependencies>
     <dependency>
       <groupId>io.github.ygrip</groupId>

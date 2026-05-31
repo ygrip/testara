@@ -24,7 +24,6 @@ import java.util.regex.Pattern;
 final class TestaraVersionResolver {
 
   private static final String VERSION_PROPERTY = "testara.agent.version";
-  private static final String DEFAULT_VERSION = "2.0.4";
   private static final Pattern RELEASE_VERSION = Pattern.compile("\\d+(?:\\.\\d+)+(?:[-.][A-Za-z0-9]+)*");
 
   String resolve(Path projectRoot) {
@@ -32,7 +31,8 @@ final class TestaraVersionResolver {
         .or(this::packagedAgentVersion)
         .or(() -> checkoutVersion(projectRoot))
         .or(this::localMavenVersion)
-        .orElse(DEFAULT_VERSION);
+        .or(this::bundledPropertiesVersion)
+        .orElse("UNKNOWN");
   }
 
   private Optional<String> explicitVersion() {
@@ -154,6 +154,10 @@ final class TestaraVersionResolver {
     } catch (Exception ignored) {
       return Optional.empty();
     }
+  }
+
+  private Optional<String> bundledPropertiesVersion() {
+    return readPomPropertiesVersion("agent-context/agent.properties");
   }
 
   private Optional<String> valid(String version) {
