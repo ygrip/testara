@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://readynaz.com/content/assets/images/gallery/testara-brand-logo/01-testara-brand.webp" alt="Testara" width="320" />
+  <img src="https://readynaz.com/content/assets/images/gallery/testara-brand-logo/01-testara-brand.webp" alt="Testara" width="600" />
 </p>
 
 # Testara Agent — Agentic Skills Guide
