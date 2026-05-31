@@ -21,7 +21,12 @@ public class TestInitSkill implements AgentSkill<TestInitSkill.Input, String> {
 
   private static final Logger LOG = Logger.getLogger(TestInitSkill.class.getName());
 
-  public record Input(String type, String basePackage, String engine, boolean integrateExisting) {}
+  public record Input(String type, String basePackage, String engine, boolean integrateExisting,
+      String groupId, String artifactId) {
+    public Input(String type, String basePackage, String engine, boolean integrateExisting) {
+      this(type, basePackage, engine, integrateExisting, null, null);
+    }
+  }
 
   @Override
   public String name() { return "test-init"; }
@@ -29,7 +34,11 @@ public class TestInitSkill implements AgentSkill<TestInitSkill.Input, String> {
   @Override
   public String execute(Input input, AgentContext context) {
     String type    = input.type() != null ? input.type().toLowerCase(Locale.ROOT) : "api";
-    String basePkg = input.basePackage() != null ? input.basePackage() : "io.github.ygrip.testara";
+    String groupId = input.groupId() != null ? input.groupId() : "io.github.ygrip";
+    String artifactId = input.artifactId() != null ? input.artifactId()
+        : context.projectRoot().getFileName() != null ? context.projectRoot().getFileName().toString() : "automation";
+    String basePkg = input.basePackage() != null ? input.basePackage()
+        : groupId + "." + artifactId.replaceAll("[^a-zA-Z0-9]+", "").toLowerCase(Locale.ROOT);
     String pkgPath = basePkg.replace('.', '/');
     boolean integrate = input.integrateExisting();
     boolean write  = "true".equals(context.options().get("write"));
@@ -156,7 +165,10 @@ public class TestInitSkill implements AgentSkill<TestInitSkill.Input, String> {
   // ── File content generators ───────────────────────────────────────────────
 
   private String generateFullPom(String type, String basePkg, String engine) {
-    String artifactId = basePkg.substring(basePkg.lastIndexOf('.') + 1) + "-automation";
+    // Try to extract groupId from basePkg (everything before the last segment)
+    int lastDot = basePkg.lastIndexOf('.');
+    String pomGroupId = lastDot > 0 ? basePkg.substring(0, lastDot) : basePkg;
+    String artifactId = lastDot > 0 ? basePkg.substring(lastDot + 1) + "-automation" : basePkg + "-automation";
     String sliceDep = switch (type) {
       case "ui", "fullstack" -> """
               <dependency>
@@ -184,7 +196,7 @@ public class TestInitSkill implements AgentSkill<TestInitSkill.Input, String> {
                      http://maven.apache.org/xsd/maven-4.0.0.xsd">
           <modelVersion>4.0.0</modelVersion>
 
-          <groupId>io.github.ygrip</groupId>
+          <groupId>%s</groupId>
           <artifactId>%s</artifactId>
           <version>1.0.0-SNAPSHOT</version>
 
@@ -229,7 +241,7 @@ public class TestInitSkill implements AgentSkill<TestInitSkill.Input, String> {
             </plugins>
           </build>
         </project>
-        """.formatted(artifactId, sliceDep);
+        """.formatted(pomGroupId, artifactId, sliceDep);
   }
 
   private String generateProperties(String type, String basePkg) {

@@ -48,37 +48,59 @@ Testara is a modular test automation framework built on Java 21 that provides a 
 
 ## Testara Agent
 
-Testara Agent provides AI-assisted tools for analyzing, reviewing, generating, bootstrapping, and running Testara tests. 8 skills + MCP server + knowledge caching.
+Testara Agent is an AI-assisted CLI and MCP server that scaffolds, reviews, plans, and executes Testara automation projects. It understands the full Testara runtime — properties, commands, validations, request specs, pages, actions, and Cucumber steps.
 
-```bash
-# Build the agent fat JAR
-mvn -pl testara-agent-cli -am package -DskipTests
-alias testara-agent='java -jar testara-agent-cli/target/testara-agent.jar'
+### Install
 
-# Read-only skills (no LLM required)
-testara-agent /test-overview .
-testara-agent /test-review src/test/resources/features
-
-# Test execution (dry-run by default, rerun-failed supported)
-testara-agent /test-run "run payment smoke tests"
-testara-agent /test-run --rerun-failed
-
-# Generation skills
-testara-agent /test-plan "Create tests for refund approval" --slice api
-testara-agent /test-command "generate customer id with prefix and timestamp"
-testara-agent /test-init --type api --base-package com.company.automation
-
-# Knowledge cache
-testara-agent knowledge status
-
-# MCP server (Claude Code, Cursor, GitHub Copilot)
-testara-agent mcp .
-
-# Docker
-docker run --rm -v "$PWD:/workspace" -w /workspace ghcr.io/ygrip/testara-agent:latest /test-overview .
+```sh
+curl -fsSL https://github.com/ygrip/testara/releases/latest/download/install.sh | bash
 ```
 
-See **[Testara Agent documentation](docs/agentic-skills.md)** for full skill reference, MCP setup, LLM configuration, knowledge store, Docker, and security model.
+The installer downloads the agent, writes a wrapper, and **automatically configures MCP** for VS Code, Cursor, Claude Desktop, and Claude Code.
+
+### 3-Step Quick Start
+
+```sh
+# 1. Scaffold a new project (interactive prompts for group ID, artifact, type)
+mkdir my-tests && cd my-tests
+testara-agent test-init
+
+# 2. Generate a Testara-flavor Cucumber feature
+testara-agent test-plan 'test the payment refund approval' --write
+
+# 3. Run the tests
+TESTARA_AGENT_RUN_ENABLED=true testara-agent test-run 'payment refund' --execute
+```
+
+### Skills
+
+| Skill | Description |
+|---|---|
+| `test-init` | Interactive project scaffold — asks group ID, artifact, type |
+| `test-plan` | Generate Testara-flavor feature with `properties()` values and request specs |
+| `test-run` | Resolve intent → Cucumber tags → optional Maven execution |
+| `test-command` | List / detail / generate CommandLogic classes |
+| `test-validation` | List / detail / generate ValidatorLogic classes |
+| `test-overview` | Project statistics |
+| `test-review` | Quality review + Testara Flavor Score |
+| `testara-context` | Runtime context: slices, config coverage, available steps |
+| `testara-property` | Property key management and `properties()` generation |
+| `testara-api` | API config and request spec generation |
+| `testara-ui` | Page, UserAction, and engine config generation |
+| `testara-db` | SQL / Mongo / Kafka config and feature templates |
+| `testara-guide` | Embedded generation rules and guardrails |
+| `knowledge` | Manage profile cache (cold: ~3s → warm: ~0.5s) |
+
+### Generation quality
+
+Every generated feature reports two scores:
+
+- **Testara Flavor Score** — % of steps using Testara built-in steps (target ≥ 80%)
+- **Runtime Context Score** — % of values correctly using `properties()` (target ≥ 90%)
+
+**Guardrails** flag hardcoded URLs, credentials, and missing scan-location config before returning output.
+
+See **[Testara Agent documentation](docs/agentic-skills.md)** for full skill reference, MCP setup, interactive init, generation rules, and security model.
 
 ## Documentation
 

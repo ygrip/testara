@@ -107,7 +107,8 @@ JAR_PATH="$INSTALL_DIR/testara-agent.jar"
 
 cat > "$WRAPPER" << WRAPPER_EOF
 #!/usr/bin/env sh
-exec java -jar "$JAR_PATH" "\$@"
+JAVA_CMD="\${JAVA_HOME:+\$JAVA_HOME/bin/}java"
+exec "\$JAVA_CMD" -jar "$JAR_PATH" "\$@"
 WRAPPER_EOF
 chmod +x "$WRAPPER"
 info "Wrapper installed: $WRAPPER"
@@ -127,10 +128,167 @@ else
   info "Installed. Run: java -jar $JAR_PATH --version"
 fi
 
+# ── MCP config for agentic providers ──────────────────────────────
+setup_mcp() {
+  local config_file="$1"
+  local provider="$2"
+
+  # Skip if file doesn't exist and parent dir doesn't exist
+  local parent_dir
+  parent_dir="$(dirname "$config_file")"
+  [ -d "$parent_dir" ] || return 0
+
+  # Build the server entry — uses the wrapper directly
+  local entry
+  entry="$(cat << ENTRY_EOF
+    "testara": {
+      "type": "stdio",
+      "command": "$WRAPPER",
+      "args": ["mcp"],
+      "env": {
+        "TESTARA_AGENT_RUN_ENABLED": "true"
+      }
+    }
+ENTRY_EOF
+)"
+
+  # Already configured?
+  if [ -f "$config_file" ] && grep -q '"testara"' "$config_file" 2>/dev/null; then
+    info "$provider: testara MCP already configured — skipping"
+    return 0
+  fi
+
+  # VS Code / Cursor style: { "servers": { ... } }
+  if echo "$config_file" | grep -qE "Code|Cursor|cursor"; then
+    if [ -f "$config_file" ]; then
+      # Insert into existing servers block using Python (safe JSON edit)
+      if command -v python3 >/dev/null 2>&1; then
+        python3 - "$config_file" "$WRAPPER" << 'PYEOF'
+import sys, json
+path, wrapper = sys.argv[1], sys.argv[2]
+with open(path) as f:
+    cfg = json.load(f)
+cfg.setdefault("servers", {})["testara"] = {
+    "type": "stdio", "command": wrapper, "args": ["mcp"],
+    "env": {"TESTARA_AGENT_RUN_ENABLED": "true"}
+}
+with open(path, "w") as f:
+    json.dump(cfg, f, indent=2)
+    f.write("\n")
+PYEOF
+        info "$provider: testara MCP server added to $config_file"
+      else
+        warn "$provider: python3 not found — skipping JSON edit"
+      fi
+    else
+      # Create new config
+      cat > "$config_file" << CFG_EOF
+{
+  "servers": {
+    "testara": {
+      "type": "stdio",
+      "command": "$WRAPPER",
+      "args": ["mcp"],
+      "env": {
+        "TESTARA_AGENT_RUN_ENABLED": "true"
+      }
+    }
+  }
+}
+CFG_EOF
+      info "$provider: MCP config created at $config_file"
+    fi
+    return 0
+  fi
+
+  # Claude Desktop style: { "mcpServers": { ... } }
+  if [ -f "$config_file" ]; then
+    if command -v python3 >/dev/null 2>&1; then
+      python3 - "$config_file" "$WRAPPER" << 'PYEOF'
+import sys, json
+path, wrapper = sys.argv[1], sys.argv[2]
+with open(path) as f:
+    cfg = json.load(f)
+cfg.setdefault("mcpServers", {})["testara"] = {
+    "command": wrapper, "args": ["mcp"],
+    "env": {"TESTARA_AGENT_RUN_ENABLED": "true"}
+}
+with open(path, "w") as f:
+    json.dump(cfg, f, indent=2)
+    f.write("\n")
+PYEOF
+      info "$provider: testara MCP server added to $config_file"
+    else
+      warn "$provider: python3 not found — skipping JSON edit"
+    fi
+  else
+    cat > "$config_file" << CFG_EOF
+{
+  "mcpServers": {
+    "testara": {
+      "command": "$WRAPPER",
+      "args": ["mcp"],
+      "env": {
+        "TESTARA_AGENT_RUN_ENABLED": "true"
+      }
+    }
+  }
+}
+CFG_EOF
+    info "$provider: MCP config created at $config_file"
+  fi
+}
+
+info ""
+info "Configuring MCP servers for agentic providers..."
+
+# Detect OS
+_os="$(uname -s)"
+
+# VS Code (user-level mcp.json)
+if [ "$_os" = "Darwin" ]; then
+  setup_mcp "$HOME/Library/Application Support/Code/User/mcp.json" "VS Code"
+  setup_mcp "$HOME/Library/Application Support/Cursor/User/mcp.json" "Cursor"
+  setup_mcp "$HOME/Library/Application Support/Claude/claude_desktop_config.json" "Claude Desktop"
+else
+  setup_mcp "${XDG_CONFIG_HOME:-$HOME/.config}/Code/User/mcp.json" "VS Code"
+  setup_mcp "${XDG_CONFIG_HOME:-$HOME/.config}/Cursor/User/mcp.json" "Cursor"
+  setup_mcp "${XDG_CONFIG_HOME:-$HOME/.config}/claude/claude_desktop_config.json" "Claude Desktop"
+fi
+
+# Claude Code (~/.claude/settings.json uses a different MCP format)
+CLAUDE_SETTINGS="$HOME/.claude/settings.json"
+if [ -d "$HOME/.claude" ]; then
+  if [ -f "$CLAUDE_SETTINGS" ] && grep -q '"testara"' "$CLAUDE_SETTINGS" 2>/dev/null; then
+    info "Claude Code: testara MCP already configured"
+  elif command -v python3 >/dev/null 2>&1; then
+    python3 - "$CLAUDE_SETTINGS" "$WRAPPER" << 'PYEOF'
+import sys, json, os
+path, wrapper = sys.argv[1], sys.argv[2]
+cfg = {}
+if os.path.exists(path):
+    try:
+        with open(path) as f:
+            cfg = json.load(f)
+    except Exception:
+        pass
+cfg.setdefault("mcpServers", {})["testara"] = {
+    "command": wrapper, "args": ["mcp"],
+    "env": {"TESTARA_AGENT_RUN_ENABLED": "true"}
+}
+with open(path, "w") as f:
+    json.dump(cfg, f, indent=2)
+    f.write("\n")
+PYEOF
+    info "Claude Code: testara MCP server configured in $CLAUDE_SETTINGS"
+  fi
+fi
+
 info ""
 info "Quick start:"
-info "  testara-agent /test-overview ."
-info "  testara-agent /test-run 'run smoke tests' --project /path/to/your/automation"
-info "  testara-agent --help"
+info "  testara-agent test-init                    # scaffold a new project (interactive)"
+info "  testara-agent test-plan 'intent' --write   # generate a Cucumber feature"
+info "  testara-agent test-run  'intent' --execute # run the tests"
 info ""
+info "MCP: open VS Code / Cursor / Claude Desktop and look for 'testara' in the tools list."
 info "Docs: https://github.com/${GITHUB_REPO}/blob/main/docs/agentic-skills.md"
