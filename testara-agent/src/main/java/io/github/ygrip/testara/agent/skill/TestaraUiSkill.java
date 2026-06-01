@@ -67,10 +67,10 @@ public class TestaraUiSkill implements AgentSkill<TestaraUiSkill.Input, String> 
                 | actual        | validation | expectation |
                 | error message | DISPLAYED  | true        |
 
-          ## UserAction — correct imports
+          ## UserAction — correct imports (only import what you actually use)
           import io.github.ygrip.testara.ui.model.Action;        // @Action
           import io.github.ygrip.testara.ui.model.OnPage;         // @OnPage
-          import io.github.ygrip.testara.ui.executor.UserAction;  // base class
+          import io.github.ygrip.testara.ui.executor.UserAction;  // base class — extends this
           import io.github.ygrip.testara.ui.interaction.Click;
           import io.github.ygrip.testara.ui.interaction.Enter;
           import io.github.ygrip.testara.ui.interaction.Clear;
@@ -80,6 +80,8 @@ public class TestaraUiSkill implements AgentSkill<TestaraUiSkill.Input, String> 
           import io.github.ygrip.testara.ui.interaction.SelectOption;
           import io.github.ygrip.testara.ui.interaction.Navigate;
           import io.github.ygrip.testara.ui.page.NamedPage;
+          # NEVER import: Validate, Assert, Verify, Check — these do NOT exist in testara-ui.
+          # For assertions inside attemptsTo(), use SeeThat (e.g. SeeThat.visible("elem")).
 
           ## Interactions inside attemptsTo(...) — auto-populated from testara-ui source
           """ + buildInteractionList() + """

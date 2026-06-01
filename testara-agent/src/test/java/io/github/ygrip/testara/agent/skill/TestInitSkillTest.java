@@ -144,7 +144,7 @@ class TestInitSkillTest {
     String output = new TestInitSkill().execute(
         new TestInitSkill.Input("ui", "io.github.ygrip.automation", "selenium", false,
             "io.github.ygrip", "ui-automation"),
-        context());
+        confirmedEngineContext());
 
     assertTrue(output.contains("<artifactId>testara-ui</artifactId>"));
     assertTrue(output.contains("<artifactId>testara-ui-cucumber</artifactId>"));
@@ -168,7 +168,7 @@ class TestInitSkillTest {
     String output = new TestInitSkill().execute(
         new TestInitSkill.Input("ui", "io.github.ygrip.automation", "playwright", false,
             "io.github.ygrip", "ui-automation"),
-        context());
+        confirmedEngineContext());
 
     assertTrue(output.contains("<artifactId>testara-ui</artifactId>"));
     assertTrue(output.contains("<artifactId>testara-ui-cucumber</artifactId>"));
@@ -194,7 +194,7 @@ class TestInitSkillTest {
     String output = new TestInitSkill().execute(
         new TestInitSkill.Input("fullstack", "io.github.ygrip.automation", "selenium", false,
             "io.github.ygrip", "automation"),
-        context());
+        confirmedEngineContext());
 
     assertFalse(output.contains("StepDefinitions.java"));
     assertFalse(output.contains("public class StepDefinitions"));
@@ -291,6 +291,12 @@ class TestInitSkillTest {
     return new AgentContext(projectRoot, null, AgentMode.READ_ONLY, null, Map.of());
   }
 
+  /** Context where engine has already been confirmed by the user — bypasses engine prompt. */
+  private AgentContext confirmedEngineContext() {
+    return new AgentContext(projectRoot, null, AgentMode.READ_ONLY, null,
+        Map.of("engineConfirmed", "true"));
+  }
+
   private void assertConfigurationPropertiesDoNotContainUserValues(String output) {
     String configuration = section(output, "## configuration.properties", "## cucumber.properties");
     assertFalse(configuration.contains("http://localhost"));
@@ -319,12 +325,12 @@ class TestInitSkillTest {
 
   private AgentContext autoContext() {
     return new AgentContext(projectRoot, null, AgentMode.READ_ONLY, null,
-        Map.of("autoGenerateCoordinates", "true"));
+        Map.of("autoGenerateCoordinates", "true", "engineConfirmed", "true"));
   }
 
   private AgentContext examplesContext() {
     return new AgentContext(projectRoot, null, AgentMode.READ_ONLY, null,
-        Map.of("includeExamples", "true"));
+        Map.of("includeExamples", "true", "engineConfirmed", "true"));
   }
 
   private void assertDependencyScope(String pomPreview, String artifactId, String expectedScope) {

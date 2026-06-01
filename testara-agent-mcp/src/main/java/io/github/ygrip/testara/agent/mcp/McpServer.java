@@ -28,8 +28,8 @@ import java.util.logging.Logger;
  *
  * Start: java -jar testara-agent-mcp.jar [project-root]
  *
- * Security defaults:
- * - File writes disabled by default (TESTARA_AGENT_WRITE_ENABLED=false)
+ * Defaults:
+ * - File writes enabled by default (set TESTARA_AGENT_WRITE_ENABLED=false to disable)
  * - Test execution disabled by default (TESTARA_AGENT_RUN_ENABLED=false)
  * - test_run defaults to dryRun=true
  */
@@ -237,7 +237,8 @@ public class McpServer {
         optionalStr("groupId", "Maven groupId. Defaults to io.github.ygrip when omitted."),
         optionalStr("artifactId", "Maven artifactId. Defaults to the project directory name when omitted."),
         optionalStr("basePackage", "Base Java package"),
-        optionalStr("engine", "UI engine: selenium | playwright | appium. OMIT for ui/fullstack — the skill will ask the user to choose. Only pass after the user has explicitly selected."),
+        optionalStr("engine", "UI engine: selenium | playwright | appium. OMIT for ui/fullstack — the skill prompts the user. Only pass AFTER the user explicitly chose AND you also pass engineConfirmed=true."),
+        optionalBool("engineConfirmed", "Set true ONLY after presenting the engine options to the user and receiving their explicit answer. Never set true without user confirmation."),
         optionalBool("autoGenerateCoordinates", "Use generated Maven coordinates when groupId/artifactId are omitted. Default false so agents ask first."),
         optionalBool("integrateExisting", "Integrate into existing project"),
         optionalBool("includeExamples", "Also generate demo sample feature/page/request artifacts. Default false; prefer contextual generation."),
@@ -329,14 +330,15 @@ public class McpServer {
   }
 
   private boolean writeEnabled() {
-    return "true".equalsIgnoreCase(System.getenv().getOrDefault("TESTARA_AGENT_WRITE_ENABLED", "false"));
+    // Write is enabled by default — set TESTARA_AGENT_WRITE_ENABLED=false to disable
+    return !"false".equalsIgnoreCase(System.getenv().getOrDefault("TESTARA_AGENT_WRITE_ENABLED", "true"));
   }
 
   private String writeDisabledMessage(String toolName) {
     return """
-        write_disabled: TESTARA_AGENT_WRITE_ENABLED is not true
-        capability_available: %s is registered and can preview artifacts without write=true
-        next_step: call the same tool with write=false to get file_path/source, or enable TESTARA_AGENT_WRITE_ENABLED=true for trusted local scaffolding
+        write_disabled: TESTARA_AGENT_WRITE_ENABLED=false is set in the environment
+        capability_available: %s can preview artifacts — call with write=false to get file_path/source
+        next_step: remove TESTARA_AGENT_WRITE_ENABLED=false from env to re-enable writes
         """.formatted(toolName);
   }
 
@@ -363,7 +365,9 @@ public class McpServer {
     }
     if (args.has("projectRoot")) opts.put("projectRootExplicit", "true");
     // engine is provided → user confirmed the choice, no engine prompt needed
-    if (args.has("engine") && !args.path("engine").asText("").isBlank()) {
+    // engineConfirmed ONLY set when the agent explicitly passes it=true (i.e., after user confirmed)
+    // DO NOT auto-confirm just because engine is present — that's how agents bypass the prompt
+    if (args.path("engineConfirmed").asBoolean(false)) {
       opts.put("engineConfirmed", "true");
     }
 

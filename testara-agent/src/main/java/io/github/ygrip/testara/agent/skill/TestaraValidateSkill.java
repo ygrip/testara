@@ -35,6 +35,7 @@ public class TestaraValidateSkill implements AgentSkill<Void, String> {
     List<Check> checks = new ArrayList<>();
 
     checks.addAll(checkPropertyFiles(root));
+    checks.addAll(checkLoggingConfig(root));
     checks.addAll(checkCucumberGlue(root, profile));
     checks.addAll(checkPageSelectors(root));
     checks.addAll(checkRequiredConfig(root, profile));
@@ -111,6 +112,22 @@ public class TestaraValidateSkill implements AgentSkill<Void, String> {
           "Create src/test/resources/application.properties with environment-specific values."));
     }
     return out;
+  }
+
+  private List<Check> checkLoggingConfig(Path root) {
+    // Testara uses Log4j2 — the correct file is log4j2.xml in src/test/resources
+    Path log4j2 = root.resolve("src/test/resources/log4j2.xml");
+    Path logback = root.resolve("src/test/resources/logback-test.xml");
+    if (Files.exists(log4j2)) {
+      return List.of(pass("Logging", "log4j2.xml found at src/test/resources/"));
+    } else if (Files.exists(logback)) {
+      return List.of(warn("Logging",
+          "logback-test.xml found but Testara uses Log4j2",
+          "Replace with src/test/resources/log4j2.xml. Run testara_init or copy the log4j2.xml template."));
+    } else {
+      return List.of(warn("Logging", "log4j2.xml not found in src/test/resources/",
+          "Create src/test/resources/log4j2.xml — run testara_init to generate it automatically."));
+    }
   }
 
   private List<Check> checkCucumberGlue(Path root, TestaraProjectProfile profile) {

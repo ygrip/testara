@@ -51,7 +51,7 @@ class McpServerTest {
   }
 
   @Test
-  void writeDisabledIsReportedSeparatelyFromMissingCapability() throws Exception {
+  void writeEnabledByDefaultWritesActionFileToDisk() throws Exception {
     JsonNode response = new McpServer(projectRoot).handle(request("tools/call", """
         {
           "name": "testara_ui",
@@ -59,15 +59,15 @@ class McpServerTest {
             "mode": "action",
             "pageName": "login",
             "actionName": "login with credentials",
+            "basePackage": "io.github.ygrip.automation",
             "write": true
           }
         }
         """));
 
     String text = response.at("/result/content/0/text").asText();
-    assertTrue(text.contains("write_disabled: TESTARA_AGENT_WRITE_ENABLED is not true"));
-    assertTrue(text.contains("capability_available: testara_ui is registered"));
-    assertTrue(text.contains("write=false"));
+    // write is now enabled by default — should confirm file written, not write_disabled
+    assertTrue(text.contains("written: src/main/java/io/github/ygrip/automation/action/LoginActions.java"));
   }
 
   private JsonNode request(String method, String paramsJson) throws Exception {
