@@ -101,11 +101,10 @@ class TestInitSkillTest {
     assertTrue(output.contains("surefire-junit47"));
     assertTrue(output.contains("testara-cucumber</engine>"));
     assertTrue(output.contains("testara-reporter-plugin"));
-    // relative paths — avoids path-doubling bug when reporter does new File(projectBasedir, location)
-    assertTrue(output.contains("<targetLocation>target/destination/</targetLocation>"));
-    assertTrue(output.contains("<outputLocation>target/site/</outputLocation>"));
     assertTrue(output.contains("<engine>testara-cucumber</engine>"));
-    assertFalse(output.contains("<targetLocation>${project.build.directory}"));
+    // reporter plugin uses its own default paths — no targetLocation/outputLocation override
+    assertFalse(output.contains("<targetLocation>"));
+    assertFalse(output.contains("<outputLocation>"));
     assertTrue(output.contains("import io.github.ygrip.testara.engine.suites.TestSuite;"));
     assertFalse(output.contains("@IncludeEngines(\"cucumber\")"));
     assertTrue(output.contains("class.loader.default-scan-locations=io.github.ygrip.testara,io.github.ygrip.example"));

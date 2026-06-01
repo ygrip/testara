@@ -387,8 +387,6 @@ public class TestInitSkill implements AgentSkill<TestInitSkill.Input, String> {
                           <goal>cucumber-summary</goal>
                         </goals>
                         <configuration>
-                          <targetLocation>target/destination/</targetLocation>
-                          <outputLocation>target/site/</outputLocation>
                           <reportTemplate>testara-style-report</reportTemplate>
                           <reportName>test-report</reportName>
                         </configuration>
