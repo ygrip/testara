@@ -28,7 +28,8 @@ properties -> command conversion -> config binding -> base steps -> request spec
 - UI cross-page/global actions: if an action is intentionally callable from multiple pages, keep it in a top-level `UserAction` class and annotate the method with `@Action(value = "action name", allowAnonymousCall = true)`. Do not use nested classes to model cross-page access.
 - Bootstrap artifacts: prefer `testara_bootstrap` for Page, UserAction, Command, Validation, API config, and request-spec skeletons. It writes correct packages/imports/scan-location hints when `write=true` and previews the same artifacts when `write=false`.
 - DB/Kafka/Elastic: use built-in steps and exact property prefixes (`sql.service`, `mongo.service`, `kafka.service`, `elasticsearch.service`).
-- DataTables: ALL steps that pass key-value pairs MUST have `| key | value |` as the FIRST row (the header). This includes `user do "..." in "..." page with parameter`, API headers/params, Mongo queries, Elastic queries. Missing the header silently produces wrong data. Horizontal (multi-column) format is ONLY for `toList()` targets (cookies, multipart, Kafka batch) and validation tables.
+- DataTables: ALL steps that pass key-value pairs MUST have `| key | value |` as the FIRST row. Missing the header silently produces wrong data.
+- UI UserAction steps: ALWAYS use `user do "X" in "Y" page with parameter` (with the `with parameter` keyword and a DataTable). Even when the action takes no parameters, include an empty `| key | value |` table. The no-parameter variant `user do "X" in "Y" page` silently fails with "Cannot find any user actions".
 - Scan locations must include `io.github.ygrip.testara` and singular project packages: `.command`, `.validation`, `.page`, `.action`.
 - Compile generated scaffolds with `mvn test-compile`; run full tests only when Docker/Testcontainers dependencies are available.
 - Generated automation POMs use `maven-failsafe-plugin` and run Cucumber/Testara runners in `mvn verify`, matching the example projects.
@@ -298,14 +299,40 @@ If UI scenario has 3+ operations on the same page -> generate UserAction class
       | username | properties(test.user.email)    |
       | password | properties(test.user.password) |
 Not a custom Cucumber step.
+
+CRITICAL — `with parameter` is ALWAYS required, even for parameterless actions:
+  WRONG (silently fails with "Cannot find any user actions"):
+    When user do "add item to cart" in "inventory" page
+  RIGHT — always use `with parameter` + empty |key|value| table:
+    When user do "add item to cart" in "inventory" page with parameter
+      | key | value |
+The `with parameter` variant is the only step that correctly triggers UserAction lookup.
+The no-parameter variant (`user do "X" in "Y" page`) resolves differently and silently fails.
 Never group different pages into nested static UserAction classes. Generate separate top-level files such as `CheckoutInfoActions.java` and `CheckoutOverviewActions.java`.
 For truly shared/global actions, use a top-level class with `@Action(value = "open cart", allowAnonymousCall = true)` so it can be resolved without binding to one current page.
 
-## RULE 4: Page URL in properties
-  @Page(name = "login", url = "", platforms = {DeviceType.DEFAULT, DeviceType.DESKTOP})
-  public class LoginPage extends SeleniumPage or PlaywrightPage
-  private static final Locator USERNAME_FIELD = Locator.id("user-name")
-  web.page.desktop.login.url=${APP_WEB_LOGIN_URL:http://localhost:3000/login}
+## RULE 4: Page URL in properties — three modes, each with different behavior
+
+### Mode A: url="" (empty) — for the initial landing page
+  @Page(name = "login", url = "", ...)
+  web.page.desktop.login.url=https://www.saucedemo.com/
+  application.properties: app.web.login-url=https://www.saucedemo.com/
+  → "user open 'login' page" navigates to the URL from application.properties.
+
+### Mode B: url="" (empty) — for pages reached via UserAction navigation
+  @Page(name = "inventory", url = "", ...)
+  web.page.desktop.inventory.url=https://www.saucedemo.com/inventory.html   ← FULL URL required
+  → "user is in 'inventory' page" checks the current URL against this value.
+  IMPORTANT: Use a FULL absolute URL for page-transition detection. Relative paths
+  (e.g. "/inventory.html") FAIL silently — the framework cannot match them against
+  the browser's full URL and "Page X is not current page" errors result.
+
+### Mode C: Never hardcode URLs in @Page(url=...) annotation
+  WRONG: @Page(name = "login", url = "https://site.com/login", ...)
+  RIGHT: @Page(name = "login", url = "", ...) + web.page.desktop.login.url=... in application.properties
+
+Summary: Always use url="" in @Page. Always put the FULL absolute URL in application.properties.
+web.page.desktop.login.url=https://www.saucedemo.com/
 
 ## RULE 5: service config before features
 Generate api.service.{name}.* and spec.api.{name}.* in configuration.properties
@@ -387,6 +414,26 @@ Then user is in "cart" page       # REQUIRED — registers new active page
 
 ### Quirk 6: Screenshot hook crashes before browser opens
 `automation.engine.screenshot-strategy=ON_EACH_STEP` attempts a screenshot before every step — including the very first step that opens the browser. If `TestContext` is not yet initialized, this throws `IllegalStateException`. Change to `ON_FAIL` (screenshot only on failure) or `NONE` (disabled) in `configuration.properties` to avoid this. `ON_EACH_STEP` requires that TestContext and the browser session are already available before the hook fires.
+
+### Quirk 7: WaitUntil.url() throws NPE — always chain .withTimeout()
+`WaitUntil.url("/path")` has a null default timeout and throws `NullPointerException` at runtime.
+
+**Rule:** Always chain `.withTimeout(Duration.ofSeconds(N))`:
+```java
+attemptsTo(WaitUntil.url("https://site.com/inventory.html").withTimeout(Duration.ofSeconds(10)));
+```
+All `WaitUntil.*()` methods should have an explicit timeout. `WaitUntil.visible("elem")` and similar
+also benefit from explicit timeouts to avoid relying on undocumented defaults.
+
+### Quirk 8: Page-transition detection requires full absolute URL
+After a UserAction navigates to a new page (e.g., login → inventory), `Then user is in "inventory" page`
+fails unless `web.page.desktop.inventory.url` holds the **full absolute URL**.
+
+**Rule:** Always set full URLs in application.properties:
+```properties
+web.page.desktop.inventory.url=https://www.saucedemo.com/inventory.html   ← FULL URL
+# NOT: /inventory.html  (relative — silently fails page detection)
+```
 
 ### Quirk 5: testara_run and testara_context require projectRoot when MCP is launched globally
 When the MCP server starts from outside the project workspace (e.g. `~/`), the project index is empty.

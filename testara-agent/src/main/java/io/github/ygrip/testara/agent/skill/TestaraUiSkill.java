@@ -57,9 +57,12 @@ public class TestaraUiSkill implements AgentSkill<TestaraUiSkill.Input, String> 
           When  user open "login" page                 # navigates to web.page.desktop.login.url
           Then  user is in "login" page                # REQUIRED after open — registers active page context
           When  user do "action name" in "page" page with parameter
-                | key      | value                          |   # ALWAYS include this header row
-                | username | properties(test.user.username) |
+                | key      | value                          |   # ALWAYS use 'with parameter' even for parameterless actions
+                | username | properties(test.user.username) |   # with params: fill rows
                 | password | properties(test.user.password) |
+          # Parameterless action — still needs 'with parameter' + empty table:
+          When  user do "add item to cart" in "inventory" page with parameter
+                | key | value |
           When  user click the "button login"          # element = Locator field SCREAMING_SNAKE -> "lower spaced"
           When  user type value "text" to "element name"
           When  user enter value "text" on "element name"
@@ -159,8 +162,9 @@ public class TestaraUiSkill implements AgentSkill<TestaraUiSkill.Input, String> 
         : "io.github.ygrip.testara.ui.selenium.page.SeleniumPage";
     String locators = pageLocators(pName);
 
-    // application.properties (or application-{env}.properties): one entry per DeviceType in @Page platforms
-    // Generated page declares {DeviceType.DEFAULT, DeviceType.DESKTOP} — generate both
+    // application.properties (or application-{env}.properties): FULL absolute URL required.
+    // Relative paths (/path) silently break page-transition detection ("user is in X page").
+    // Replace http://localhost:3000/... with the real absolute URL of this page.
     List<String> pageUrlEntries = List.of(
         "web.page.default." + pName + ".url=http://localhost:3000/" + pName,
         "web.page.desktop." + pName + ".url=http://localhost:3000/" + pName

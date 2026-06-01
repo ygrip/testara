@@ -515,9 +515,13 @@ public class TestPlanSkill implements AgentSkill<TestPlanSkill.Input, String> {
 
   private String inferUiAction(String intent, String domain) {
     String lower = intent == null ? "" : intent.toLowerCase(Locale.ROOT);
-    if (lower.contains("login") || lower.contains("credential")) return "login with credentials";
+    if (lower.contains("login") || lower.contains("credential") || lower.contains("sign in")) return "login with credentials";
+    if (lower.contains("register") || lower.contains("sign up")) return "register account";
     if (lower.contains("search")) return "search " + domain;
+    if (lower.contains("add") && (lower.contains("cart") || lower.contains("basket"))) return "add " + domain + " to cart";
     if (lower.contains("checkout")) return "checkout " + domain;
+    if (lower.contains("remove") && lower.contains("cart")) return "remove " + domain + " from cart";
+    if (lower.contains("filter") || lower.contains("sort")) return "filter " + domain;
     String verb = extractVerb(intent);
     if ("process".equals(verb)) return "submit " + domain;
     return verb + " " + domain;
@@ -525,19 +529,25 @@ public class TestPlanSkill implements AgentSkill<TestPlanSkill.Input, String> {
 
   private String inferUiSuccessPage(String intent, String domain, String pageName) {
     String lower = intent == null ? "" : intent.toLowerCase(Locale.ROOT);
-    for (String candidate : List.of("inventory", "dashboard", "home", "cart", "checkout", "confirmation", "results")) {
-      if (!candidate.equals(pageName) && lower.contains(candidate)) return candidate;
+    // Explicit page mentions take priority
+    for (String candidate : List.of("inventory", "dashboard", "home", "cart", "checkout-complete",
+        "checkout-overview", "checkout", "confirmation", "results", "profile")) {
+      if (!candidate.equals(pageName) && lower.contains(candidate.replace("-", " ").replace("-", ""))) return candidate;
     }
+    if (lower.contains("login") || lower.contains("sign in")) return "inventory";
+    if (lower.contains("add") && lower.contains("cart")) return "cart";
+    if (lower.contains("checkout")) return "checkout-complete";
     if (lower.contains("search")) return "results";
-    if (lower.contains("checkout")) return "confirmation";
     return pageName;
   }
 
   private String inferUiSuccessElement(String intent) {
     String lower = intent == null ? "" : intent.toLowerCase(Locale.ROOT);
+    if (lower.contains("add") && (lower.contains("cart") || lower.contains("basket"))) return "cart badge";
     if (lower.contains("search")) return "search results";
     if (lower.contains("checkout")) return "success message";
-    if (lower.contains("login")) return "success message";
+    if (lower.contains("login") || lower.contains("sign in")) return "success message";
+    if (lower.contains("remove")) return "cart badge";
     return "success message";
   }
 
@@ -545,14 +555,33 @@ public class TestPlanSkill implements AgentSkill<TestPlanSkill.Input, String> {
     String key = toPropertyKey(pageName);
     String prefix = invalid ? "test.invalid-" + key : "test." + key;
     String lower = actionName.toLowerCase(Locale.ROOT);
-    if (lower.contains("login") || lower.contains("credential")) {
+    if (lower.contains("login") || lower.contains("credential") || lower.contains("sign in")) {
       String userPrefix = invalid ? "test.invalid-user" : "test.user";
       return new UiActionParameters(List.of("username", "password"),
           List.of("properties(" + userPrefix + ".username)", "properties(" + userPrefix + ".password)"));
     }
+    if (lower.contains("register") || lower.contains("sign up")) {
+      String userPrefix = invalid ? "test.invalid-user" : "test.user";
+      return new UiActionParameters(List.of("email", "password", "name"),
+          List.of("properties(" + userPrefix + ".email)", "properties(" + userPrefix + ".password)",
+              "properties(" + userPrefix + ".name)"));
+    }
     if (lower.contains("search")) {
       return new UiActionParameters(List.of("query"),
           List.of("properties(" + prefix + ".query)"));
+    }
+    if (lower.contains("add") && (lower.contains("cart") || lower.contains("basket"))) {
+      // Parameterless action — empty table (with parameter + |key|value| is still required)
+      return new UiActionParameters(List.of(), List.of());
+    }
+    if (lower.contains("checkout") || lower.contains("fill")) {
+      return new UiActionParameters(List.of("firstName", "lastName", "postalCode"),
+          List.of("properties(" + prefix + ".first-name)", "properties(" + prefix + ".last-name)",
+              "properties(" + prefix + ".postal-code)"));
+    }
+    if (lower.contains("filter") || lower.contains("sort")) {
+      return new UiActionParameters(List.of("option"),
+          List.of("properties(" + prefix + ".sort-option)"));
     }
     return new UiActionParameters(List.of("value"),
         List.of("properties(" + prefix + ".value)"));
