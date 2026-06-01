@@ -19,7 +19,34 @@
         <directory>src/main/resources</directory>
         <filtering>true</filtering>
       </resource>
+      <!-- Knowledge catalog generated at build time by AgentKnowledgeGenerator -->
+      <resource>
+        <directory>${project.build.directory}/generated-resources</directory>
+        <filtering>false</filtering>
+      </resource>
     </resources>
+    <plugins>
+      <plugin>
+        <groupId>org.codehaus.mojo</groupId>
+        <artifactId>exec-maven-plugin</artifactId>
+        <executions>
+          <execution>
+            <id>generate-agent-knowledge</id>
+            <phase>process-classes</phase>
+            <goals><goal>java</goal></goals>
+            <configuration>
+              <!-- repo root = parent of this module's basedir -->
+              <mainClass>io.github.ygrip.testara.agent.knowledge.AgentKnowledgeGenerator</mainClass>
+              <arguments>
+                <argument>${project.basedir}/..</argument>
+                <argument>${project.build.directory}/generated-resources/agent-context</argument>
+              </arguments>
+              <classpathScope>compile</classpathScope>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
   </build>
 
   <dependencies>

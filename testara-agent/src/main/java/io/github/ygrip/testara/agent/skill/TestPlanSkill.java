@@ -4,6 +4,7 @@ import io.github.ygrip.testara.agent.catalog.GenerationGuard;
 import io.github.ygrip.testara.agent.catalog.PropertyRuleEngine;
 import io.github.ygrip.testara.agent.flavor.FlavorEntry;
 import io.github.ygrip.testara.agent.index.TestaraProjectProfile;
+import io.github.ygrip.testara.agent.knowledge.FrameworkKnowledgeStore;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -42,7 +43,11 @@ public class TestPlanSkill implements AgentSkill<TestPlanSkill.Input, String> {
     boolean write = "true".equals(context.options().get("write"));
     boolean concise = "concise".equals(context.options().get("format"));
 
+    // Use project-level catalog if available, otherwise fall back to bundled framework catalog
     List<FlavorEntry> flavorSteps = profile.flavorStepsForSlice(slice);
+    if (flavorSteps.isEmpty()) {
+      flavorSteps = FrameworkKnowledgeStore.instance().flavorCatalogForSlice(slice);
+    }
     String featureContent = generateFlavorFeature(input.intent(), domain, tags, slice, flavorSteps, profile);
     String placement = resolvePlacement(slice, domain);
     String fileName  = toFileName(input.intent());

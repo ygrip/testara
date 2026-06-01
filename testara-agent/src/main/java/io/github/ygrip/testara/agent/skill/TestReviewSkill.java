@@ -2,6 +2,7 @@ package io.github.ygrip.testara.agent.skill;
 
 import io.github.ygrip.testara.agent.flavor.FlavorEntry;
 import io.github.ygrip.testara.agent.index.*;
+import io.github.ygrip.testara.agent.knowledge.FrameworkKnowledgeStore;
 import io.github.ygrip.testara.agent.parser.FeatureParser;
 import io.github.ygrip.testara.agent.skill.review.ReviewFinding;
 import io.github.ygrip.testara.agent.skill.review.ReviewSeverity;
@@ -68,11 +69,11 @@ public class TestReviewSkill implements AgentSkill<Path, String> {
         for (StepIndex step : scenario.steps()) {
           total++;
           String stepText = step.keyword() + " " + step.text();
-          // Check known built-in patterns first (works even with empty catalog),
-          // then check runtime catalog entries.
-          boolean isBuiltIn = KNOWN_UI_STEPS.stream()
-                  .anyMatch(p -> p.matcher(stepText.toLowerCase()).matches())
-              || catalog.stream().anyMatch(e -> matchesFlavorStep(stepText, e));
+          // Merge project-level catalog with the bundled framework catalog
+          List<FlavorEntry> effectiveCatalog = catalog.isEmpty()
+              ? FrameworkKnowledgeStore.instance().flavorCatalog() : catalog;
+          boolean isBuiltIn = effectiveCatalog.stream()
+              .anyMatch(e -> matchesFlavorStep(stepText, e));
           if (isBuiltIn) {
             builtIn++;
           } else {
@@ -98,46 +99,15 @@ public class TestReviewSkill implements AgentSkill<Path, String> {
     return new FlavorScore(total, builtIn, migratable, custom, List.copyOf(findings));
   }
 
-  // Known UIBaseSteps patterns — checked first so UI features score correctly
-  // even when the flavor catalog is empty (MCP launched outside a project).
-  private static final List<java.util.regex.Pattern> KNOWN_UI_STEPS = List.of(
-      compile("user using \\w+ in (desktop|mobile|android|ios)"),
-      compile("user open \".+\" page"),
-      compile("user is in \".+\" page"),
-      compile("user do \".+\""),
-      compile("user click the \".+\""),
-      compile("user type value .+ to \".+\""),
-      compile("user enter value .+ on \".+\""),
-      compile("user should see \".+\" is (displayed|not displayed)"),
-      compile("user element \".+\" should contains text .+"),
-      compile("user see that"),
-      compile("\\[api\\] using service"),
-      compile("\\[api\\] process request"),
-      compile("\\[api\\] response status"),
-      compile("\\[api\\] assign previous"),
-      compile("\\[api\\] prepare (pathParam|header|body|queryParam|cookie)"),
-      compile("\\[sql\\] connect to database"),
-      compile("\\[sql\\] execute database query"),
-      compile("\\[sql\\] prepare query"),
-      compile("\\[sql\\] assign previous"),
-      compile("\\[mongo\\] connect to database"),
-      compile("\\[mongo\\] select (collection|data)"),
-      compile("\\[mongo\\] assign previous"),
-      compile("\\[elastic-search\\] connect"),
-      compile("\\[elastic-search\\] assign data"),
-      compile("user start kafka"),
-      compile("user send kafka"),
-      compile("user stop kafka")
-  );
-
-  private static java.util.regex.Pattern compile(String pattern) {
-    return java.util.regex.Pattern.compile("(?i).*" + pattern + ".*", java.util.regex.Pattern.DOTALL);
-  }
+  // Step patterns are loaded from the bundled catalog; never hardcoded here.
+  private static final List<java.util.regex.Pattern> BUILT_IN_PATTERNS =
+      FrameworkKnowledgeStore.instance().uiStepPatterns();
 
   private boolean matchesFlavorStep(String stepText, FlavorEntry entry) {
-    // First check known built-in patterns regardless of catalog
     String lower = stepText.toLowerCase();
-    if (KNOWN_UI_STEPS.stream().anyMatch(p -> p.matcher(lower).matches())) return true;
+    // Check the bundled catalog patterns first (covers all slices from build-time scan)
+    if (BUILT_IN_PATTERNS.stream().anyMatch(p -> p.matcher(lower).matches())) return true;
+    // Then check the project-level runtime catalog entry
     try {
       String expr = entry.expression()
           .replace("(.+)", ".*").replace("(\\w+)", "\\w+")

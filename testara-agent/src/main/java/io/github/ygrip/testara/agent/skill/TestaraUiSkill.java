@@ -1,11 +1,14 @@
 package io.github.ygrip.testara.agent.skill;
 
+import io.github.ygrip.testara.agent.knowledge.FrameworkKnowledgeStore;
+
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Locale;
+import java.util.stream.Collectors;
 
 /**
  * Skill: generate Testara UI artifacts — Page, UserAction, engine config.
@@ -67,11 +70,8 @@ public class TestaraUiSkill implements AgentSkill<TestaraUiSkill.Input, String> 
           import io.github.ygrip.testara.ui.interaction.SelectOption;
           import io.github.ygrip.testara.ui.interaction.Navigate;
 
-          ## Interactions inside attemptsTo(...)
-          Enter.text("value").into("element name")    Click.on("element name")
-          Clear.field("element name")                  WaitUntil.visible("element name")
-          SelectOption.from("elem").byVisibleText("t") SeeThat.visible("element name")
-          SeeThat.containsText("t").on("element name") Navigate.to(NamedPage.of("page"))
+          ## Interactions inside attemptsTo(...) — auto-populated from testara-ui source
+          """ + buildInteractionList() + """
           """;
     }
     return """
@@ -244,6 +244,19 @@ public class TestaraUiSkill implements AgentSkill<TestaraUiSkill.Input, String> 
     }
     return "## UserAction: " + aClass + "\n\n**Path:** `" + relativePath + "`\n\n```java\n" + source + "```\n\n**Feature step:**\n```gherkin\n" + featureStep + "\n```\n"
         + "\n> Write the source block to `" + relativePath + "`.";
+  }
+
+  private static String buildInteractionList() {
+    List<String> examples = FrameworkKnowledgeStore.instance().uiInteractionExamples();
+    if (examples.isEmpty()) {
+      // Fallback when catalog not yet generated (first build before process-classes runs)
+      return "Enter.text(\"value\").into(\"element\")  Click.on(\"element\")\n"
+           + "Clear.field(\"element\")  WaitUntil.visible(\"element\")\n"
+           + "SeeThat.visible(\"element\")  Navigate.to(NamedPage.of(\"page\"))\n";
+    }
+    return examples.stream()
+        .map(e -> "          " + e)
+        .collect(Collectors.joining("\n")) + "\n";
   }
 
   private String generateUiConfig(String engine, String basePkg, boolean concise) {
