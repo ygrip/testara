@@ -29,7 +29,7 @@ class TestInitSkillTest {
         new TestInitSkill.Input("api", "io.github.ygrip.sample", "selenium", false),
         autoContext());
 
-    assertTrue(output.contains("<testara.version>2.0.4</testara.version>"));
+    assertTrue(output.contains("<testara.version>2.0.5</testara.version>"));
     assertFalse(output.contains("<testara.version>2.0.1</testara.version>"));
   }
 

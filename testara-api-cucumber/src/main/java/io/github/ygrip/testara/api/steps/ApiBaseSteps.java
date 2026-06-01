@@ -61,12 +61,6 @@ import static org.hamcrest.Matchers.notNullValue;
 @Log4j2
 @TestComponent(scope = RegistryScope.TEST)
 public class ApiBaseSteps {
-  private final String HTTP_METHODS = "(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS|TRACE|CONNECT)";
-
-  @ParameterType(HTTP_METHODS)
-  public Method method(String method) {
-    return Method.valueOf(method);
-  }
 
   @Inject
   private DataHolder dataHolder;
@@ -768,7 +762,7 @@ public class ApiBaseSteps {
   /**
    * Execute load test with rate limiting
    */
-  @When("{actor} execute load test with (\\d+\\.?\\d*) requests per second for {int} seconds")
+  @When("{actor} execute load test with {double} requests per second for {int} seconds")
   public void executeLoadTestWithRate(String identifier, double rps, int durationSeconds) throws Exception {
     assertLoadTestInitialized();
     this.loadTestSummary = loadTestBuilder.executeWithRate(rps, Duration.ofSeconds(durationSeconds));
@@ -821,7 +815,7 @@ public class ApiBaseSteps {
   /**
    * Assert success rate is at least a certain percentage
    */
-  @Then("{actor} load test success rate should be at least (\\d+\\.?\\d*) percent")
+  @Then("{actor} load test success rate should be at least {double} percent")
   public void loadTestSuccessRateShouldBeAtLeast(String identifier, double minSuccessRate) {
     assertLoadTestCompleted();
     assertThat(String.format("Success rate %.2f%% is below minimum %.2f%%",
@@ -832,7 +826,7 @@ public class ApiBaseSteps {
   /**
    * Assert success rate equals specific value
    */
-  @Then("{actor} load test success rate should be (\\d+\\.?\\d*) percent")
+  @Then("{actor} load test success rate should be {double} percent")
   public void loadTestSuccessRateShouldBe(String identifier, double expectedRate) {
     assertLoadTestCompleted();
     assertThat(String.format("Success rate %.2f%% does not match expected %.2f%%",
@@ -843,7 +837,7 @@ public class ApiBaseSteps {
   /**
    * Assert throughput is at least a certain value
    */
-  @Then("{actor} load test throughput should be at least (\\d+\\.?\\d*) requests per second")
+  @Then("{actor} load test throughput should be at least {double} requests per second")
   public void loadTestThroughputShouldBeAtLeast(String identifier, double minThroughput) {
     assertLoadTestCompleted();
     assertThat(String.format("Throughput %.2f req/s is below minimum %.2f req/s",

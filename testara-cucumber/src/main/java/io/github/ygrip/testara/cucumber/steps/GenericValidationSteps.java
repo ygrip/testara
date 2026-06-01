@@ -92,7 +92,7 @@ public class GenericValidationSteps {
   }
 
   @RetryableMethod
-  @Then("{actor} data {string} (.+) be {greaterOrLess} {thanOrEqual} data {string}")
+  @Then("{actor} data {string} {shouldOrShouldNot} be {greaterOrLess} {thanOrEqual} data {string}")
   public void compareTwoData(String identifier,
       String dataA,
       String shouldOrShouldNot,
