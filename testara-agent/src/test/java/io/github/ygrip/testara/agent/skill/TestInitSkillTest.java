@@ -67,13 +67,16 @@ class TestInitSkillTest {
             "io.github.ygrip", "api-automation"),
         context());
 
+    assertTrue(output.contains("## log4j2.xml"));
+    assertTrue(output.contains("<PatternLayout"));
+    assertTrue(output.contains("io.github.ygrip.testara"));
     assertTrue(output.contains("<artifactId>testara-api-cucumber</artifactId>"));
     assertDependencyScope(output, "testara-api", null);
     assertDependencyScope(output, "testara-api-cucumber", "test");
     assertDependencyScope(output, "testara-command", null);
     assertDependencyScope(output, "testara-validation", null);
     assertTrue(output.contains("<artifactId>testara-junit5</artifactId>"));
-    assertDependencyScope(output, "testara-junit5", null);  // compile scope — matches sample project
+    assertDependencyScope(output, "testara-junit5", "test");
     assertTrue(output.contains("<artifactId>lombok</artifactId>"));
     assertFalse(output.contains("<artifactId>junit-platform-suite</artifactId>"));
     assertTrue(output.contains("<artifactId>maven-failsafe-plugin</artifactId>"));
@@ -81,6 +84,9 @@ class TestInitSkillTest {
     assertTrue(output.contains("<goal>verify</goal>"));
     assertTrue(output.contains("<artifactId>maven-surefire-plugin</artifactId>"));
     assertTrue(output.contains("<skip>true</skip>"));
+    assertFalse(output.contains("<artifactId>maven-dependency-plugin</artifactId>"));
+    assertFalse(output.contains("unpack-step-definitions"));
+    assertFalse(output.contains("target/step_definitions/src"));
     // it.test is now inside profiles, not top-level properties
     assertTrue(output.contains("<it.test>io.github.ygrip.example.Junit5RunnerTests</it.test>"));
     assertTrue(output.contains("<it.test>io.github.ygrip.example.Junit4RunnerTests</it.test>"));
@@ -90,6 +96,11 @@ class TestInitSkillTest {
     assertTrue(output.contains("surefire-junit47"));
     assertTrue(output.contains("testara-cucumber</engine>"));
     assertTrue(output.contains("testara-reporter-plugin"));
+    assertTrue(output.contains("<targetLocation>${project.build.directory}/destination/</targetLocation>"));
+    assertTrue(output.contains("<outputLocation>${project.build.directory}/destination/</outputLocation>"));
+    assertTrue(output.contains("<engine>testara-cucumber</engine>"));
+    assertFalse(output.contains("<targetLocation>${project.build.directory}/cucumber-reports/</targetLocation>"));
+    assertFalse(output.contains("<targetLocation>/target/destination/</targetLocation>"));
     assertTrue(output.contains("import io.github.ygrip.testara.engine.suites.TestSuite;"));
     assertFalse(output.contains("@IncludeEngines(\"cucumber\")"));
     assertTrue(output.contains("class.loader.default-scan-locations=io.github.ygrip.testara,io.github.ygrip.example"));
@@ -198,7 +209,8 @@ class TestInitSkillTest {
     assertTrue(output.contains("public class HomePage extends SeleniumPage"));
     assertTrue(output.contains("sample.feature"));
     assertTrue(output.contains("sample-get.json"));
-    assertTrue(output.contains("api.service.sample-api.host=properties(api.sample-api.host)"));
+    assertTrue(output.contains("api.service.sample-api.host=${API_SAMPLE_API_HOST:http://localhost:8080}"));
+    assertFalse(output.contains("api.service.sample-api.host=properties(api.sample-api.host)"));
     assertTrue(output.contains("cucumber.filter.tags=(@api or @ui or @fullstack or @sample) and not (@manual or @deprecated or @ignored)"));
   }
 

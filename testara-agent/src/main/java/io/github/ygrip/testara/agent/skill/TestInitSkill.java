@@ -134,6 +134,8 @@ public class TestInitSkill implements AgentSkill<TestInitSkill.Input, String> {
           generateJunitPlatformProperties(type, basePkg, includeExamples), created, skipped);
       writeIfAbsent(root, "src/test/resources/application.properties",
           generateApplicationProperties(type, includeExamples), created, skipped);
+      writeIfAbsent(root, "src/test/resources/log4j2.xml",
+          generateLog4j2Config(basePkg), created, skipped);
       writeIfAbsent(root, "src/test/java/" + pkgPath + "/Junit5RunnerTests.java",
           generateJunit5Runner(basePkg), created, skipped);
       writeIfAbsent(root, "src/test/java/" + pkgPath + "/Junit4RunnerTests.java",
@@ -220,6 +222,7 @@ public class TestInitSkill implements AgentSkill<TestInitSkill.Input, String> {
     sb.append(integrate ? "> Integration mode\n\n" : "> Bootstrap mode\n\n");
 
     sb.append("## pom.xml\n\n```xml\n").append(generateFullPom(type, groupId, artifactId, basePkg, engine, root)).append("```\n\n");
+    sb.append("## log4j2.xml\n\n```xml\n").append(generateLog4j2Config(basePkg)).append("```\n\n");
     sb.append("## configuration.properties\n\n```properties\n").append(generateProperties(type, basePkg, engine, includeExamples)).append("```\n\n");
     sb.append("## cucumber.properties\n\n```properties\n").append(generateCucumberProperties()).append("```\n\n");
     sb.append("## junit-platform.properties\n\n```properties\n").append(generateJunitPlatformProperties(type, basePkg, includeExamples)).append("```\n\n");
@@ -263,18 +266,8 @@ public class TestInitSkill implements AgentSkill<TestInitSkill.Input, String> {
       case "elastic", "elastic-search"    -> dep("testara-elastic", null) + dep("testara-elastic-cucumber", "test");
       default -> "";
     };
-    String stepDefArtifacts = switch (type) {
-      case "api"                        -> "testara-cucumber, testara-api-cucumber";
-      case "ui"                         -> "testara-cucumber, testara-ui-cucumber";
-      case "fullstack"                  -> "testara-cucumber, testara-api-cucumber, testara-ui-cucumber";
-      case "database-sql", "sql",
-           "mongo", "database-mongo"    -> "testara-cucumber, testara-database-cucumber";
-      case "kafka", "streaming"         -> "testara-cucumber, testara-streaming-cucumber";
-      case "elastic", "elastic-search"  -> "testara-cucumber, testara-elastic-cucumber";
-      default                           -> "testara-cucumber";
-    };
     String allDeps = dep("testara-command", null) + dep("testara-validation", null)
-        + dep("testara-junit5", null) + sliceDep
+        + dep("testara-junit5", "test") + sliceDep
         + dep("org.projectlombok", "lombok", "${lombok.version}", "provided");
     String testaraVersion = versionResolver.resolve(root);
     return """
@@ -347,6 +340,12 @@ public class TestInitSkill implements AgentSkill<TestInitSkill.Input, String> {
                       </execution>
                     </executions>
                     <configuration>
+                      <excludeJUnit5Engines>
+                        <engine>testara-cucumber</engine>
+                        <engine>junit-jupiter</engine>
+                        <engine>junit-platform-suite</engine>
+                        <engine>junit-vintage</engine>
+                      </excludeJUnit5Engines>
                       <test>${it.test}</test>
                       <printSummary>false</printSummary>
                       <failIfNoTests>false</failIfNoTests>
@@ -367,8 +366,8 @@ public class TestInitSkill implements AgentSkill<TestInitSkill.Input, String> {
                           <goal>cucumber-summary</goal>
                         </goals>
                         <configuration>
-                          <targetLocation>${project.build.directory}/cucumber-reports/</targetLocation>
-                          <outputLocation>${project.build.directory}/site/</outputLocation>
+                          <targetLocation>${project.build.directory}/destination/</targetLocation>
+                          <outputLocation>${project.build.directory}/destination/</outputLocation>
                           <reportTemplate>testara-style-report</reportTemplate>
                           <reportName>test-report</reportName>
                         </configuration>
@@ -444,25 +443,6 @@ public class TestInitSkill implements AgentSkill<TestInitSkill.Input, String> {
                   <skip>true</skip>
                 </configuration>
               </plugin>
-              <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-dependency-plugin</artifactId>
-                <executions>
-                  <execution>
-                    <id>unpack-step-definitions</id>
-                    <phase>generate-test-sources</phase>
-                    <goals>
-                      <goal>unpack-dependencies</goal>
-                    </goals>
-                    <configuration>
-                      <includeArtifactIds>%s</includeArtifactIds>
-                      <classifier>sources</classifier>
-                      <outputDirectory>${project.basedir}/target/step_definitions/src</outputDirectory>
-                      <includes>**/*.java</includes>
-                    </configuration>
-                  </execution>
-                </executions>
-              </plugin>
             </plugins>
           </build>
 
@@ -480,7 +460,7 @@ public class TestInitSkill implements AgentSkill<TestInitSkill.Input, String> {
           </pluginRepositories>
         </project>
         """.formatted(groupId, artifactId, testaraVersion, allDeps,
-        basePkg, basePkg, stepDefArtifacts);
+        basePkg, basePkg);
   }
 
   private static String dep(String artifactId, String scope) {
@@ -526,7 +506,7 @@ public class TestInitSkill implements AgentSkill<TestInitSkill.Input, String> {
 
     String uiEngine = engine == null ? "selenium" : engine.toLowerCase(Locale.ROOT);
     String pageConfig = includeExamples ? """
-          web.page.desktop.home.url=properties(app.web.home-url)
+          web.page.desktop.home.url=${APP_WEB_HOME_URL:http://localhost:3000}
           """ : "";
     String uiProperties = switch (uiEngine) {
       case "playwright" -> """
@@ -543,7 +523,7 @@ public class TestInitSkill implements AgentSkill<TestInitSkill.Input, String> {
           playwright.browser.page-scan-locations=io.github.ygrip.testara,%s
           playwright.browser.action-scan-locations=io.github.ygrip.testara,%s
           playwright.browser.remote-driver.default.enabled=false
-          playwright.browser.remote-driver.default.uri=properties(ui.remote.url)
+          playwright.browser.remote-driver.default.uri=${UI_REMOTE_URL:http://localhost:4444/}
           %s""".formatted(basePkg, basePkg, basePkg, pageConfig);
       default -> """
           # UI engine configuration
@@ -559,7 +539,7 @@ public class TestInitSkill implements AgentSkill<TestInitSkill.Input, String> {
           selenium.driver.page-scan-locations=io.github.ygrip.testara,%s
           selenium.driver.action-scan-locations=io.github.ygrip.testara,%s
           selenium.driver.remote-driver.default.enabled=false
-          selenium.driver.remote-driver.default.uri=properties(ui.remote.url)
+          selenium.driver.remote-driver.default.uri=${UI_REMOTE_URL:http://localhost:4444/}
           %s""".formatted(basePkg, basePkg, basePkg, pageConfig);
     };
 
@@ -569,27 +549,27 @@ public class TestInitSkill implements AgentSkill<TestInitSkill.Input, String> {
       case "fullstack" -> apiProperties(includeExamples) + "\n" + uiProperties;
       case "sql", "database-sql" -> includeExamples ? """
           # Database configuration
-          sql.service.settlementDb.uri=properties(db.settlement.uri)
-          sql.service.settlementDb.username=properties(db.settlement.username)
-          sql.service.settlementDb.password=properties(db.settlement.password)
+          sql.service.settlementDb.uri=${DB_SETTLEMENT_URI:jdbc:postgresql://localhost:5432/testdb}
+          sql.service.settlementDb.username=${DB_SETTLEMENT_USERNAME:testuser}
+          sql.service.settlementDb.password=${DB_SETTLEMENT_PASSWORD:testpass}
           sql.service.settlementDb.dbType=POSTGRESQL
           """ : deferredConfig("SQL", "sql.service.{alias}.uri|username|password|dbType");
       case "mongo", "database-mongo" -> includeExamples ? """
           # MongoDB configuration
-          mongo.service.productDb.connectionString=properties(mongo.product.connection-string)
-          mongo.service.productDb.dbName=properties(mongo.product.db-name)
+          mongo.service.productDb.connectionString=${MONGO_PRODUCT_CONNECTION_STRING:mongodb://localhost:27017}
+          mongo.service.productDb.dbName=${MONGO_PRODUCT_DB_NAME:testdb}
           """ : deferredConfig("MongoDB", "mongo.service.{alias}.connectionString|dbName");
       case "kafka", "streaming" -> includeExamples ? """
           # Kafka configuration
-          kafka.service.orderStream.servers=properties(kafka.order.servers)
-          kafka.service.orderStream.groupId=properties(kafka.order.group-id)
-          kafka.service.orderStream.topics.orders=properties(kafka.topic.orders)
+          kafka.service.orderStream.servers=${KAFKA_ORDER_SERVERS:localhost:9092}
+          kafka.service.orderStream.groupId=${KAFKA_ORDER_GROUP_ID:testara-order-tests}
+          kafka.service.orderStream.topics.orders=${KAFKA_TOPIC_ORDERS:orders}
           """ : deferredConfig("Kafka", "kafka.service.{alias}.servers|groupId|topics.{topic}");
       case "elastic", "elastic-search" -> includeExamples ? """
           # ElasticSearch configuration
-          elasticsearch.service.catalog.hosts[0]=properties(elasticsearch.catalog.host)
-          elasticsearch.service.catalog.username=properties(elasticsearch.catalog.username)
-          elasticsearch.service.catalog.password=properties(elasticsearch.catalog.password)
+          elasticsearch.service.catalog.hosts[0]=${ELASTICSEARCH_CATALOG_HOST:http://localhost:9200}
+          elasticsearch.service.catalog.username=${ELASTICSEARCH_CATALOG_USERNAME:}
+          elasticsearch.service.catalog.password=${ELASTICSEARCH_CATALOG_PASSWORD:}
           elasticsearch.service.catalog.secured=false
           elasticsearch.service.catalog.requireAuthentication=false
           """ : deferredConfig("ElasticSearch", "elasticsearch.service.{alias}.hosts[0]|username|password|secured|requireAuthentication");
@@ -603,8 +583,8 @@ public class TestInitSkill implements AgentSkill<TestInitSkill.Input, String> {
     }
     return """
         # API service configuration
-        api.service.sample-api.host=properties(api.sample-api.host)
-        api.service.sample-api.basePath=/api/v1
+        api.service.sample-api.host=${API_SAMPLE_API_HOST:http://localhost:8080}
+        api.service.sample-api.basePath=${API_SAMPLE_API_BASE_PATH:/api/v1}
         api.service.sample-api.default_specification=sample-api
         spec.api.sample-api.header.Content-Type=application/json
         spec.api.sample-api.header.Accept=application/json
@@ -709,6 +689,31 @@ public class TestInitSkill implements AgentSkill<TestInitSkill.Input, String> {
           """;
       default -> "";
     };
+  }
+
+  private String generateLog4j2Config(String basePkg) {
+    return """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <Configuration>
+          <Appenders>
+            <Console name="Console" target="SYSTEM_OUT">
+              <PatternLayout pattern="%%d{yyyy-MM-dd HH:mm:ss.SSS} %%-5level [%%t] (%%F:%%L).%%M - %%m%%n"/>
+            </Console>
+          </Appenders>
+
+          <Loggers>
+            <Root level="warn">
+              <AppenderRef ref="Console"/>
+            </Root>
+            <Logger name="io.github.ygrip.testara" level="info" additivity="false">
+              <AppenderRef ref="Console"/>
+            </Logger>
+            <Logger name="%s" level="info" additivity="false">
+              <AppenderRef ref="Console"/>
+            </Logger>
+          </Loggers>
+        </Configuration>
+        """.formatted(basePkg);
   }
 
   private String generateJunit5Runner(String basePkg) {
@@ -874,7 +879,9 @@ public class TestInitSkill implements AgentSkill<TestInitSkill.Input, String> {
               Then user is in "home" page
               When user type value "invalid" to "search input"
               And user click the "search button"
-              Then user should see "error message" is displayed
+              Then user see that
+                | actual        | validation | expectation |
+                | error message | DISPLAYED   | true        |
           """;
       case "sql", "database-sql" -> """
           # Sample SQL feature — uses Testara built-in SqlBaseSteps.
