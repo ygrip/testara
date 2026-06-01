@@ -33,8 +33,9 @@ public class TestaraContextSkill implements AgentSkill<Void, String> {
     Set<String> activeSlices = profile.runtimeCatalog().stream()
         .map(RuntimeCatalogEntry::slice).collect(Collectors.toCollection(LinkedHashSet::new));
 
-    // Read properties from configuration.properties
-    Map<String, String> configuredProps = readConfigProperties(context.projectRoot());
+    // Read properties from all property files, tracking which file each came from
+    PropertyFiles propFiles = readAllProperties(context.projectRoot());
+    Map<String, String> configuredProps = propFiles.all();
 
     // Map which catalog prefixes have config present
     Map<String, Boolean> prefixCoverage = new LinkedHashMap<>();
@@ -50,16 +51,19 @@ public class TestaraContextSkill implements AgentSkill<Void, String> {
     List<FlavorEntry> flavorSteps = effectiveFlavorSteps(profile);
 
     if (concise) {
-      return renderConcise(profile, activeSlices, configuredProps, prefixCoverage, missingCount, flavorSteps);
+      return renderConcise(profile, activeSlices, configuredProps, prefixCoverage, missingCount, flavorSteps, propFiles);
     }
-    return renderFull(profile, activeSlices, configuredProps, prefixCoverage, missingCount, flavorSteps);
+    return renderFull(profile, activeSlices, configuredProps, prefixCoverage, missingCount, flavorSteps, propFiles);
   }
 
   private String renderConcise(TestaraProjectProfile profile, Set<String> slices,
       Map<String, String> props, Map<String, Boolean> coverage, long missing,
-      List<FlavorEntry> flavorSteps) {
+      List<FlavorEntry> flavorSteps, PropertyFiles pf) {
     StringBuilder sb = new StringBuilder();
     sb.append("project-root: ").append(profile.projectRoot()).append("\n");
+    // Property file sources — critical for diagnosing classpath issues
+    sb.append("configuration.properties: ").append(pf.configSource() != null ? pf.configSource() : "NOT FOUND — create src/test/resources/configuration.properties").append("\n");
+    sb.append("application.properties: ").append(pf.appSource() != null ? pf.appSource() : "NOT FOUND — create src/test/resources/application.properties").append("\n");
     sb.append("slices: ").append(String.join(", ", slices)).append("\n");
     sb.append("modules: ").append(profile.mavenModules().size()).append("\n");
     sb.append("feature-files: ").append(profile.features().size()).append(" | scenarios: ")
@@ -74,7 +78,7 @@ public class TestaraContextSkill implements AgentSkill<Void, String> {
     sb.append("validations: ").append(profile.validations().size()).append("\n");
     sb.append("config-keys: ").append(props.size()).append(" | missing-config-blocks: ").append(missing).append("\n");
     if (missing > 0) {
-      sb.append("missing blocks: ");
+      sb.append("missing-blocks: ");
       coverage.entrySet().stream().filter(e -> !e.getValue())
           .map(Map.Entry::getKey).forEach(p -> sb.append(p).append(" "));
       sb.append("\n");
@@ -93,12 +97,21 @@ public class TestaraContextSkill implements AgentSkill<Void, String> {
 
   private String renderFull(TestaraProjectProfile profile, Set<String> slices,
       Map<String, String> props, Map<String, Boolean> coverage, long missing,
-      List<FlavorEntry> flavorSteps) {
+      List<FlavorEntry> flavorSteps, PropertyFiles pf) {
     StringBuilder sb = new StringBuilder();
     sb.append("# Testara Runtime Context\n\n");
     sb.append("**Project root:** `").append(profile.projectRoot()).append("`\n");
     sb.append("**Java version:** ").append(profile.javaVersion()).append("\n");
     sb.append("**Build tool:** ").append(profile.buildTool()).append("\n\n");
+
+    sb.append("## Property Files\n\n");
+    sb.append("| File | Status |\n|------|--------|\n");
+    sb.append("| `configuration.properties` | ").append(pf.configSource() != null ? "✓ `" + pf.configSource() + "`" : "✗ NOT FOUND — create `src/test/resources/configuration.properties`").append(" |\n");
+    sb.append("| `application.properties` | ").append(pf.appSource() != null ? "✓ `" + pf.appSource() + "`" : "✗ NOT FOUND — create `src/test/resources/application.properties`").append(" |\n");
+    if (pf.configSource() != null && pf.configSource().contains("src/main/")) {
+      sb.append("\n> ⚠ `configuration.properties` found in `src/main/resources` — Testara reads from `src/test/resources`. Move the file.\n");
+    }
+    sb.append("\n");
 
     sb.append("## Active Slices\n\n");
     slices.forEach(s -> sb.append("- ").append(s).append("\n"));
@@ -144,25 +157,45 @@ public class TestaraContextSkill implements AgentSkill<Void, String> {
     return sb.toString();
   }
 
-  private Map<String, String> readConfigProperties(Path projectRoot) {
+  // ── Property file source tracking ────────────────────────────────────────
+
+  record PropertyFiles(Map<String, String> all, String configSource, String appSource) {}
+
+  PropertyFiles readAllProperties(Path projectRoot) {
     Map<String, String> props = new LinkedHashMap<>();
-    for (String candidate : List.of(
-        "src/test/resources/configuration.properties",
-        "configuration.properties")) {
-      Path p = projectRoot.resolve(candidate);
+    String configSource = null;
+    String appSource    = null;
+
+    for (String c : List.of("src/test/resources/configuration.properties", "configuration.properties",
+        "src/main/resources/configuration.properties")) {
+      Path p = projectRoot.resolve(c);
       if (Files.exists(p)) {
-        try {
-          Files.readAllLines(p, StandardCharsets.UTF_8).stream()
-              .filter(l -> !l.isBlank() && !l.startsWith("#") && l.contains("="))
-              .forEach(l -> {
-                int eq = l.indexOf('=');
-                props.put(l.substring(0, eq).trim(), l.substring(eq + 1).trim());
-              });
-        } catch (IOException ignored) {}
+        configSource = c;
+        loadProps(p, props);
         break;
       }
     }
-    return props;
+    for (String c : List.of("src/test/resources/application.properties", "application.properties")) {
+      Path p = projectRoot.resolve(c);
+      if (Files.exists(p)) {
+        appSource = c;
+        loadProps(p, props);
+        break;
+      }
+    }
+    return new PropertyFiles(props, configSource, appSource);
+  }
+
+  private void loadProps(Path file, Map<String, String> into) {
+    try {
+      Files.readAllLines(file, StandardCharsets.UTF_8).stream()
+          .filter(l -> !l.isBlank() && !l.startsWith("#") && l.contains("="))
+          .forEach(l -> { int eq = l.indexOf('='); into.put(l.substring(0, eq).trim(), l.substring(eq + 1).trim()); });
+    } catch (IOException ignored) {}
+  }
+
+  private Map<String, String> readConfigProperties(Path projectRoot) {
+    return readAllProperties(projectRoot).all();
   }
 
   private List<FlavorEntry> effectiveFlavorSteps(TestaraProjectProfile profile) {

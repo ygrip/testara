@@ -317,6 +317,7 @@ User-defined values used by features go in application.properties/application-{e
   command.executor.scan-locations=io.github.ygrip.testara,{basePackage}.command
   validator.helper.scan-locations=io.github.ygrip.testara,{basePackage}.validation
 Always include io.github.ygrip.testara to include built-ins.
+ClassScanner traverses the full sub-package tree: listing `{basePackage}` automatically covers `.page`, `.action`, `.command`, `.validation` and all deeper sub-packages. Explicit sub-package entries (`{basePackage}.page`) are only needed when you want to restrict scanning to a single sub-package.
 
 ## RULE 8: step priority
 1. Testara built-in steps ([api], [sql], [mongo], [kafka], UIBaseSteps)

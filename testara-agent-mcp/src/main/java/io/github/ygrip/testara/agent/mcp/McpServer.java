@@ -72,9 +72,10 @@ public class McpServer {
   private final TestaraPropertySkill propertySkill = new TestaraPropertySkill();
   private final TestaraApiSkill      apiSkill      = new TestaraApiSkill();
   private final TestaraUiSkill       uiSkill       = new TestaraUiSkill();
-  private final TestaraBootstrapSkill bootstrapSkill = new TestaraBootstrapSkill();
-  private final TestaraDbSkill       dbSkill       = new TestaraDbSkill();
-  private final TestaraDebugSkill    debugSkill    = new TestaraDebugSkill();
+  private final TestaraBootstrapSkill bootstrapSkill  = new TestaraBootstrapSkill();
+  private final TestaraDbSkill        dbSkill         = new TestaraDbSkill();
+  private final TestaraDebugSkill     debugSkill      = new TestaraDebugSkill();
+  private final TestaraValidateSkill  validateSkill   = new TestaraValidateSkill();
 
   public McpServer(Path projectRoot) {
     this.projectRoot = projectRoot.toAbsolutePath().normalize();
@@ -224,6 +225,8 @@ public class McpServer {
         optionalStr("slice", "sql | mongo | kafka | elastic"),
         optionalStr("mode", "explain | config | feature"),
         optionalStr("name", "Service name (e.g. settlementDb, paymentKafka, catalogElastic)")));
+    tools.add(tool("testara_validate",   "Pre-flight validation: checks property file locations, glue config, TODO selectors, and required config keys before running tests",
+        optionalStr("projectRoot", "Project root. Required when MCP server was launched outside the workspace.")));
     tools.add(tool("testara_debug",      "Diagnose failed Testara step/report snippets and suggest likely root cause",
         optionalStr("failedStep", "Exact failed Gherkin step, e.g. Then user should see \"error\" is displayed"),
         optionalStr("snippet", "Stack trace, report excerpt, or console failure snippet"),
@@ -318,6 +321,7 @@ public class McpServer {
       case "testara_db"       -> dbSkill.execute(new TestaraDbSkill.Input(
           args.path("slice").asText("sql"), args.path("mode").asText("explain"),
           args.path("name").asText(null)), ctx);
+      case "testara_validate" -> validateSkill.execute(null, ctx);
       case "testara_debug"    -> debugSkill.execute(new TestaraDebugSkill.Input(
           args.path("snippet").asText(null), args.path("failedStep").asText(null)), ctx);
       default -> throw new IllegalArgumentException("Unknown tool: " + name);

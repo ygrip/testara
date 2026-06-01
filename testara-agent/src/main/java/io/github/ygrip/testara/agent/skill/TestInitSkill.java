@@ -387,6 +387,8 @@ public class TestInitSkill implements AgentSkill<TestInitSkill.Input, String> {
                           <goal>cucumber-summary</goal>
                         </goals>
                         <configuration>
+                          <targetLocation>${project.basedir}/target/destination/</targetLocation>
+                          <outputLocation>${project.basedir}/target/site/</outputLocation>
                           <reportTemplate>testara-style-report</reportTemplate>
                           <reportName>test-report</reportName>
                         </configuration>
@@ -528,6 +530,8 @@ public class TestInitSkill implements AgentSkill<TestInitSkill.Input, String> {
   private String generateProperties(String type, String basePkg, String engine, boolean includeExamples) {
     String base = """
         # Scanner configuration
+        # ClassScanner traverses the full sub-package tree: listing a base package (e.g. com.example.auto)
+        # automatically covers .page, .action, .command, .validation and all deeper sub-packages.
         class.loader.reject-packages=org.*,com.sun.*,java.*,javax.*,io.netty.*,org.springframework.*,net.bytebuddy.*,com.fasterxml.*,org.apache.*,org.junit.*,org.hamcrest.*,org.mockito.*,com.google.*,org.slf4j.*,ch.qos.logback.*,org.seleniumhq.*,net.serenitybdd.*,io.restassured.*,com.browserup.*,org.json.*,org.yaml.*,com.jayway.*,org.objenesis.*,net.sf.*,org.w3c.*,org.xml.*,com.squareup.*,okhttp3.*,retrofit2.*,com.github.*,io.github.classgraph.*,io.github.bonigarcia.*,org.jetbrains.*,kotlin.*,kotlinx.*
         class.loader.enable-parallel-scanning=false
         class.loader.buffer-size=33554432

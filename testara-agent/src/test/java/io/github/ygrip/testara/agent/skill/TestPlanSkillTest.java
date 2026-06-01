@@ -26,16 +26,19 @@ class TestPlanSkillTest {
 
     assertTrue(output.contains("Given user using chrome in desktop"));
     assertTrue(output.contains("When user open \"login\" page"));
-    assertTrue(output.contains("When user type value \"properties(test.user.username)\" to \"username field\" in the \"login\" page"));
-    assertTrue(output.contains("And user type value \"properties(test.user.password)\" to \"password field\" in the \"login\" page"));
-    assertTrue(output.contains("And user click the \"button login\" in the \"login\" page"));
-    assertFalse(output.contains("When user do \"login with credentials\" in \"login\" page with parameter"));
-    assertFalse(output.contains("| username                       | password"));
+    // RULE 3: 3+ ops → user do "..." in "..." page with parameter + | key | value | DataTable
+    assertTrue(output.contains("When user do \"login with credentials\" in \"login\" page with parameter"));
+    assertTrue(output.contains("|key|value|"));
+    assertTrue(output.contains("| username"));
+    assertTrue(output.contains("| password"));
+    assertTrue(output.contains("properties(test.user.username)"));
+    assertTrue(output.contains("properties(test.user.password)"));
+    // Must NOT fall back to individual type/click steps
+    assertFalse(output.contains("user type value \"properties(test.user.username)\" to \"username field\""));
+    assertFalse(output.contains("user click the \"button login\""));
     assertTrue(output.contains("Then user is in \"inventory\" page"));
     assertTrue(output.contains("Then user should see \"success message\" is displayed"));
     assertTrue(output.contains("Then user should see \"error message\" is displayed"));
-    assertFalse(output.contains("Then user see that"));
-    assertFalse(output.contains("with text"));
     assertFalse(output.contains("# MISSING"));
     assertFalse(output.contains("user using web in desktop"));
   }

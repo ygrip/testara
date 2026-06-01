@@ -302,26 +302,10 @@ public class TestPlanSkill implements AgentSkill<TestPlanSkill.Input, String> {
 
   private String uiBaseActionSteps(String pageName, String actionName, boolean invalid) {
     UiActionParameters params = uiActionParameters(pageName, actionName, invalid);
-    String lower = actionName.toLowerCase(Locale.ROOT);
-    StringBuilder sb = new StringBuilder();
-    if (lower.contains("login") || lower.contains("credential")) {
-      sb.append("    When user type value \"").append(params.value("username"))
-          .append("\" to \"username field\" in the \"").append(pageName).append("\" page\n");
-      sb.append("    And user type value \"").append(params.value("password"))
-          .append("\" to \"password field\" in the \"").append(pageName).append("\" page\n");
-      sb.append("    And user click the \"button login\" in the \"").append(pageName).append("\" page\n");
-      return sb.toString();
-    }
-    if (lower.contains("search")) {
-      sb.append("    When user type value \"").append(params.value("query"))
-          .append("\" to \"search field\" in the \"").append(pageName).append("\" page\n");
-      sb.append("    And user click the \"button search\" in the \"").append(pageName).append("\" page\n");
-      return sb.toString();
-    }
-    sb.append("    When user type value \"").append(params.value("value"))
-        .append("\" to \"input field\" in the \"").append(pageName).append("\" page\n");
-    sb.append("    And user click the \"button submit\" in the \"").append(pageName).append("\" page\n");
-    return sb.toString();
+    // RULE 3: 3+ operations on same page → user do "action" in "page" page with parameter
+    // Always generate the UserAction step with | key | value | DataTable — never individual type/click steps
+    return "    When user do \"" + actionName + "\" in \"" + pageName + "\" page with parameter\n"
+        + params.toFeatureTable(6) + "\n";
   }
 
   // ── SQL scenario steps ────────────────────────────────────────────────────
