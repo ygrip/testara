@@ -102,10 +102,9 @@ class TestInitSkillTest {
     assertTrue(output.contains("testara-cucumber</engine>"));
     assertTrue(output.contains("testara-reporter-plugin"));
     assertTrue(output.contains("<engine>testara-cucumber</engine>"));
-    // reporter plugin uses ${project.basedir} prefix so Maven resolves to absolute path
-    // before passing to the plugin — avoids the missing-separator concatenation bug
-    assertTrue(output.contains("<targetLocation>${project.basedir}/target/destination/</targetLocation>"));
-    assertTrue(output.contains("<outputLocation>${project.basedir}/target/site/</outputLocation>"));
+    // reporter plugin uses its own default paths — no override in generated POM
+    assertFalse(output.contains("<targetLocation>"));
+    assertFalse(output.contains("<outputLocation>"));
     assertTrue(output.contains("import io.github.ygrip.testara.engine.suites.TestSuite;"));
     assertFalse(output.contains("@IncludeEngines(\"cucumber\")"));
     assertTrue(output.contains("class.loader.default-scan-locations=io.github.ygrip.testara,io.github.ygrip.example"));
