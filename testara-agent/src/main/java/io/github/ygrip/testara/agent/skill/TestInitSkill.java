@@ -45,10 +45,11 @@ public class TestInitSkill implements AgentSkill<TestInitSkill.Input, String> {
     String type    = input.type() != null ? input.type().toLowerCase(Locale.ROOT) : "api";
     boolean isUiType = type.equals("ui") || type.equals("fullstack");
     boolean autoCoordinates = "true".equals(context.options().get("autoGenerateCoordinates"));
-    // Engine prompt: fires for ui/fullstack unless user has explicitly confirmed via engineConfirmed=true.
-    // Even if the agent passes engine=playwright, we still prompt — the agent must NOT choose for the user.
-    if (isUiType && !"true".equals(context.options().get("engineConfirmed"))) {
-      return enginePrompt(type, input.engine());
+    // Engine prompt: fires only when engine is null (not yet chosen).
+    // The generation rules + tool description require agents to ask the user BEFORE passing an engine.
+    // Once the agent has the user's answer and passes engine=X, the prompt is not repeated.
+    if (isUiType && input.engine() == null) {
+      return enginePrompt(type);
     }
     if (!autoCoordinates && (input.groupId() == null || input.artifactId() == null)) {
       return coordinatePrompt(context.projectRoot(), type, input);
@@ -103,22 +104,17 @@ public class TestInitSkill implements AgentSkill<TestInitSkill.Input, String> {
         input.engine() == null ? "selenium" : input.engine());
   }
 
-  private String enginePrompt(String type, String agentPreselected) {
-    String preselectedNote = agentPreselected != null
-        ? "\nagent-preselected: " + agentPreselected + " (DO NOT use this — ask the user instead)"
-        : "";
+  private String enginePrompt(String type) {
     return """
         needs_input: testara_init_engine
-        STOP: Do NOT proceed or use any engine without explicit user confirmation.
-        question: Ask the user: "Which browser automation engine do you want to use for this %s project?"
+        question: Ask the user which browser automation engine to use for this %s project.
         options:
-          1. selenium  — default; mature, wide browser/Grid support, requires WebDriver binaries
+          1. selenium  (default) — mature, wide browser/Grid support, requires WebDriver binaries
           2. playwright — faster startup, auto-manages browsers, built-in wait strategies
-          3. appium    — mobile automation (Android/iOS)
-        instruction: Present these 3 options to the user. Wait for their answer. Do NOT guess or assume.%s
-        next_step: After user answers, call testara_init again with BOTH:
-          engine=<user-chosen-value>  AND  engineConfirmed=true
-        """.formatted(type, preselectedNote);
+          3. appium — mobile automation (Android/iOS)
+        instruction: Present these options to the user. Wait for their explicit answer. Do NOT default to any engine.
+        next_step: call testara_init again with engine=<user-chosen-value> (e.g. engine=selenium).
+        """.formatted(type);
   }
 
   private String missingCoordinates(Input input) {

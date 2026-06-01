@@ -237,8 +237,7 @@ public class McpServer {
         optionalStr("groupId", "Maven groupId. Defaults to io.github.ygrip when omitted."),
         optionalStr("artifactId", "Maven artifactId. Defaults to the project directory name when omitted."),
         optionalStr("basePackage", "Base Java package"),
-        optionalStr("engine", "UI engine: selenium | playwright | appium. OMIT for ui/fullstack — the skill prompts the user. Only pass AFTER the user explicitly chose AND you also pass engineConfirmed=true."),
-        optionalBool("engineConfirmed", "Set true ONLY after presenting the engine options to the user and receiving their explicit answer. Never set true without user confirmation."),
+        optionalStr("engine", "UI engine: selenium | playwright | appium. OMIT on first call for ui/fullstack — the skill will prompt the user to choose. Pass engine only after the user has explicitly answered."),
         optionalBool("autoGenerateCoordinates", "Use generated Maven coordinates when groupId/artifactId are omitted. Default false so agents ask first."),
         optionalBool("integrateExisting", "Integrate into existing project"),
         optionalBool("includeExamples", "Also generate demo sample feature/page/request artifacts. Default false; prefer contextual generation."),
@@ -365,11 +364,7 @@ public class McpServer {
     }
     if (args.has("projectRoot")) opts.put("projectRootExplicit", "true");
     // engine is provided → user confirmed the choice, no engine prompt needed
-    // engineConfirmed ONLY set when the agent explicitly passes it=true (i.e., after user confirmed)
-    // DO NOT auto-confirm just because engine is present — that's how agents bypass the prompt
-    if (args.path("engineConfirmed").asBoolean(false)) {
-      opts.put("engineConfirmed", "true");
-    }
+    // engineConfirmed is kept for backward compat but no longer used — prompt only fires when engine=null
 
     AgentMode mode = toolName.equals("testara_run") ? AgentMode.PLAN : AgentMode.READ_ONLY;
 
