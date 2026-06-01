@@ -146,13 +146,16 @@ public class McpServer {
   private JsonNode toolsListResponse(JsonNode id) {
     ArrayNode tools = mapper.createArrayNode();
     tools.add(tool("testara_summary",    "Summarize feature files at scenario, feature, or directory level",
-        requiredStr("path", "Path to .feature file or directory"),
-        optionalStr("scenario", "Filter to specific scenario name")));
+        requiredStr("path", "Path to .feature file or directory (absolute, or relative to projectRoot)"),
+        optionalStr("scenario", "Filter to specific scenario name"),
+        optionalStr("projectRoot", "Project root. Required when MCP server was launched outside the workspace.")));
     tools.add(tool("testara_overview",   "Statistical overview of the test project",
-        optionalStr("path", "Project root (default: .)"),
-        optionalStr("format", "Output format: markdown or json")));
+        optionalStr("path", "Project root (default: MCP server root)"),
+        optionalStr("format", "Output format: markdown or json"),
+        optionalStr("projectRoot", "Project root override. Required when MCP server was launched outside the workspace.")));
     tools.add(tool("testara_review",     "Review feature files for quality issues",
-        requiredStr("path", "Path to .feature file or directory")));
+        requiredStr("path", "Path to .feature file or directory (absolute, or relative to projectRoot)"),
+        optionalStr("projectRoot", "Project root. Required when MCP server was launched outside the workspace.")));
     tools.add(tool("testara_run",        "Resolve natural-language test intent to tag expression, optionally execute",
         requiredStr("input", "Natural-language test run request"),
         optionalBool("dryRun", "Show plan only — default true"),
@@ -192,12 +195,14 @@ public class McpServer {
         optionalStr("flow", "Request spec flow name"),
         optionalStr("method", "HTTP method: GET, POST, PUT, PATCH, DELETE"),
         optionalStr("endpoint", "Endpoint URL or path")));
-    tools.add(tool("testara_ui",         "Generate Testara UI artifacts — Page class, UserAction class, or engine config",
+    tools.add(tool("testara_ui",         "Generate Testara UI artifacts — Page class, UserAction class, or engine config. Returns structured artifact with file_path and source for one-call file creation.",
         optionalStr("mode", "explain | page | action | config"),
         optionalStr("pageName", "Page name (e.g. login)"),
         optionalStr("actionName", "Action description (e.g. login with credential)"),
         optionalStr("engine", "UI engine: selenium | playwright | appium"),
-        optionalStr("basePackage", "Base Java package")));
+        optionalStr("basePackage", "Base Java package"),
+        optionalStr("projectRoot", "Project root. Required when writing files or when MCP server was launched outside the workspace."),
+        optionalBool("write", "Write the generated file to disk. Default false — returns structured artifact for manual creation.")));
     tools.add(tool("testara_db",         "Explain and generate DB (SQL/Mongo/Elastic) or Kafka config and feature templates",
         optionalStr("slice", "sql | mongo | kafka | elastic"),
         optionalStr("mode", "explain | config | feature"),
@@ -263,7 +268,7 @@ public class McpServer {
       case "testara_init" -> initSkill.execute(new TestInitSkill.Input(
           args.path("type").asText("api"),
           args.path("basePackage").asText(null),
-          args.path("engine").asText("selenium"),
+          args.path("engine").asText(null),   // null → engine prompt fires for ui/fullstack types
           args.path("integrateExisting").asBoolean(false),
           args.path("groupId").asText(null),
           args.path("artifactId").asText(null)), ctx);
@@ -309,6 +314,10 @@ public class McpServer {
       opts.put("includeExamples", args.path("includeExamples").asBoolean(false) ? "true" : "false");
     }
     if (args.has("projectRoot")) opts.put("projectRootExplicit", "true");
+    // engine is provided → user confirmed the choice, no engine prompt needed
+    if (args.has("engine") && !args.path("engine").asText("").isBlank()) {
+      opts.put("engineConfirmed", "true");
+    }
 
     AgentMode mode = toolName.equals("testara_run") ? AgentMode.PLAN : AgentMode.READ_ONLY;
 

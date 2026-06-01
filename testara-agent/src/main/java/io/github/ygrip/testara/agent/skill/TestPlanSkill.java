@@ -150,12 +150,12 @@ public class TestPlanSkill implements AgentSkill<TestPlanSkill.Input, String> {
         yield "";
       }
       case "ui" -> {
+        // Always include driver init — missing it causes session=null NPE on first open-page step
         String sessionStep = findExample(flavorSteps, "Given", "using");
-        if (sessionStep != null) {
-          String step = sessionStep.replace("{name}", "chrome").replace("{param}", "desktop");
-          yield "    Given " + step + "\n";
-        }
-        yield "";
+        String step = sessionStep != null
+            ? sessionStep.replace("{name}", "chrome").replace("{param}", "desktop")
+            : "user using chrome in desktop";
+        yield "    Given " + step + "\n";
       }
       default -> "";
     };

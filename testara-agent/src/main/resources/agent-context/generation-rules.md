@@ -129,9 +129,59 @@ When [elastic-search] insert to index "products" with data :
 - `ElasticSearchHelper`: Elastic helper behind `[elastic-search]` steps. Prefer built-in Elastic steps for CRUD/search/count/index assertions.
 - `PageFinder`, `Element`, `Locator`, `Actor`, and `UserAction`: UI abstractions. Page classes expose `Locator` fields; actions call `attemptsTo(...)`; features call UIBaseSteps or `user do "..."`
 
+## Built-in UI step reference (UIBaseSteps)
+
+All UI built-in steps follow the pattern `{actor} {step}` where `{actor}` is typically `user`. Do NOT invent step patterns — use exactly these:
+
+| Step | Example |
+|------|---------|
+| `{actor} using {browser} in {platform}` | `Given user using chrome in desktop` |
+| `{actor} open "{page}" page` | `When user open "login" page` |
+| `{actor} is in "{page}" page` | `Then user is in "inventory" page` |
+| `{actor} do "{action}"` | `When user do "login with credentials"` |
+| `{actor} do "{action}" in "{page}" page with parameter` | `When user do "login with credentials" in "login" page with parameter` |
+| `{actor} click the "{element}"` | `When user click the "button login"` |
+| `{actor} type value "{value}" to "{element}"` | `When user type value "standard_user" to "username field"` |
+| `{actor} enter value "{value}" on "{element}"` | `When user enter value "secret_sauce" on "password field"` |
+| `{actor} should see "{element}" is displayed` | `Then user should see "error message" is displayed` |
+| `{actor} should see "{element}" is not displayed` | `Then user should see "cart badge" is not displayed` |
+| `{actor} element "{element}" should contains text "{text}"` | `Then user element "cart badge" should contains text "1"` |
+| `{actor} see that` (validation table) | `Then user see that` + `\| actual \| validation \| expectation \|` |
+
+Valid browsers: `chrome`, `firefox`, `safari`, `edge`. Valid platforms: `desktop`, `mobile`, `android`, `ios`. Do NOT use `web`.
+
+## UserAction class — imports and interactions
+
+Correct imports (all from `testara-ui`):
+```java
+import io.github.ygrip.testara.ui.model.Action;        // @Action annotation
+import io.github.ygrip.testara.ui.model.OnPage;         // @OnPage annotation
+import io.github.ygrip.testara.ui.executor.UserAction;  // base class
+import io.github.ygrip.testara.ui.interaction.Click;
+import io.github.ygrip.testara.ui.interaction.Enter;
+import io.github.ygrip.testara.ui.interaction.Clear;
+import io.github.ygrip.testara.ui.interaction.Scroll;
+import io.github.ygrip.testara.ui.interaction.WaitUntil;
+import io.github.ygrip.testara.ui.interaction.SelectOption;
+import io.github.ygrip.testara.ui.interaction.Navigate;
+import io.github.ygrip.testara.ui.interaction.SeeThat;
+```
+
+Available interaction classes for use inside `attemptsTo(...)`:
+- `Enter.text("value").into("element name")`
+- `Click.on("element name")`
+- `Clear.field("element name")`
+- `Scroll.to("element name").andAlignToTop()`
+- `WaitUntil.visible("element name")`
+- `SelectOption.from("element name").byVisibleText("text")`
+- `Navigate.to(NamedPage.of("page name"))`
+- `SeeThat.visible("element name")`
+- `SeeThat.containsText("text").on("element name")`
+- `SeeThat.page(NamedPage.of("page name"))`
+
 ## Built-in step usage
 - API: use `[api]` steps for service selection, headers/cookies/path/query/form/body setup, request execution, response assignment, status/success/error assertions, response-time assertions, and load-test flows.
-- UI: use UIBaseSteps for driver startup, page navigation, typing/clicking/waiting/asserting. Use `chrome`, `firefox`, `safari`, or `edge` as driver names; do not use `web`.
+- UI: use UIBaseSteps (table above) for driver startup, page navigation, typing/clicking/waiting/asserting. Use `chrome`, `firefox`, `safari`, or `edge` as driver names; do not use `web`.
 - DB: use `[sql]` steps for SQL connection/query/assignment and `[mongo]` steps for collection selection, query/select/delete/update/count/aggregate/distinct.
 - Kafka: use producer/consumer steps for starting services, sending messages, listening to topics, assigning latest/count/filter results, and stopping clients.
 - Elastic: use `[elastic-search]` steps for connection, index existence, insert/update/get/delete, search/count, and assigning previous responses.

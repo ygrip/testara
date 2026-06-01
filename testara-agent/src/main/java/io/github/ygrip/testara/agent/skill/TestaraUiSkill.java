@@ -38,14 +38,40 @@ public class TestaraUiSkill implements AgentSkill<TestaraUiSkill.Input, String> 
   private String explainUi(boolean concise) {
     if (concise) {
       return """
-          testara-ui concepts:
-          - UIBaseSteps: basic interactions (click, enter, wait, see) — use these first
-          - UserAction: 3+ operations on same page -> @OnPage + @Action methods -> user do "action" in "page" page
-          - Page: @Page(name="{page}", url="") + Locator fields + web.page.desktop.{page}.url=properties(app.web.{page}-url)
-          - PageFinder: resolves Locator/By/WebElement fields by field-name aliases such as "username field"
-          - DriverSessionManager: never create WebDriver directly, use Testara session abstractions
-          - ActorManager: currentActor().attemptsTo(Click.on("element"), Enter.text("value").into("field"))
-          - Templates are intent-aware: login/search/checkout get specific locators; other pages get primary/success/error locators
+          ## UIBaseSteps — exact step patterns (use these; do NOT invent variants)
+          Given user using chrome in desktop           # chrome|firefox|safari|edge; NOT "web"; desktop|mobile|android|ios
+          When  user open "login" page                 # navigates to web.page.desktop.login.url
+          Then  user is in "login" page                # REQUIRED after open — registers active page context
+          When  user do "action name" in "page" page with parameter
+                |key|value|
+                | field | value |
+          When  user click the "button login"          # element = Locator field SCREAMING_SNAKE -> "lower spaced"
+          When  user type value "text" to "element name"
+          When  user enter value "text" on "element name"
+          Then  user should see "element name" is displayed
+          Then  user should see "element name" is not displayed
+          Then  user element "element name" should contains text "text"
+          Then  user see that
+                | actual        | validation | expectation |
+                | error message | DISPLAYED  | true        |
+
+          ## UserAction — correct imports
+          import io.github.ygrip.testara.ui.model.Action;        // @Action
+          import io.github.ygrip.testara.ui.model.OnPage;         // @OnPage
+          import io.github.ygrip.testara.ui.executor.UserAction;  // base class
+          import io.github.ygrip.testara.ui.interaction.Click;
+          import io.github.ygrip.testara.ui.interaction.Enter;
+          import io.github.ygrip.testara.ui.interaction.Clear;
+          import io.github.ygrip.testara.ui.interaction.SeeThat;
+          import io.github.ygrip.testara.ui.interaction.WaitUntil;
+          import io.github.ygrip.testara.ui.interaction.SelectOption;
+          import io.github.ygrip.testara.ui.interaction.Navigate;
+
+          ## Interactions inside attemptsTo(...)
+          Enter.text("value").into("element name")    Click.on("element name")
+          Clear.field("element name")                  WaitUntil.visible("element name")
+          SelectOption.from("elem").byVisibleText("t") SeeThat.visible("element name")
+          SeeThat.containsText("t").on("element name") Navigate.to(NamedPage.of("page"))
           """;
     }
     return """
@@ -69,8 +95,7 @@ public class TestaraUiSkill implements AgentSkill<TestaraUiSkill.Input, String> 
         ```
         URL in properties:
         ```properties
-        web.page.desktop.login.url=properties(app.web.login-url)
-        app.web.login-url=http://localhost:3000/login
+        web.page.desktop.login.url=${APP_WEB_LOGIN_URL:http://localhost:3000/login}
         ```
 
         ## UserAction class
@@ -90,16 +115,22 @@ public class TestaraUiSkill implements AgentSkill<TestaraUiSkill.Input, String> 
         Feature usage:
         ```gherkin
         When user do "login with credential" in "login" page with parameter
-          | username                    | password                       |
-          | properties(test.user.username) | properties(test.user.password) |
+          |key|value|
+          | username | properties(test.user.username) |
+          | password | properties(test.user.password) |
         ```
+
+        Generate one top-level UserAction class per page/action file under `src/main/java/{basePackage}/action`.
+        Do not wrap multiple page actions in an outer class with nested static UserAction classes; nested actions are not the Testara pattern.
+        If an action is intentionally shared across pages, keep it top-level and use
+        `@Action(value = "action name", allowAnonymousCall = true)`.
         """;
   }
 
   private String generatePage(String pageName, String engine, String basePkg, Path root, boolean write,
       boolean concise) {
     if (pageName == null) pageName = "sample";
-    String pName = pageName.toLowerCase(Locale.ROOT);
+    String pName = toPropertyKey(pageName);
     String pClass = toClassName(pageName) + "Page";
     String pkgPath = basePkg.replace('.', '/');
     String pageBaseClass = "playwright".equalsIgnoreCase(engine) ? "PlaywrightPage" : "SeleniumPage";
@@ -118,16 +149,17 @@ public class TestaraUiSkill implements AgentSkill<TestaraUiSkill.Input, String> 
 
         /**
          * Page: %s
-         * URL configured via: web.page.desktop.%s.url=properties(app.web.%s-url)
+         * URL configured via: web.page.desktop.%s.url=${APP_WEB_%s_URL:http://localhost:3000/%s}
          * Element names are resolved from Locator field names, e.g. USERNAME_FIELD -> "username field".
          */
         @Page(name = "%s", url = "", platforms = {DeviceType.DEFAULT, DeviceType.DESKTOP})
         public class %s extends %s {
         %s
         }
-        """.formatted(basePkg, pageBaseImport, pageName, pName, pName, pName, pClass, pageBaseClass, locators);
+        """.formatted(basePkg, pageBaseImport, pageName, pName, toEnvKey(pName), pName, pName, pClass, pageBaseClass, locators);
 
-    String propEntry = "web.page.desktop." + pName + ".url=properties(app.web." + pName + "-url)\napp.web." + pName + "-url=http://localhost:3000/" + pName;
+    String propEntry = "web.page.desktop." + pName + ".url=${APP_WEB_" + toEnvKey(pName)
+        + "_URL:http://localhost:3000/" + pName + "}";
     String relativePath = "src/main/java/" + pkgPath + "/page/" + pClass + ".java";
     boolean hasTodo = locators.contains("TODO");
     String todoWarning = hasTodo
@@ -139,14 +171,20 @@ public class TestaraUiSkill implements AgentSkill<TestaraUiSkill.Input, String> 
         Path target = root.resolve(relativePath);
         Files.createDirectories(target.getParent());
         Files.writeString(target, source, StandardCharsets.UTF_8);
-        return concise ? "written: " + relativePath + "\nadd to configuration.properties:\n" + propEntry + todoWarning
-            : "## Page Written\n\n`" + relativePath + "`\n\n```java\n" + source + "```\n\n**Add to configuration.properties:**\n```properties\n" + propEntry + "\n```\n" + (hasTodo ? "\n> **Next:** replace `TODO` selectors with actual CSS/XPath selectors from the target app before using `user should see` steps.\n" : "");
+        return concise ? "written: " + relativePath + "\nadd to application.properties:\n" + propEntry + todoWarning
+            : "## Page Written\n\n`" + relativePath + "`\n\n```java\n" + source + "```\n\n**Add to application.properties:**\n```properties\n" + propEntry + "\n```\n" + (hasTodo ? "\n> **Next:** replace `TODO` selectors with actual CSS/XPath selectors from the target app before using UI assertion steps.\n" : "");
       } catch (IOException e) {
         return "Error: " + e.getMessage();
       }
     }
-    if (concise) return "path: " + relativePath + "\nprops: " + propEntry + todoWarning + "\n" + source;
-    return "## Page: " + pClass + "\n\n**Path:** `" + relativePath + "`\n\n```java\n" + source + "```\n\n**Properties:**\n```properties\n" + propEntry + "\n```\n" + (hasTodo ? "\n> **Next:** replace `TODO` selectors with actual CSS/XPath selectors from the target app before using `user should see` steps.\n" : "");
+    if (concise) {
+      return "file_path: " + relativePath + "\n"
+          + "add_to_application.properties:\n" + propEntry + todoWarning + "\n"
+          + "```java\n" + source.strip() + "\n```\n";
+    }
+    return "## Page: " + pClass + "\n\n**Path:** `" + relativePath + "`\n\n**application.properties:**\n```properties\n" + propEntry + "\n```\n\n```java\n" + source + "```\n"
+        + (hasTodo ? "\n> **Next:** replace `TODO` selectors with real DOM selectors before using UI assertion steps.\n" : "")
+        + "\n> Write the source block to `" + relativePath + "` and add the properties entry above.";
   }
 
   private String generateAction(String pageName, String actionName, String basePkg, Path root, boolean write, boolean concise) {
@@ -184,8 +222,9 @@ public class TestaraUiSkill implements AgentSkill<TestaraUiSkill.Input, String> 
         """.formatted(basePkg, basePkg, pClass, pClass, aClass, normalizedAction, methodName, template.interactions());
 
     String relativePath = "src/main/java/" + pkgPath + "/action/" + aClass + ".java";
+    String pageKey = toPropertyKey(pageName);
     String featureStep = "When user do \"%s\" in \"%s\" page with parameter\n%s"
-        .formatted(normalizedAction, pageName.toLowerCase(Locale.ROOT), template.featureTable(pageName));
+        .formatted(normalizedAction, pageKey, template.featureTable(pageKey));
 
     if (write) {
       try {
@@ -198,8 +237,13 @@ public class TestaraUiSkill implements AgentSkill<TestaraUiSkill.Input, String> 
         return "Error: " + e.getMessage();
       }
     }
-    if (concise) return "path: " + relativePath + "\nstep: " + featureStep + "\n" + source;
-    return "## UserAction: " + aClass + "\n\n**Path:** `" + relativePath + "`\n\n```java\n" + source + "```\n\n**Feature step:**\n```gherkin\n" + featureStep + "\n```\n";
+    if (concise) {
+      return "file_path: " + relativePath + "\n"
+          + "feature_step:\n" + featureStep + "\n"
+          + "```java\n" + source.strip() + "\n```\n";
+    }
+    return "## UserAction: " + aClass + "\n\n**Path:** `" + relativePath + "`\n\n```java\n" + source + "```\n\n**Feature step:**\n```gherkin\n" + featureStep + "\n```\n"
+        + "\n> Write the source block to `" + relativePath + "`.";
   }
 
   private String generateUiConfig(String engine, String basePkg, boolean concise) {
@@ -319,25 +363,40 @@ public class TestaraUiSkill implements AgentSkill<TestaraUiSkill.Input, String> 
               Click.on("button search")
           """.stripTrailing(),
           List.of("query"),
-          List.of("properties(test." + pageName.toLowerCase(Locale.ROOT) + ".query)"));
+          List.of("properties(test." + toPropertyKey(pageName) + ".query)"));
     }
     return new ActionTemplate(
         "    Click.on(\"primary action\")",
         List.of("value"),
-        List.of("properties(test." + pageName.toLowerCase(Locale.ROOT) + ".value)"));
+        List.of("properties(test." + toPropertyKey(pageName) + ".value)"));
+  }
+
+  private String toPropertyKey(String value) {
+    return value.toLowerCase(Locale.ROOT)
+        .replaceAll("[^a-z0-9]+", "-")
+        .replaceAll("^-|-$", "");
+  }
+
+  private String toEnvKey(String value) {
+    return value.toUpperCase(Locale.ROOT)
+        .replaceAll("[^A-Z0-9]+", "_")
+        .replaceAll("^_|_$", "");
   }
 
   private record ActionTemplate(String interactions, List<String> columns, List<String> values) {
     String featureTable(String pageName) {
-      int width = columns.stream().mapToInt(String::length).max().orElse(5) + 2;
-      StringBuilder header = new StringBuilder("  |");
-      StringBuilder row = new StringBuilder("  |");
+      int keyWidth = columns.stream().mapToInt(String::length).max().orElse(3);
+      int valueWidth = values.stream().mapToInt(String::length).max().orElse(5);
+      StringBuilder table = new StringBuilder("  |key|value|");
       for (int i = 0; i < columns.size(); i++) {
-        int colWidth = Math.max(width, values.get(i).length() + 2);
-        header.append(" ").append(pad(columns.get(i), colWidth - 1)).append("|");
-        row.append(" ").append(pad(values.get(i), colWidth - 1)).append("|");
+        table.append("\n")
+            .append("  | ")
+            .append(pad(columns.get(i), keyWidth))
+            .append(" | ")
+            .append(pad(values.get(i), valueWidth))
+            .append(" |");
       }
-      return header.append("\n").append(row).toString();
+      return table.toString();
     }
 
     private static String pad(String value, int length) {

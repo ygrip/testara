@@ -43,7 +43,12 @@ public class TestInitSkill implements AgentSkill<TestInitSkill.Input, String> {
   @Override
   public String execute(Input input, AgentContext context) {
     String type    = input.type() != null ? input.type().toLowerCase(Locale.ROOT) : "api";
+    boolean isUiType = type.equals("ui") || type.equals("fullstack");
     boolean autoCoordinates = "true".equals(context.options().get("autoGenerateCoordinates"));
+    // Engine prompt: only for ui/fullstack, only when engine not specified
+    if (isUiType && input.engine() == null && !"true".equals(context.options().get("engineConfirmed"))) {
+      return enginePrompt(type);
+    }
     if (!autoCoordinates && (input.groupId() == null || input.artifactId() == null)) {
       return coordinatePrompt(context.projectRoot(), type, input);
     }
@@ -95,6 +100,19 @@ public class TestInitSkill implements AgentSkill<TestInitSkill.Input, String> {
         """.formatted(missingCoordinates(input), defaultArtifact, type,
         input.basePackage() == null ? "<auto from coordinates>" : input.basePackage(),
         input.engine() == null ? "selenium" : input.engine());
+  }
+
+  private String enginePrompt(String type) {
+    return """
+        needs_input: testara_init_engine
+        question: Ask the user which browser automation engine to use for this %s project.
+        options:
+          selenium (default): mature, wide browser/grid support, requires WebDriver binaries
+          playwright: faster startup, auto-manages browsers, headless-first
+          appium: mobile automation (Android/iOS)
+        instruction: Do NOT default silently. Ask the user to confirm or choose an engine.
+        next_step: call testara_init again with the chosen engine (engine=selenium|playwright|appium).
+        """.formatted(type);
   }
 
   private String missingCoordinates(Input input) {
@@ -366,8 +384,8 @@ public class TestInitSkill implements AgentSkill<TestInitSkill.Input, String> {
                           <goal>cucumber-summary</goal>
                         </goals>
                         <configuration>
-                          <targetLocation>${project.build.directory}/destination/</targetLocation>
-                          <outputLocation>${project.build.directory}/destination/</outputLocation>
+                          <targetLocation>target/destination/</targetLocation>
+                          <outputLocation>target/site/</outputLocation>
                           <reportTemplate>testara-style-report</reportTemplate>
                           <reportName>test-report</reportName>
                         </configuration>
@@ -518,7 +536,7 @@ public class TestInitSkill implements AgentSkill<TestInitSkill.Input, String> {
           automation.engine.screenshot-fps=30
           automation.engine.force-resolution=true
           playwright.browser.owner=testara
-          playwright.browser.headless=true
+          playwright.browser.headless=false
           playwright.browser.scan-locations=io.github.ygrip.testara,%s
           playwright.browser.page-scan-locations=io.github.ygrip.testara,%s
           playwright.browser.action-scan-locations=io.github.ygrip.testara,%s
