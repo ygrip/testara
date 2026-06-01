@@ -80,8 +80,9 @@ public class TestaraUiSkill implements AgentSkill<TestaraUiSkill.Input, String> 
           import io.github.ygrip.testara.ui.interaction.SelectOption;
           import io.github.ygrip.testara.ui.interaction.Navigate;
           import io.github.ygrip.testara.ui.page.NamedPage;
-          # NEVER import: Validate, Assert, Verify, Check — these do NOT exist in testara-ui.
-          # For assertions inside attemptsTo(), use SeeThat (e.g. SeeThat.visible("elem")).
+          # NEVER import these — they do NOT exist in testara-ui:
+          #   See (use SeeThat instead), Validate, Assert, Verify, Check, Assertion, Expect
+          # All assertions inside attemptsTo() use SeeThat: SeeThat.visible("elem"), SeeThat.containsText("t").on("elem")
 
           ## Interactions inside attemptsTo(...) — auto-populated from testara-ui source
           """ + buildInteractionList() + """

@@ -47,7 +47,7 @@ properties -> command conversion -> config binding -> base steps -> request spec
 - Keep runners and glue-only test bootstrap under `src/test/java/{basePackage}/runner` and `src/test/java/{basePackage}/steps`.
 - Use `src/test/resources/features` for Gherkin, `src/test/resources/files/{domain}/request` for API request specs, `src/test/resources/templates` for reusable payload/template files, and `src/test/resources/schemas` for JSON schemas.
 - Do not create direct Selenium/Playwright/Appium drivers. Use Testara driver/session abstractions, built-in UI steps, `UserAction`, and `Locator` fields.
-- Do NOT import `io.github.ygrip.testara.ui.interaction.Validate` or any `Validate`/`Assert`/`Verify` class — these do not exist. For assertions inside `attemptsTo()` use `SeeThat.visible()`, `SeeThat.containsText()`, etc.
+- Do NOT import non-existent interaction classes. The ONLY valid imports from `io.github.ygrip.testara.ui.interaction` are: `Click`, `Enter`, `Clear`, `Scroll`, `SeeThat`, `WaitUntil`, `SelectOption`, `Navigate`, `ForceClick`, `Hover`, `DoubleClick`, `Drag`, `Blur`, `Hold`, `Submit`, `Tab`, `Focus`. Classes that do NOT exist: `See` (use `SeeThat`), `Validate`, `Assert`, `Verify`, `Check`, `Assertion`, `Expect`.
 - Do not generate helper classes that duplicate `MapperHelper`, `TransformerService`, `CommandExecutor`, `ValidatorHelper`, `DataHolder`, `RestApiFacade`, `SqlHelper`, `MongoHelper`, `Kafka*Helper`, `ElasticSearchHelper`, `PageFinder`, or `Actor`.
 
 ## POM dependency scope rules
