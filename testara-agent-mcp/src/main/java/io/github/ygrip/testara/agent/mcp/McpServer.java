@@ -257,7 +257,7 @@ public class McpServer {
       case "testara_validation_detail" -> validationSkill.execute("detail:" + args.path("name").asText(""), ctx);
       case "testara_plan" -> planSkill.execute(new TestPlanSkill.Input(
           args.path("intent").asText(""),
-          args.path("slice").asText("api"),
+          args.path("slice").asText(null),   // null → inferSlice() runs; "api" was masking UI/DB intents
           args.path("domain").asText(null),
           List.of()), ctx);
       case "testara_init" -> initSkill.execute(new TestInitSkill.Input(

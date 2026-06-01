@@ -36,6 +36,8 @@ public class TestPlanSkill implements AgentSkill<TestPlanSkill.Input, String> {
     TestaraProjectProfile profile = context.profile();
     String slice  = input.slice() != null ? input.slice() : inferSlice(input.intent());
     String domain = input.domain() != null ? input.domain() : inferDomain(input.intent());
+    String clarification = clarificationPrompt(input.intent(), slice, input.domain() != null, profile);
+    if (clarification != null) return clarification;
     List<String> tags = buildTags(input.tags(), slice, domain);
     boolean write = "true".equals(context.options().get("write"));
     boolean concise = "concise".equals(context.options().get("format"));
@@ -284,9 +286,9 @@ public class TestPlanSkill implements AgentSkill<TestPlanSkill.Input, String> {
   }
 
   private String buildStandardUiFeature(String intent, String domain) {
-    String pageName = inferUiPage(intent, domain);
+    String pageName = toPropertyKey(inferUiPage(intent, domain));
     String actionName = inferUiAction(intent, domain);
-    String successPage = inferUiSuccessPage(intent, domain, pageName);
+    String successPage = toPropertyKey(inferUiSuccessPage(intent, domain, pageName));
     String successElement = inferUiSuccessElement(intent);
     UiActionParameters params = uiActionParameters(pageName, actionName, false);
     UiActionParameters invalidParams = uiActionParameters(pageName, actionName, true);
@@ -301,7 +303,9 @@ public class TestPlanSkill implements AgentSkill<TestPlanSkill.Input, String> {
             When user do "%s" in "%s" page with parameter
         %s
             Then user is in "%s" page
-            Then user should see "%s" is displayed
+            Then user see that
+              | actual | validation | expectation |
+              | %s     | DISPLAYED   | true        |
 
           @P2 @negative
           Scenario: %s shows validation error
@@ -309,7 +313,9 @@ public class TestPlanSkill implements AgentSkill<TestPlanSkill.Input, String> {
             Then user is in "%s" page
             When user do "%s" in "%s" page with parameter
         %s
-            Then user should see "error message" is displayed
+            Then user see that
+              | actual        | validation | expectation |
+              | error message | DISPLAYED   | true        |
         """.formatted(toFeatureName(actionName), pageName, pageName, actionName, pageName,
         params.toFeatureTable(12), successPage, successElement,
         toFeatureName(actionName), pageName, pageName, actionName, pageName, invalidParams.toFeatureTable(12));
@@ -564,7 +570,8 @@ public class TestPlanSkill implements AgentSkill<TestPlanSkill.Input, String> {
   }
 
   private UiActionParameters uiActionParameters(String pageName, String actionName, boolean invalid) {
-    String prefix = invalid ? "test.invalid-" + pageName : "test." + pageName;
+    String key = toPropertyKey(pageName);
+    String prefix = invalid ? "test.invalid-" + key : "test." + key;
     String lower = actionName.toLowerCase(Locale.ROOT);
     if (lower.contains("login") || lower.contains("credential")) {
       String userPrefix = invalid ? "test.invalid-user" : "test.user";
@@ -579,17 +586,26 @@ public class TestPlanSkill implements AgentSkill<TestPlanSkill.Input, String> {
         List.of("properties(" + prefix + ".value)"));
   }
 
+  private String toPropertyKey(String value) {
+    return value.toLowerCase(Locale.ROOT)
+        .replaceAll("[^a-z0-9]+", "-")
+        .replaceAll("^-|-$", "");
+  }
+
   private record UiActionParameters(List<String> columns, List<String> values) {
     String toFeatureTable(int spaces) {
       String indent = " ".repeat(spaces);
-      StringBuilder header = new StringBuilder(indent).append("|");
-      StringBuilder row = new StringBuilder(indent).append("|");
+      StringBuilder table = new StringBuilder(indent).append("|key|value|");
       for (int i = 0; i < columns.size(); i++) {
-        int width = Math.max(columns.get(i).length(), values.get(i).length()) + 2;
-        header.append(" ").append(pad(columns.get(i), width - 1)).append("|");
-        row.append(" ").append(pad(values.get(i), width - 1)).append("|");
+        table.append("\n")
+            .append(indent)
+            .append("| ")
+            .append(pad(columns.get(i), 10))
+            .append(" | ")
+            .append(pad(values.get(i), 36))
+            .append(" |");
       }
-      return header.append("\n").append(row).toString();
+      return table.toString();
     }
 
     private static String pad(String value, int length) {
@@ -607,6 +623,134 @@ public class TestPlanSkill implements AgentSkill<TestPlanSkill.Input, String> {
     }
     return intent.replaceAll("[^a-zA-Z0-9]+", "-").toLowerCase(Locale.ROOT)
         .replaceAll("^-|-$", "").substring(0, Math.min(20, intent.length()));
+  }
+
+  private String clarificationPrompt(String intent, String slice, boolean explicitDomain,
+      TestaraProjectProfile profile) {
+    String lower = intent == null ? "" : intent.toLowerCase(Locale.ROOT).strip();
+
+    // 1. Blank or completely generic intent
+    if (lower.isBlank() || Set.of("test", "create test", "generate test", "make test",
+        "feature", "scenario", "write test", "add test").contains(lower)) {
+      return clarification("test_plan_clarity",
+          "Intent is too generic — cannot determine what to test.",
+          List.of(
+              "What slice? (api | ui | sql | mongo | kafka | elastic)",
+              "What domain or feature area? (e.g. order, login, payment, cart)",
+              "What action should be tested? (e.g. create order, login with credentials, add item to cart)",
+              "What is the expected outcome? (e.g. HTTP 200, page redirects to inventory, record saved)"
+          ), null);
+    }
+
+    // 2. UI needs page + action context
+    if ("ui".equals(slice) && needsUiClarification(lower, explicitDomain, profile)) {
+      boolean hasPage   = containsAny(lower, "login", "checkout", "cart", "search", "inventory",
+          "home", "dashboard", "profile", "page");
+      boolean hasAction = containsAny(lower, "login", "submit", "click", "add", "remove",
+          "search", "fill", "open", "navigate", "checkout", "do", "perform");
+      List<String> questions = new ArrayList<>();
+      if (!hasPage)   questions.add("What page(s) are involved? Use exact names matching your Page classes (e.g. login, inventory, cart).");
+      if (!hasAction) questions.add("What user action(s) should be performed? Use exact names matching your UserAction classes (e.g. 'login with credentials', 'add item to cart').");
+      questions.add("What is the expected outcome? (e.g. 'user lands on inventory page', 'error message is visible')");
+      questions.add("Do the required Page and UserAction classes already exist? If not, call testara_ui first to generate them.");
+      return clarification("test_plan_ui_context",
+          "UI feature cannot be generated without knowing the page, action, and expected outcome.",
+          questions, availableUiContext(profile));
+    }
+
+    // 3. API needs service alias + method/endpoint
+    if ("api".equals(slice) && needsApiClarification(lower, explicitDomain)) {
+      return clarification("test_plan_api_context",
+          "API feature cannot be generated without knowing the service and endpoint.",
+          List.of(
+              "What is the service alias? (must match api.service.{alias} in configuration.properties)",
+              "What is the HTTP method? (GET | POST | PUT | PATCH | DELETE)",
+              "What is the endpoint path? (e.g. /orders/{id}, /users)",
+              "What response is expected? (HTTP status, specific field, success/failure)"
+          ), availableApiContext(profile));
+    }
+
+    // 4. DB/Streaming/Elastic — need service alias + operation
+    if (containsAny(slice != null ? slice : "", "sql", "mongo", "kafka", "streaming", "elastic")
+        && needsDbClarification(lower, explicitDomain)) {
+      return clarification("test_plan_db_context",
+          "DB/Streaming feature cannot be generated without a service alias and operation.",
+          List.of(
+              "What is the service alias? (must match the config prefix: sql.service.{alias}, mongo.service.{alias}, etc.)",
+              "What operation should be performed? (e.g. query by id, insert record, publish event)",
+              "What is the expected outcome? (e.g. row exists, document found, event consumed)"
+          ), null);
+    }
+
+    return null;
+  }
+
+  private String clarification(String key, String reason, List<String> questions, String available) {
+    StringBuilder sb = new StringBuilder();
+    sb.append("needs_input: ").append(key).append("\n");
+    sb.append("reason: ").append(reason).append("\n");
+    sb.append("ask_user:\n");
+    questions.forEach(q -> sb.append("  - ").append(q).append("\n"));
+    if (available != null && !available.isBlank()) {
+      sb.append("available_in_project:\n").append(available);
+    }
+    sb.append("hint: call testara_plan again with the answers filled in as intent, slice, and domain.");
+    return sb.toString();
+  }
+
+  private String availableUiContext(TestaraProjectProfile profile) {
+    Set<String> uiTags = profile.features().stream()
+        .flatMap(f -> f.tags().stream())
+        .filter(t -> !Set.of("@ui", "@regression", "@smoke", "@P1", "@P2", "@P3",
+            "@positive", "@negative").contains(t))
+        .collect(Collectors.toCollection(LinkedHashSet::new));
+    if (uiTags.isEmpty()) return null;
+    return "  existing_ui_tags: " + String.join(", ", uiTags) + "\n";
+  }
+
+  private String availableApiContext(TestaraProjectProfile profile) {
+    Set<String> apiTags = profile.features().stream()
+        .flatMap(f -> f.tags().stream())
+        .filter(t -> !Set.of("@api", "@regression", "@smoke", "@P1", "@P2", "@P3",
+            "@positive", "@negative").contains(t))
+        .collect(Collectors.toCollection(LinkedHashSet::new));
+    if (apiTags.isEmpty()) return null;
+    return "  existing_api_tags: " + String.join(", ", apiTags) + "\n";
+  }
+
+  private boolean needsUiClarification(String lower, boolean explicitDomain, TestaraProjectProfile profile) {
+    boolean hasPage   = containsAny(lower, "login", "checkout", "cart", "search", "inventory",
+        "home", "dashboard", "profile", "page");
+    boolean hasAction = containsAny(lower, "login", "submit", "click", "add", "remove",
+        "search", "fill", "open", "navigate", "checkout", "do", "perform");
+    if (explicitDomain) return false;
+    boolean hasExistingUi = profile.features().stream().anyMatch(f -> f.tags().contains("@ui"));
+    return !(hasPage && hasAction) && !hasExistingUi;
+  }
+
+  private boolean needsApiClarification(String lower, boolean explicitDomain) {
+    boolean hasMethod = containsAny(lower, "get", "post", "put", "patch", "delete",
+        "create", "update", "fetch", "retrieve");
+    boolean hasService = lower.contains("/") || lower.contains("endpoint")
+        || lower.contains("service") || lower.contains("api") || explicitDomain;
+    boolean hasExpectation = containsAny(lower, "200", "201", "400", "404", "500",
+        "success", "error", "valid", "invalid", "return", "response");
+    return !(hasMethod || hasService) && !hasExpectation;
+  }
+
+  private boolean needsDbClarification(String lower, boolean explicitDomain) {
+    boolean hasAlias = explicitDomain || lower.contains("db") || lower.contains("database")
+        || lower.contains("collection") || lower.contains("topic") || lower.contains("index");
+    boolean hasOperation = containsAny(lower, "query", "select", "insert", "update",
+        "delete", "find", "publish", "consume", "search", "count");
+    return !hasAlias || !hasOperation;
+  }
+
+  private boolean containsAny(String text, String... needles) {
+    for (String needle : needles) {
+      if (text.contains(needle)) return true;
+    }
+    return false;
   }
 
   private String extractVerb(String intent) {
