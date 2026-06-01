@@ -129,9 +129,9 @@ public class TestInitSkill implements AgentSkill<TestInitSkill.Input, String> {
       writeIfAbsent(root, "src/test/resources/configuration.properties",
           generateProperties(type, basePkg, engine, includeExamples), created, skipped);
       writeIfAbsent(root, "src/test/resources/cucumber.properties",
-          generateCucumberProperties(), created, skipped);
+          generateCucumberProperties(type, basePkg, includeExamples), created, skipped);
       writeIfAbsent(root, "src/test/resources/junit-platform.properties",
-          generateJunitPlatformProperties(type, basePkg, includeExamples), created, skipped);
+          generateJunitPlatformProperties(), created, skipped);
       writeIfAbsent(root, "src/test/resources/application.properties",
           generateApplicationProperties(type, includeExamples), created, skipped);
       writeIfAbsent(root, "src/test/resources/log4j2.xml",
@@ -224,8 +224,8 @@ public class TestInitSkill implements AgentSkill<TestInitSkill.Input, String> {
     sb.append("## pom.xml\n\n```xml\n").append(generateFullPom(type, groupId, artifactId, basePkg, engine, root)).append("```\n\n");
     sb.append("## log4j2.xml\n\n```xml\n").append(generateLog4j2Config(basePkg)).append("```\n\n");
     sb.append("## configuration.properties\n\n```properties\n").append(generateProperties(type, basePkg, engine, includeExamples)).append("```\n\n");
-    sb.append("## cucumber.properties\n\n```properties\n").append(generateCucumberProperties()).append("```\n\n");
-    sb.append("## junit-platform.properties\n\n```properties\n").append(generateJunitPlatformProperties(type, basePkg, includeExamples)).append("```\n\n");
+    sb.append("## cucumber.properties\n\n```properties\n").append(generateCucumberProperties(type, basePkg, includeExamples)).append("```\n\n");
+    sb.append("## junit-platform.properties\n\n```properties\n").append(generateJunitPlatformProperties()).append("```\n\n");
     sb.append("## application.properties\n\n```properties\n").append(generateApplicationProperties(type, includeExamples)).append("```\n\n");
     sb.append("## Junit5RunnerTests.java\n\n```java\n").append(generateJunit5Runner(basePkg)).append("```\n\n");
     sb.append("## Junit4RunnerTests.java\n\n```java\n").append(generateJunit4Runner(basePkg)).append("```\n");
@@ -599,26 +599,22 @@ public class TestInitSkill implements AgentSkill<TestInitSkill.Input, String> {
         """.formatted(slice, slice, shape);
   }
 
-  private String generateCucumberProperties() {
-    return """
-        cucumber.publish.quiet=true
-        cucumber.publish.enabled=false
-        cucumber.object-factory=io.github.ygrip.testara.engine.factory.TestaraCucumberObjectFactory
-        cucumber.plugin=html:target/destination/cucumber.html,\\
-          json:target/destination/cucumber.json,rerun:target/rerun/rerun.txt
-        """;
-  }
-
-  private String generateJunitPlatformProperties(String type, String basePkg, boolean includeExamples) {
+  private String generateCucumberProperties(String type, String basePkg, boolean includeExamples) {
     String tagFilter = tagFilter(type, includeExamples);
+    boolean isUi = type.equals("ui") || type.equals("fullstack");
+    String stepListener = isUi ? ",io.github.ygrip.testara.ui.listeners.StepListener" : "";
     return """
-        cucumber.publish.quiet=true
         cucumber.publish.enabled=false
+        cucumber.publish.quiet=true
+        cucumber.object-factory=io.github.ygrip.testara.cucumber.factory.TestaraObjectFactory
+        cucumber.glue=io.github.ygrip.testara,%s
+        cucumber.plugin=html:target/destination/cucumber.html,json:target/destination/cucumber.json,rerun:target/rerun/rerun.txt%s
         cucumber.snippet-type=camelcase
         cucumber.execution.dry-run=false
-        cucumber.junit-platform.naming-strategy=long
         cucumber.step.notifications.enabled=false
         cucumber.filter.skipped.scenarios=true
+        cucumber.features=classpath:features
+        cucumber.filter.tags=%s
         cucumber.rerun.strategy=NONE
         cucumber.max.retry.failed.scenarios=0
         cucumber.execution.parallel.enabled=false
@@ -626,13 +622,15 @@ public class TestInitSkill implements AgentSkill<TestInitSkill.Input, String> {
         cucumber.execution.parallel.virtual-thread.max-threads=32
         cucumber.execution.parallel.config.strategy=dynamic
         cucumber.execution.parallel.config.fixed.parallelism=4
+        """.formatted(basePkg, stepListener, tagFilter);
+  }
+
+  private String generateJunitPlatformProperties() {
+    return """
+        # JUnit 5 Platform specific settings (cucumber.properties provides the rest)
+        cucumber.junit-platform.naming-strategy=long
         junit.jupiter.execution.parallel.enabled=false
-        cucumber.object-factory=io.github.ygrip.testara.engine.factory.TestaraCucumberObjectFactory
-        cucumber.glue=io.github.ygrip.testara,%s
-        cucumber.filter.tags=%s
-        cucumber.features=src/test/resources/features/
-        # cucumber.features=@target/rerun/rerun.txt
-        """.formatted(basePkg, tagFilter);
+        """;
   }
 
   private String generateApplicationProperties(String type, boolean includeExamples) {

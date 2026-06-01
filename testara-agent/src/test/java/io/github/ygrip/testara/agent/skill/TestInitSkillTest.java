@@ -113,12 +113,18 @@ class TestInitSkillTest {
     assertConfigurationPropertiesDoNotContainUserValues(output);
     assertTrue(output.contains("## cucumber.properties"));
     assertTrue(output.contains("## junit-platform.properties"));
-    assertTrue(output.contains("cucumber.object-factory=io.github.ygrip.testara.engine.factory.TestaraCucumberObjectFactory"));
+    // cucumber.properties uses TestaraObjectFactory (JUnit4 + JUnit5 compatible)
+    assertTrue(output.contains("cucumber.object-factory=io.github.ygrip.testara.cucumber.factory.TestaraObjectFactory"));
+    assertFalse(output.contains("cucumber.object-factory=io.github.ygrip.testara.engine.factory.TestaraCucumberObjectFactory"));
+    // junit-platform.properties is now JUnit5-specific only; rest is in cucumber.properties
     assertTrue(output.contains("cucumber.junit-platform.naming-strategy=long"));
     assertFalse(output.contains("cucumber.junit-platform.naming-strategy=CUSTOM"));
+    // parallel/retry/tags are now in cucumber.properties (apply to both runners)
     assertTrue(output.contains("cucumber.max.retry.failed.scenarios=0"));
     assertTrue(output.contains("cucumber.execution.parallel.enabled=false"));
     assertTrue(output.contains("cucumber.filter.tags=(@api) and not (@manual or @deprecated or @ignored)"));
+    assertTrue(output.contains("cucumber.features=classpath:features"));
+    assertTrue(output.contains("cucumber.glue=io.github.ygrip.testara,io.github.ygrip.example"));
     assertFalse(output.contains("Given [api] using service with alias sample-api"));
     assertFalse(output.contains("When [api] process request to \"files/sample/request/sample-get\""));
     assertFalse(output.contains("Then [api] response statusCode should be 200"));

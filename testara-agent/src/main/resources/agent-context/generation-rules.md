@@ -14,13 +14,16 @@ properties -> command conversion -> config binding -> base steps -> request spec
 - Compile scope for Testara modules imported by `src/main/java`; test scope for `testara-*-cucumber`, `testara-junit5`, and JUnit runner deps.
 - Do not add `cucumber-junit-platform-engine` to generated POMs. Testara provides `testara-cucumber` engine; adding the standard engine causes conflicts.
 - Do not pin `junit-platform-suite`; let Testara/JUnit transitive versions follow the resolved `testara.version`.
-- Use `properties(...)` for URLs, hosts, ports, credentials, topics, indexes, IDs, and env data.
+- Property files: framework wiring belongs in `configuration.properties`; user/env values belong in `application.properties` or `application-{env}.properties`. Do not set property values to `properties(other.key)`.
+- Config values use `${ENV:fallback}`. Feature/request values may use `properties(key)` for application values; dynamic values should use commands such as `uuid()`, `random(...)`, or `oneOf(...)`.
 - API: use request specs at `src/test/resources/files/{domain}/request/{flow}.json`; feature path is `files/{domain}/request/{flow}`.
 - UI: generate `page` + `action`; use reusable action labels such as `login with credentials`; infer/ask pageName instead of producing SamplePage/SampleActions.
 - UI: keep scenario/video recording disabled by default. Generate `automation.engine.screenshot-output-type=IMAGE`; use `VIDEO` only when the user explicitly asks for scenario recording.
 - UI plans must emit executable Testara steps. `# MISSING` in generated UI login flows means the plan is not done.
 - UI: `testara_ui` emits `TODO-replace-selector` placeholders for unknown page types — replace all of them with real DOM selectors before generating features that reference those elements.
 - UI plans: use page names and action names that exactly match existing Page/UserAction classes. Do not invent names for pages or actions not yet created.
+- UI UserAction classes must be top-level classes under `src/main/java/{basePackage}/action`, annotated with `@OnPage`, and must extend `UserAction` directly. Do not generate wrapper classes with nested `static class ... extends UserAction`; the action scanner expects discoverable top-level action classes.
+- UI cross-page/global actions: if an action is intentionally callable from multiple pages, keep it in a top-level `UserAction` class and annotate the method with `@Action(value = "action name", allowAnonymousCall = true)`. Do not use nested classes to model cross-page access.
 - DB/Kafka/Elastic: use built-in steps and exact property prefixes (`sql.service`, `mongo.service`, `kafka.service`, `elasticsearch.service`).
 - DataTables: use `| key | value |` for map-shaped queries/params; use horizontal rows for records/templates/validations.
 - Scan locations must include `io.github.ygrip.testara` and singular project packages: `.command`, `.validation`, `.page`, `.action`.
@@ -28,6 +31,9 @@ properties -> command conversion -> config binding -> base steps -> request spec
 - Generated automation POMs use `maven-failsafe-plugin` and run Cucumber/Testara runners in `mvn verify`, matching the example projects.
 - Generated `junit-platform.properties` defaults to stable serial execution, no retries, and `cucumber.junit-platform.naming-strategy=long`; enable parallelism/retry only when the project has proven engine isolation.
 - Generated runners match the examples: `Junit5RunnerTests` is only `@Log4j2` + `@TestSuite`; detailed Cucumber config belongs in properties or `Junit4RunnerTests`.
+- `test-plan` must ask for clarification when the request is generic or missing runnable context. Do not invent page, service, flow, selector, payload, or validation names just to produce output.
+- `test-run` resolves explicit tags first, then project-indexed tags and feature/scenario text. Default multi-tag output is `and`; use `or` only when the user asks for an OR run. If no indexed feature/tag context exists, ask for `projectRoot`, an explicit tag, feature name, or scenario name.
+- Avoid hardcoded sample domains. Derive feature names, tags, page/action names, request spec names, service aliases, and property keys from user input plus `testara_context`; normalize only for Java/package/property naming rules.
 
 ## Code conventions
 - Reuse Testara built-ins before creating project code. Built-in steps, commands, validations, request specs, pages/actions, and helpers are preferred over custom Cucumber steps.
@@ -145,11 +151,12 @@ When [elastic-search] insert to index "products" with data :
 - Kafka producer: configure `kafka.service.{alias}.servers`; start with `Given user start kafka producer for {alias}`; send with `When user send kafka message to topic "properties(kafka.topic.{name})" with data "request($['event'])"` or key+data; always stop producer.
 - Kafka consumer: start with `Given user start kafka consumer for {alias}`; listen with `Given user listen kafka from topic {topicAlias}`; assign count/latest/filter results; always stop consumer. Use filter tables instead of custom polling code.
 - Elastic: configure `elasticsearch.service.{alias}.hosts[0]|username|password|secured|requireAuthentication`; connect with `Given [elastic-search] connect to elastic search with name {alias}`; search/assign uses **Pattern 1** (`|key|value|` headers) — supported keys: `luceneQuery`, `routing`, `type`, `sortBy`, `from`, `size`; insert/update uses **Pattern 3** (horizontal single-row document); assign with `Then [elastic-search] assign previous elastic search response to {alias}`.
-- Use `properties(...)` for hosts, ports, credentials, topic names, index names, document IDs, and query literals that vary by environment.
+- Use `${ENV:fallback}` for generated DB/Kafka/Elastic config values. Use `properties(...)` only inside features/request specs when reading application properties.
 
-## RULE 1: properties() for env-specific values
-MUST use properties(key) for: URLs, hosts, ports, emails, passwords, tokens,
-topic names, DB names, credentials, test data IDs, reusable test constants.
+## RULE 1: property values and dynamic values
+Property files MUST NOT use `properties(other.key)` as a value. Use `${ENV:fallback}` for URLs, hosts, ports, credentials, topic names, and DB names in generated config.
+Features/request specs MAY use `properties(key)` for values stored in `application.properties`.
+Use command expressions (`uuid()`, `random(...)`, `oneOf(...)`, `timestamp()`) for generated dynamic values instead of creating static properties.
 ALLOWED hardcoded: HTTP status codes (200/400), booleans (true/false), stable enums.
 NEVER: localhost, http://, or credentials directly in feature files.
 
@@ -173,27 +180,31 @@ Use command expressions inside specs: `properties(key)`, `request($['alias'])`,
 ## RULE 3: UserAction for reusable UI flows
 If UI scenario has 3+ operations on the same page -> generate UserAction class
   @OnPage(value = {LoginPage.class}) + @Action("action name")
+  public class LoginActions extends UserAction
   Feature:
     When user do "action name" in "page" page with parameter
-      | username                    | password                       |
-      | properties(test.user.email) | properties(test.user.password) |
+      |key|value|
+      | username | properties(test.user.email)    |
+      | password | properties(test.user.password) |
 Not a custom Cucumber step.
+Never group different pages into nested static UserAction classes. Generate separate top-level files such as `CheckoutInfoActions.java` and `CheckoutOverviewActions.java`.
+For truly shared/global actions, use a top-level class with `@Action(value = "open cart", allowAnonymousCall = true)` so it can be resolved without binding to one current page.
 
 ## RULE 4: Page URL in properties
   @Page(name = "login", url = "", platforms = {DeviceType.DEFAULT, DeviceType.DESKTOP})
   public class LoginPage extends SeleniumPage or PlaywrightPage
   private static final Locator USERNAME_FIELD = Locator.id("user-name")
-  web.page.desktop.login.url=properties(app.web.login-url)
+  web.page.desktop.login.url=${APP_WEB_LOGIN_URL:http://localhost:3000/login}
 
 ## RULE 5: service config before features
 Generate api.service.{name}.* and spec.api.{name}.* in configuration.properties
 BEFORE generating feature files that reference that service.
 
 ## RULE 6: DB config pattern
-  sql.service.{name}.uri=properties(db.{name}.uri)
-  mongo.service.{name}.connectionString=properties(mongo.{name}.connection-string)
-  kafka.service.{name}.servers=properties(kafka.{name}.servers)
-Values (host, port, credentials) go as separate properties: db.{name}.host=localhost
+  sql.service.{name}.uri=${DB_NAME_URI:jdbc:postgresql://localhost:5432/testdb}
+  mongo.service.{name}.connectionString=${MONGO_NAME_URI:mongodb://localhost:27017}
+  kafka.service.{name}.servers=${KAFKA_NAME_SERVERS:localhost:9092}
+User-defined values used by features go in application.properties/application-{env}.properties.
 
 ## RULE 7: command scan locations
   class.loader.default-scan-locations=io.github.ygrip.testara,{basePackage}
@@ -213,6 +224,12 @@ After test-init --write, run mvn test-compile to verify the scaffold compiles.
 ## RULE 10: scan locations on new artifact
 When generating a new Command or Validator class, verify command.executor.scan-locations
 and validator.helper.scan-locations in configuration.properties include the target package.
+
+## RULE 11: interactive planning
+If the user request is too broad (`test the app`, `create UI test`, `run checkout`) return `needs_input` with the smallest useful questions. Ask for API method/service/path/expected validation, UI page/action/expected state/selectors, or DB/Kafka/Elastic alias/query/topic/index context. Do not fall back to Login/Home/Page/StepDefinitions placeholders.
+
+## RULE 12: dynamic run filters
+For `testara_run`, convert user text to the narrowest tag expression supported by the project index. Exact `@tags` win. Indexed tag words map to tags. Scenario/feature text maps to the matching scenario's feature + scenario tags joined with `and`. Return clarification when the index is empty or the expression matches zero scenarios.
 
 ## UI Runtime Quirks — Read Before Generating UI Features
 
@@ -247,6 +264,9 @@ When user open "cart" page          # URL navigation — always works
 
 **Rule:** Keep `cucumber.execution.parallel.enabled=false` for UI projects. Both are already set correctly by `testara_init` — do not override them.
 
+### Quirk 6: Screenshot hook crashes before browser opens
+`automation.engine.screenshot-strategy=ON_EACH_STEP` attempts a screenshot before every step — including the very first step that opens the browser. If `TestContext` is not yet initialized, this throws `IllegalStateException`. Change to `ON_FAIL` (screenshot only on failure) or `NONE` (disabled) in `configuration.properties` to avoid this. `ON_EACH_STEP` requires that TestContext and the browser session are already available before the hook fires.
+
 ### Quirk 5: testara_run and testara_context require projectRoot when MCP is launched globally
 When the MCP server starts from outside the project workspace (e.g. `~/`), the project index is empty.
 `testara_run` will show `indexed-features: 0` and fail to resolve any tags.
@@ -259,7 +279,7 @@ testara_run(input="...", projectRoot="/path/to/project")
 
 ## Quick reference: key steps by slice
 API:    Given [api] using service with alias {name} | [api] prepare pathParam for id with value "properties(test.{domain}.id)" | When [api] process request to "files/{domain}/request/{flow}" | Then [api] response statusCode should be 200 | [api] assign previous response data to {alias}
-UI:     Given user using chrome in desktop | When user open "{page}" page | Then user is in "{page}" page | When user do "{action}" in "{page}" page with parameter | Then user should see "{element}" is displayed
+UI:     Given user using chrome in desktop | When user open "{page}" page | Then user is in "{page}" page | When user do "{action}" in "{page}" page with parameter | Then user see that (actual | validation | expectation)
 SQL:    Given [sql] connect to database with name {name}Db | [sql] prepare query with value : | When [sql] execute database query | Then [sql] assign previous database response to {alias}Rows
 Mongo:  Given [mongo] connect to database with name {name}Db | [mongo] select collection with name {col} | When [mongo] select data with query : (|key|value| table — keys: query/sort/project/limit/skip) | Then [mongo] assign previous database response to {alias}Rows
 Kafka:  Given user start kafka producer for {name} | When user send kafka message to topic "properties(kafka.topic.{alias})" with data "request($['event'])" | Then user stop kafka producer
