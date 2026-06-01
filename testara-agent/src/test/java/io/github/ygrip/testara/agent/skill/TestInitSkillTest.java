@@ -82,6 +82,11 @@ class TestInitSkillTest {
     assertTrue(output.contains("<artifactId>maven-failsafe-plugin</artifactId>"));
     assertTrue(output.contains("<goal>integration-test</goal>"));
     assertTrue(output.contains("<goal>verify</goal>"));
+    assertTrue(output.contains("<artifactId>maven-enforcer-plugin</artifactId>"));
+    assertTrue(output.contains("<id>require-java-21-for-testara</id>"));
+    assertTrue(output.contains("<version>[21,)</version>"));
+    assertTrue(output.contains("Testara ${testara.version} and testara-reporter-plugin require Maven to run with Java 21+"));
+    assertTrue(output.contains("Maven must run with Java 21+"));
     assertTrue(output.contains("<artifactId>maven-surefire-plugin</artifactId>"));
     assertTrue(output.contains("<skip>true</skip>"));
     assertFalse(output.contains("<artifactId>maven-dependency-plugin</artifactId>"));

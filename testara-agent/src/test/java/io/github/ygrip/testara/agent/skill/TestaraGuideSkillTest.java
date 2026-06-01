@@ -90,6 +90,33 @@ class TestaraGuideSkillTest {
     assertTrue(guide.contains("API slice: `testara-api` compile, `testara-api-cucumber` test"));
   }
 
+  @Test
+  void guideDocumentsCompileSafeUserActionApi() {
+    String guide = new TestaraGuideSkill().execute("UserAction class", context("markdown"));
+
+    assertTrue(guide.contains("`UserAction` does not expose `type()`, `click()`, `enter()"));
+    assertTrue(guide.contains("import io.github.ygrip.testara.ui.page.NamedPage;"));
+    assertTrue(guide.contains("Verified in Testara 2.0.5 artifacts"));
+    assertTrue(guide.contains("Scroll.to(\"element name\").andAlignToTop()"));
+    assertTrue(guide.contains("attemptsTo("));
+    assertTrue(guide.contains("@OnPage(value = {LoginPage.class})"));
+    assertFalse(guide.contains("@OnPage(\"login\")"));
+  }
+
+  @Test
+  void guideStepsSectionUsesGeneratedBuiltInCatalog() {
+    String guide = new TestaraGuideSkill().execute("steps", context("concise"));
+
+    assertTrue(guide.contains("## Built-in Step Reference"));
+    assertTrue(guide.contains("### ui"));
+    assertTrue(guide.contains("Given {actor} using {word} in {devices}"));
+    assertTrue(guide.contains("When {actor} type value {string} to {string} in the {string} page"));
+    assertTrue(guide.contains("When {actor} click the {string} in the {string} page"));
+    assertTrue(guide.contains("Then {actor} should see {string} is {displayedOrNotDisplayed}"));
+    assertTrue(guide.contains("### api"));
+    assertTrue(guide.contains("process request"));
+  }
+
   private AgentContext context(String format) {
     return new AgentContext(Path.of("."), null, AgentMode.READ_ONLY, null, Map.of("format", format));
   }

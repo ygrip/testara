@@ -487,6 +487,20 @@ web.page.desktop.login.url=${APP_WEB_LOGIN_URL:http://localhost:3000/login}
 ```
 
 **UserAction usage:**
+```java
+@OnPage(value = {LoginPage.class})
+public class LoginActions extends UserAction {
+  @Action("login with credential")
+  public void loginWithCredential(Map<String, Object> params) {
+    attemptsTo(
+        Enter.text(String.valueOf(params.get("username"))).into("username field"),
+        Enter.text(String.valueOf(params.get("password"))).into("password field"),
+        Click.on("button login")
+    );
+  }
+}
+```
+
 ```gherkin
 When user do "login with credential" in "login" page with parameter
   |key|value|

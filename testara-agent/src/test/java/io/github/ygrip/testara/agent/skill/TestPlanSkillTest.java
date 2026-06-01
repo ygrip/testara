@@ -19,22 +19,22 @@ class TestPlanSkillTest {
   Path projectRoot;
 
   @Test
-  void loginUiPlanUsesExecutableTestaraStepsAndReusableAction() {
+  void loginUiPlanUsesExecutableUiBaseSteps() {
     String output = new TestPlanSkill().execute(
         new TestPlanSkill.Input("login to saucedemo and land on inventory", "ui", "saucedemo", List.of()),
         context());
 
     assertTrue(output.contains("Given user using chrome in desktop"));
     assertTrue(output.contains("When user open \"login\" page"));
-    assertTrue(output.contains("When user do \"login with credentials\" in \"login\" page with parameter"));
-    assertTrue(output.contains("|key|value|"));
-    assertTrue(output.contains("| username"));
-    assertTrue(output.contains("| password"));
+    assertTrue(output.contains("When user type value \"properties(test.user.username)\" to \"username field\" in the \"login\" page"));
+    assertTrue(output.contains("And user type value \"properties(test.user.password)\" to \"password field\" in the \"login\" page"));
+    assertTrue(output.contains("And user click the \"button login\" in the \"login\" page"));
+    assertFalse(output.contains("When user do \"login with credentials\" in \"login\" page with parameter"));
     assertFalse(output.contains("| username                       | password"));
     assertTrue(output.contains("Then user is in \"inventory\" page"));
-    assertTrue(output.contains("Then user see that"));
-    assertTrue(output.contains("| error message | DISPLAYED"));
-    assertFalse(output.contains("Then user should see \"error message\" is displayed"));
+    assertTrue(output.contains("Then user should see \"success message\" is displayed"));
+    assertTrue(output.contains("Then user should see \"error message\" is displayed"));
+    assertFalse(output.contains("Then user see that"));
     assertFalse(output.contains("with text"));
     assertFalse(output.contains("# MISSING"));
     assertFalse(output.contains("user using web in desktop"));

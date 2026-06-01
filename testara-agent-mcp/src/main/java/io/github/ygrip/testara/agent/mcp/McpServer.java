@@ -72,7 +72,9 @@ public class McpServer {
   private final TestaraPropertySkill propertySkill = new TestaraPropertySkill();
   private final TestaraApiSkill      apiSkill      = new TestaraApiSkill();
   private final TestaraUiSkill       uiSkill       = new TestaraUiSkill();
+  private final TestaraBootstrapSkill bootstrapSkill = new TestaraBootstrapSkill();
   private final TestaraDbSkill       dbSkill       = new TestaraDbSkill();
+  private final TestaraDebugSkill    debugSkill    = new TestaraDebugSkill();
 
   public McpServer(Path projectRoot) {
     this.projectRoot = projectRoot.toAbsolutePath().normalize();
@@ -112,7 +114,7 @@ public class McpServer {
     }
   }
 
-  private JsonNode handle(JsonNode req) {
+  JsonNode handle(JsonNode req) {
     JsonNode id     = req.has("id") ? req.get("id") : null;
     String   method = req.path("method").asText();
     JsonNode params = req.path("params");
@@ -196,17 +198,36 @@ public class McpServer {
         optionalStr("method", "HTTP method: GET, POST, PUT, PATCH, DELETE"),
         optionalStr("endpoint", "Endpoint URL or path")));
     tools.add(tool("testara_ui",         "Generate Testara UI artifacts — Page class, UserAction class, or engine config. Returns structured artifact with file_path and source for one-call file creation.",
-        optionalStr("mode", "explain | page | action | config"),
+        optionalStr("mode", "explain | page | action | config | validate-page. mode=action is enabled in MCP; use write=false for preview/source and write=true only when local writes are enabled."),
         optionalStr("pageName", "Page name (e.g. login)"),
         optionalStr("actionName", "Action description (e.g. login with credential)"),
         optionalStr("engine", "UI engine: selenium | playwright | appium"),
         optionalStr("basePackage", "Base Java package"),
+        optionalStr("htmlSnapshot", "Optional rendered HTML snapshot for mode=validate-page selector existence checks"),
+        optionalStr("format", "concise (default for MCP) or markdown"),
         optionalStr("projectRoot", "Project root. Required when writing files or when MCP server was launched outside the workspace."),
         optionalBool("write", "Write the generated file to disk. Default false — returns structured artifact for manual creation.")));
+    tools.add(tool("testara_bootstrap",  "Create or preview dynamic Testara bootstrap artifacts: UI page/action bundles, API specs/config, Command, and Validation skeletons.",
+        optionalStr("artifact", "page | action | ui-bundle | request-spec | api-config | command | validation"),
+        optionalStr("intent", "Natural-language artifact intent"),
+        optionalStr("pageName", "UI page name"),
+        optionalStr("actionName", "UI action name or command/validation description"),
+        optionalStr("domain", "API/service domain"),
+        optionalStr("flow", "API request spec flow"),
+        optionalStr("method", "HTTP method"),
+        optionalStr("endpoint", "API endpoint/path"),
+        optionalStr("engine", "UI engine: selenium | playwright | appium"),
+        optionalStr("basePackage", "Base Java package"),
+        optionalStr("projectRoot", "Project root. Required when writing files or when MCP server was launched outside the workspace."),
+        optionalBool("write", "Write generated artifact files to disk. Default false.")));
     tools.add(tool("testara_db",         "Explain and generate DB (SQL/Mongo/Elastic) or Kafka config and feature templates",
         optionalStr("slice", "sql | mongo | kafka | elastic"),
         optionalStr("mode", "explain | config | feature"),
         optionalStr("name", "Service name (e.g. settlementDb, paymentKafka, catalogElastic)")));
+    tools.add(tool("testara_debug",      "Diagnose failed Testara step/report snippets and suggest likely root cause",
+        optionalStr("failedStep", "Exact failed Gherkin step, e.g. Then user should see \"error\" is displayed"),
+        optionalStr("snippet", "Stack trace, report excerpt, or console failure snippet"),
+        optionalStr("projectRoot", "Project root. Required when MCP server was launched outside the workspace.")));
     tools.add(tool("testara_init",       "Bootstrap or integrate a Testara automation project",
         optionalStr("projectRoot", "Target workspace root. Required for writes when MCP server was launched outside the workspace."),
         optionalStr("type", "api, ui, database, streaming, fullstack"),
@@ -245,6 +266,9 @@ public class McpServer {
   }
 
   private String dispatchTool(String name, JsonNode args) {
+    if (args.path("write").asBoolean(false) && !writeEnabled()) {
+      return writeDisabledMessage(name);
+    }
     AgentContext ctx = buildContext(name, args);
     return switch (name) {
       case "testara_summary" -> summarySkill.execute(
@@ -284,12 +308,32 @@ public class McpServer {
       case "testara_ui"       -> uiSkill.execute(new TestaraUiSkill.Input(
           args.path("mode").asText("explain"), args.path("pageName").asText(null),
           args.path("actionName").asText(null), args.path("engine").asText(null),
-          args.path("basePackage").asText(null)), ctx);
+          args.path("basePackage").asText(null), args.path("htmlSnapshot").asText(null)), ctx);
+      case "testara_bootstrap" -> bootstrapSkill.execute(new TestaraBootstrapSkill.Input(
+          args.path("artifact").asText("ui"), args.path("intent").asText(null),
+          args.path("pageName").asText(null), args.path("actionName").asText(null),
+          args.path("domain").asText(null), args.path("flow").asText(null),
+          args.path("method").asText(null), args.path("endpoint").asText(null),
+          args.path("basePackage").asText(null), args.path("engine").asText(null)), ctx);
       case "testara_db"       -> dbSkill.execute(new TestaraDbSkill.Input(
           args.path("slice").asText("sql"), args.path("mode").asText("explain"),
           args.path("name").asText(null)), ctx);
+      case "testara_debug"    -> debugSkill.execute(new TestaraDebugSkill.Input(
+          args.path("snippet").asText(null), args.path("failedStep").asText(null)), ctx);
       default -> throw new IllegalArgumentException("Unknown tool: " + name);
     };
+  }
+
+  private boolean writeEnabled() {
+    return "true".equalsIgnoreCase(System.getenv().getOrDefault("TESTARA_AGENT_WRITE_ENABLED", "false"));
+  }
+
+  private String writeDisabledMessage(String toolName) {
+    return """
+        write_disabled: TESTARA_AGENT_WRITE_ENABLED is not true
+        capability_available: %s is registered and can preview artifacts without write=true
+        next_step: call the same tool with write=false to get file_path/source, or enable TESTARA_AGENT_WRITE_ENABLED=true for trusted local scaffolding
+        """.formatted(toolName);
   }
 
   private AgentContext buildContext(String toolName, JsonNode args) {

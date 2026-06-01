@@ -1,5 +1,8 @@
 package io.github.ygrip.testara.agent.catalog;
 
+import io.github.ygrip.testara.agent.flavor.FlavorEntry;
+import io.github.ygrip.testara.agent.index.StepDefinitionIndex;
+
 import java.util.*;
 import java.util.regex.Pattern;
 
@@ -52,6 +55,18 @@ public final class GenerationGuard {
             stripped, "Replace hardcoded credential with properties(test.*.token/password)"));
       }
     }
+    return violations;
+  }
+
+  /** Validate generated feature content and require every step to link to known glue. */
+  public static List<Violation> validateFeature(String featureContent, List<FlavorEntry> flavorSteps,
+      List<StepDefinitionIndex> projectSteps) {
+    List<Violation> violations = new ArrayList<>(validateFeature(featureContent));
+    StepLinker.linkFeature(featureContent, flavorSteps, projectSteps).stream()
+        .filter(link -> !link.matched())
+        .forEach(link -> violations.add(new Violation(Violation.Severity.ERROR, "STEP",
+            "line " + link.lineNumber() + ": " + link.stepLine(),
+            "Use an indexed Testara built-in step, generate a UserAction and call it with the built-in action step, or add a project step definition.")));
     return violations;
   }
 

@@ -2,6 +2,7 @@ package io.github.ygrip.testara.agent.skill;
 
 import io.github.ygrip.testara.agent.catalog.GenerationGuard;
 import io.github.ygrip.testara.agent.catalog.PropertyRuleEngine;
+import io.github.ygrip.testara.agent.catalog.StepLinker;
 import io.github.ygrip.testara.agent.flavor.FlavorEntry;
 import io.github.ygrip.testara.agent.index.TestaraProjectProfile;
 import io.github.ygrip.testara.agent.knowledge.FrameworkKnowledgeStore;
@@ -61,13 +62,15 @@ public class TestPlanSkill implements AgentSkill<TestPlanSkill.Input, String> {
       } else if ("ui".equals(slice)) {
         String pageName = inferUiPage(input.intent(), domain);
         String actionName = inferUiAction(input.intent(), domain);
-        generatedArtifacts.add("suggested: testara_ui page pageName=" + pageName);
-        generatedArtifacts.add("suggested: testara_ui action pageName=" + pageName + " actionName=\"" + actionName + "\"");
+        generatedArtifacts.add("suggested: testara_bootstrap artifact=page pageName=" + pageName);
+        generatedArtifacts.add("optional: testara_bootstrap artifact=action pageName=" + pageName
+            + " actionName=\"" + actionName + "\" when this flow should be reusable");
       }
     }
 
-    int builtInCount = countBuiltInLines(featureContent);
-    int totalStepLines = countStepLines(featureContent);
+    var stepLinks = StepLinker.linkFeature(featureContent, flavorSteps, profile.stepDefinitions());
+    int builtInCount = (int) stepLinks.stream().filter(StepLinker.Link::matched).count();
+    int totalStepLines = stepLinks.size();
     int missingCount = countMissing(featureContent);
     int score = totalStepLines > 0 ? (builtInCount * 100 / totalStepLines) : 100;
     int runtimeScore = computeRuntimeContextScore(featureContent, generatedArtifacts, slice);
@@ -82,7 +85,7 @@ public class TestPlanSkill implements AgentSkill<TestPlanSkill.Input, String> {
       sb.append(featureContent);
       if (missingCount > 0) sb.append("\nmissing: ").append(missingCount).append(" steps need implementation");
       sb.append("\nflavor-score: ").append(score).append("% | runtime-context-score: ").append(runtimeScore).append("%");
-      var violations = GenerationGuard.validateFeature(featureContent);
+      var violations = GenerationGuard.validateFeature(featureContent, flavorSteps, profile.stepDefinitions());
       if (!violations.isEmpty()) {
         sb.append("\nguardrail-violations: ").append(violations.size()).append("\n");
         violations.forEach(v -> sb.append("  ").append(v.format()).append("\n"));
@@ -106,7 +109,7 @@ public class TestPlanSkill implements AgentSkill<TestPlanSkill.Input, String> {
       sb.append("\nNext: `testara-agent test-run '").append(input.intent()).append("' --execute`\n");
     }
     // Guardrail check
-    var violations = GenerationGuard.validateFeature(featureContent);
+    var violations = GenerationGuard.validateFeature(featureContent, flavorSteps, profile.stepDefinitions());
     return GenerationGuard.annotate(sb.toString(), violations);
   }
 
@@ -252,38 +255,13 @@ public class TestPlanSkill implements AgentSkill<TestPlanSkill.Input, String> {
     }
 
     if (!negative) {
-      // 3+ operations → prefer UserAction pattern over inline steps
-      String actionDesc = extractVerb(intent) + " " + domain;
-      String doStep = findExample(flavorSteps, "When", "do .* in .* page");
-      if (doStep != null) {
-        sb.append("    When ").append(doStep
-            .replace("{value}", actionDesc).replace("{name}", domain)).append("\n");
-        sb.append("      | username | properties(test.").append(domain).append(".username) |\n");
-        sb.append("      | password | properties(test.").append(domain).append(".password) |\n");
-        sb.append("    # Generate UserAction class for this: testara-agent testara-ui action --page=")
-            .append(domain).append(" --action=\"").append(actionDesc).append("\" --write\n");
-      } else {
-        // Fallback: individual steps with properties() values
-        String enterStep = findExample(flavorSteps, "When", "enter value .* on");
-        if (enterStep != null) {
-          sb.append("    When ").append(sub(enterStep,
-              "properties(test." + domain + ".inputValue)", "inputField")).append("\n");
-        }
-        String clickStep = findExample(flavorSteps, "When", "click the");
-        if (clickStep != null) sb.append("    When ").append(clickStep.replace("{value}", "submitButton")).append("\n");
-      }
+      appendUiBaseActionSteps(sb, domain, extractVerb(intent) + " " + domain, false);
       String pageStep = findExample(flavorSteps, "Then", "is in .* page");
       if (pageStep != null) sb.append("    Then ").append(pageStep.replace("{value}", domain + "-result")).append("\n");
       String seeStep = findExample(flavorSteps, "Then", "should see .* is");
       if (seeStep != null) sb.append("    Then ").append(seeStep.replace("{value}", "successMessage").replace("{param}", "displayed")).append("\n");
     } else {
-      String enterStep = findExample(flavorSteps, "When", "enter value .* on");
-      if (enterStep != null) {
-        sb.append("    When ").append(sub(enterStep,
-            "properties(test." + domain + ".invalidValue)", "inputField")).append("\n");
-      }
-      String clickStep = findExample(flavorSteps, "When", "click the");
-      if (clickStep != null) sb.append("    When ").append(clickStep.replace("{value}", "submitButton")).append("\n");
+      appendUiBaseActionSteps(sb, domain, extractVerb(intent) + " " + domain, true);
       String seeStep = findExample(flavorSteps, "Then", "should see .* is");
       if (seeStep != null) sb.append("    Then ").append(seeStep.replace("{value}", "errorMessage").replace("{param}", "displayed")).append("\n");
     }
@@ -295,8 +273,6 @@ public class TestPlanSkill implements AgentSkill<TestPlanSkill.Input, String> {
     String actionName = inferUiAction(intent, domain);
     String successPage = toPropertyKey(inferUiSuccessPage(intent, domain, pageName));
     String successElement = inferUiSuccessElement(intent);
-    UiActionParameters params = uiActionParameters(pageName, actionName, false);
-    UiActionParameters invalidParams = uiActionParameters(pageName, actionName, true);
     return """
           Background:
             Given user using chrome in desktop
@@ -305,25 +281,47 @@ public class TestPlanSkill implements AgentSkill<TestPlanSkill.Input, String> {
           Scenario: %s succeeds
             When user open "%s" page
             Then user is in "%s" page
-            When user do "%s" in "%s" page with parameter
         %s
             Then user is in "%s" page
-            Then user see that
-              | actual | validation | expectation |
-              | %s     | DISPLAYED   | true        |
+            Then user should see "%s" is displayed
 
           @P2 @negative
           Scenario: %s shows validation error
             When user open "%s" page
             Then user is in "%s" page
-            When user do "%s" in "%s" page with parameter
         %s
-            Then user see that
-              | actual        | validation | expectation |
-              | error message | DISPLAYED   | true        |
-        """.formatted(toFeatureName(actionName), pageName, pageName, actionName, pageName,
-        params.toFeatureTable(12), successPage, successElement,
-        toFeatureName(actionName), pageName, pageName, actionName, pageName, invalidParams.toFeatureTable(12));
+            Then user should see "error message" is displayed
+        """.formatted(toFeatureName(actionName), pageName, pageName,
+        uiBaseActionSteps(pageName, actionName, false), successPage, successElement,
+        toFeatureName(actionName), pageName, pageName, uiBaseActionSteps(pageName, actionName, true));
+  }
+
+  private void appendUiBaseActionSteps(StringBuilder sb, String pageName, String actionName, boolean invalid) {
+    sb.append(uiBaseActionSteps(pageName, actionName, invalid));
+  }
+
+  private String uiBaseActionSteps(String pageName, String actionName, boolean invalid) {
+    UiActionParameters params = uiActionParameters(pageName, actionName, invalid);
+    String lower = actionName.toLowerCase(Locale.ROOT);
+    StringBuilder sb = new StringBuilder();
+    if (lower.contains("login") || lower.contains("credential")) {
+      sb.append("    When user type value \"").append(params.value("username"))
+          .append("\" to \"username field\" in the \"").append(pageName).append("\" page\n");
+      sb.append("    And user type value \"").append(params.value("password"))
+          .append("\" to \"password field\" in the \"").append(pageName).append("\" page\n");
+      sb.append("    And user click the \"button login\" in the \"").append(pageName).append("\" page\n");
+      return sb.toString();
+    }
+    if (lower.contains("search")) {
+      sb.append("    When user type value \"").append(params.value("query"))
+          .append("\" to \"search field\" in the \"").append(pageName).append("\" page\n");
+      sb.append("    And user click the \"button search\" in the \"").append(pageName).append("\" page\n");
+      return sb.toString();
+    }
+    sb.append("    When user type value \"").append(params.value("value"))
+        .append("\" to \"input field\" in the \"").append(pageName).append("\" page\n");
+    sb.append("    And user click the \"button submit\" in the \"").append(pageName).append("\" page\n");
+    return sb.toString();
   }
 
   // ── SQL scenario steps ────────────────────────────────────────────────────
@@ -470,35 +468,20 @@ public class TestPlanSkill implements AgentSkill<TestPlanSkill.Input, String> {
       points += usesRequestSpec ? 20 : 0;
     }
 
-    // 3. UserAction for UI
+    // 3. UI interaction shape
     if ("ui".equals(slice)) {
       total += 20;
       boolean usesAction = feature.contains("user do \"") && feature.contains("in \"") && feature.contains("page");
-      points += usesAction ? 20 : 10; // partial credit if using base steps
+      boolean usesBuiltInUi = feature.contains("user type value \"")
+          || feature.contains("user click the \"")
+          || feature.contains("user should see \"");
+      points += (usesAction || usesBuiltInUi) ? 20 : 0;
     }
 
     // 4. Generated support artifacts (request spec, action files)
     if (!artifacts.isEmpty()) { total += 20; points += 20; }
 
     return total == 0 ? 100 : (points * 100 / total);
-  }
-
-  private int countBuiltInLines(String feature) {
-    return (int) Arrays.stream(feature.split("\n"))
-        .filter(l -> (l.trim().startsWith("Given") || l.trim().startsWith("When")
-            || l.trim().startsWith("Then") || l.trim().startsWith("And"))
-            && !l.contains("# MISSING"))
-        .count();
-  }
-
-  private int countStepLines(String feature) {
-    return (int) Arrays.stream(feature.split("\n"))
-        .filter(l -> {
-          String t = l.trim();
-          return t.startsWith("Given") || t.startsWith("When")
-              || t.startsWith("Then") || t.startsWith("And");
-        })
-        .count();
   }
 
   private int countMissing(String feature) {
@@ -598,6 +581,12 @@ public class TestPlanSkill implements AgentSkill<TestPlanSkill.Input, String> {
   }
 
   private record UiActionParameters(List<String> columns, List<String> values) {
+    String value(String column) {
+      int index = columns.indexOf(column);
+      if (index < 0) return values.isEmpty() ? "" : values.get(0);
+      return values.get(index);
+    }
+
     String toFeatureTable(int spaces) {
       String indent = " ".repeat(spaces);
       StringBuilder table = new StringBuilder(indent).append("|key|value|");

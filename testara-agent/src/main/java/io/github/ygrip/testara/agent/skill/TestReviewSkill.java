@@ -1,5 +1,6 @@
 package io.github.ygrip.testara.agent.skill;
 
+import io.github.ygrip.testara.agent.catalog.StepLinker;
 import io.github.ygrip.testara.agent.flavor.FlavorEntry;
 import io.github.ygrip.testara.agent.index.*;
 import io.github.ygrip.testara.agent.knowledge.FrameworkKnowledgeStore;
@@ -46,8 +47,10 @@ public class TestReviewSkill implements AgentSkill<Path, String> {
     findings.addAll(suggestScenarioOutlines(features));
 
     // Phase 6: flavor score using built-in step catalog
-    List<FlavorEntry> flavorSteps = context.profile().flavorSteps();
-    FlavorScore flavorScore = computeFlavorScore(features, flavorSteps);
+    TestaraProjectProfile profile = context.profile();
+    List<FlavorEntry> flavorSteps = profile != null ? profile.flavorSteps() : List.of();
+    List<StepDefinitionIndex> projectSteps = profile != null ? profile.stepDefinitions() : List.of();
+    FlavorScore flavorScore = computeFlavorScore(features, flavorSteps, projectSteps);
     findings.addAll(flavorScore.migratableFindings());
 
     return renderMarkdown(findings, resolvedTarget, features, flavorScore);
@@ -60,28 +63,29 @@ public class TestReviewSkill implements AgentSkill<Path, String> {
     int score() { return total == 0 ? 100 : builtIn * 100 / total; }
   }
 
-  private FlavorScore computeFlavorScore(List<FeatureIndex> features, List<FlavorEntry> catalog) {
+  private FlavorScore computeFlavorScore(List<FeatureIndex> features, List<FlavorEntry> catalog,
+      List<StepDefinitionIndex> projectSteps) {
     int total = 0, builtIn = 0, migratable = 0;
     List<ReviewFinding> findings = new ArrayList<>();
+    List<FlavorEntry> effectiveCatalog = catalog.isEmpty()
+        ? FrameworkKnowledgeStore.instance().flavorCatalog() : catalog;
 
     for (FeatureIndex feature : features) {
-      for (ScenarioIndex scenario : feature.scenarios()) {
+      for (ScenarioIndex scenario : scenariosWithBackground(feature)) {
         for (StepIndex step : scenario.steps()) {
           total++;
-          String stepText = step.keyword() + " " + step.text();
-          // Merge project-level catalog with the bundled framework catalog
-          List<FlavorEntry> effectiveCatalog = catalog.isEmpty()
-              ? FrameworkKnowledgeStore.instance().flavorCatalog() : catalog;
-          boolean isBuiltIn = effectiveCatalog.stream()
-              .anyMatch(e -> matchesFlavorStep(stepText, e));
-          if (isBuiltIn) {
+          StepLinker.Link link = StepLinker.linkFeature(step.keyword() + " " + step.text(),
+                  effectiveCatalog, projectSteps).stream()
+              .findFirst()
+              .orElse(new StepLinker.Link(0, step.keyword(), step.text(), StepLinker.Source.UNMATCHED, "", ""));
+          if (link.source() == StepLinker.Source.BUILT_IN) {
             builtIn++;
-          } else {
+          } else if (link.source() == StepLinker.Source.UNMATCHED) {
             // Check if any flavor step COULD replace this generic step
             String generic = detectGenericPattern(step.text());
             if (generic != null) {
               migratable++;
-              FlavorEntry suggested = catalog.stream()
+              FlavorEntry suggested = effectiveCatalog.stream()
                   .filter(e -> e.capability().contains(generic))
                   .findFirst().orElse(null);
               findings.add(new ReviewFinding(ReviewSeverity.INFO,
@@ -99,25 +103,13 @@ public class TestReviewSkill implements AgentSkill<Path, String> {
     return new FlavorScore(total, builtIn, migratable, custom, List.copyOf(findings));
   }
 
-  // Step patterns are loaded from the bundled catalog; never hardcoded here.
-  private static final List<java.util.regex.Pattern> BUILT_IN_PATTERNS =
-      FrameworkKnowledgeStore.instance().uiStepPatterns();
-
-  private boolean matchesFlavorStep(String stepText, FlavorEntry entry) {
-    String lower = stepText.toLowerCase();
-    // Check the bundled catalog patterns first (covers all slices from build-time scan)
-    if (BUILT_IN_PATTERNS.stream().anyMatch(p -> p.matcher(lower).matches())) return true;
-    // Then check the project-level runtime catalog entry
-    try {
-      String expr = entry.expression()
-          .replace("(.+)", ".*").replace("(\\w+)", "\\w+")
-          .replace("(\\d+)", "\\d+").replace("\"([^\"]*)\"", "\"[^\"]*\"")
-          .replace("([^\"]*)", "[^\"]*").replaceAll("\\(\\|[^)]+\\)", "[^\\s]+")
-          .replaceAll("\\\\", "");
-      return stepText.toLowerCase().matches("(?i).*" + expr.toLowerCase() + ".*");
-    } catch (Exception e) {
-      return false;
-    }
+  private List<ScenarioIndex> scenariosWithBackground(FeatureIndex feature) {
+    if (feature.backgroundSteps().isEmpty()) return feature.scenarios();
+    List<ScenarioIndex> scenarios = new ArrayList<>();
+    scenarios.add(new ScenarioIndex("Background", ScenarioType.BACKGROUND, List.of(),
+        feature.backgroundSteps(), List.of()));
+    scenarios.addAll(feature.scenarios());
+    return scenarios;
   }
 
   private String detectGenericPattern(String stepText) {

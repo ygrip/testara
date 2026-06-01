@@ -3,6 +3,7 @@ package io.github.ygrip.testara.agent.skill;
 import io.github.ygrip.testara.agent.catalog.RuntimeCatalogEntry;
 import io.github.ygrip.testara.agent.flavor.FlavorEntry;
 import io.github.ygrip.testara.agent.index.TestaraProjectProfile;
+import io.github.ygrip.testara.agent.knowledge.FrameworkKnowledgeStore;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -46,14 +47,17 @@ public class TestaraContextSkill implements AgentSkill<Void, String> {
     // Count missing required config
     long missingCount = prefixCoverage.values().stream().filter(v -> !v).count();
 
+    List<FlavorEntry> flavorSteps = effectiveFlavorSteps(profile);
+
     if (concise) {
-      return renderConcise(profile, activeSlices, configuredProps, prefixCoverage, missingCount);
+      return renderConcise(profile, activeSlices, configuredProps, prefixCoverage, missingCount, flavorSteps);
     }
-    return renderFull(profile, activeSlices, configuredProps, prefixCoverage, missingCount);
+    return renderFull(profile, activeSlices, configuredProps, prefixCoverage, missingCount, flavorSteps);
   }
 
   private String renderConcise(TestaraProjectProfile profile, Set<String> slices,
-      Map<String, String> props, Map<String, Boolean> coverage, long missing) {
+      Map<String, String> props, Map<String, Boolean> coverage, long missing,
+      List<FlavorEntry> flavorSteps) {
     StringBuilder sb = new StringBuilder();
     sb.append("project-root: ").append(profile.projectRoot()).append("\n");
     sb.append("slices: ").append(String.join(", ", slices)).append("\n");
@@ -65,7 +69,7 @@ public class TestaraContextSkill implements AgentSkill<Void, String> {
           .map(t -> t.tag() + "(" + t.scenarioCount() + ")")
           .collect(Collectors.joining(", "))).append("\n");
     }
-    sb.append("flavor-steps: ").append(profile.flavorSteps().size()).append(" | ");
+    sb.append("flavor-steps: ").append(flavorSteps.size()).append(" | ");
     sb.append("commands: ").append(profile.commands().size()).append(" | ");
     sb.append("validations: ").append(profile.validations().size()).append("\n");
     sb.append("config-keys: ").append(props.size()).append(" | missing-config-blocks: ").append(missing).append("\n");
@@ -75,10 +79,12 @@ public class TestaraContextSkill implements AgentSkill<Void, String> {
           .map(Map.Entry::getKey).forEach(p -> sb.append(p).append(" "));
       sb.append("\n");
     }
-    if (!profile.flavorSteps().isEmpty()) {
-      sb.append("sample-steps:\n");
-      profile.flavorSteps().stream().limit(8)
-          .forEach(s -> sb.append("- ").append(s.keyword()).append(" ").append(s.example()).append("\n"));
+    if (!flavorSteps.isEmpty()) {
+      sb.append("step-counts: ").append(stepCounts(flavorSteps)).append("\n");
+      sb.append("top-step-patterns:\n");
+      representativeSteps(flavorSteps, 10)
+          .forEach(s -> sb.append("- [").append(s.slice()).append("] ")
+              .append(s.keyword()).append(" ").append(s.expression()).append("\n"));
     }
     sb.append("properties() command: available for env-specific values\n");
     sb.append("prop(key) = alias for properties(key)");
@@ -86,7 +92,8 @@ public class TestaraContextSkill implements AgentSkill<Void, String> {
   }
 
   private String renderFull(TestaraProjectProfile profile, Set<String> slices,
-      Map<String, String> props, Map<String, Boolean> coverage, long missing) {
+      Map<String, String> props, Map<String, Boolean> coverage, long missing,
+      List<FlavorEntry> flavorSteps) {
     StringBuilder sb = new StringBuilder();
     sb.append("# Testara Runtime Context\n\n");
     sb.append("**Project root:** `").append(profile.projectRoot()).append("`\n");
@@ -99,7 +106,7 @@ public class TestaraContextSkill implements AgentSkill<Void, String> {
 
     sb.append("## Available Catalog\n\n");
     sb.append("| Resource | Count |\n|----------|-------|\n");
-    sb.append("| Flavor steps | ").append(profile.flavorSteps().size()).append(" |\n");
+    sb.append("| Flavor steps | ").append(flavorSteps.size()).append(" |\n");
     sb.append("| Commands | ").append(profile.commands().size()).append(" |\n");
     sb.append("| Validations | ").append(profile.validations().size()).append(" |\n");
     sb.append("| Config keys present | ").append(props.size()).append(" |\n\n");
@@ -109,6 +116,16 @@ public class TestaraContextSkill implements AgentSkill<Void, String> {
     coverage.forEach((prefix, present) ->
         sb.append("| `").append(prefix).append("` | ").append(present ? "✓ configured" : "✗ missing").append(" |\n"));
     sb.append("\n");
+
+    if (!flavorSteps.isEmpty()) {
+      sb.append("## Built-in Step Reference (sample)\n\n");
+      sb.append("Counts: ").append(stepCounts(flavorSteps)).append("\n\n");
+      representativeSteps(flavorSteps, 20)
+          .forEach(s -> sb.append("- `[").append(s.slice()).append("] ")
+              .append(s.keyword()).append(" ").append(s.expression()).append("` — ")
+              .append(s.className()).append("\n"));
+      sb.append("\nUse `testara_guide section=steps` for grouped built-in step patterns.\n\n");
+    }
 
     if (!profile.commands().isEmpty()) {
       sb.append("## Commands (top 10)\n\n");
@@ -146,5 +163,36 @@ public class TestaraContextSkill implements AgentSkill<Void, String> {
       }
     }
     return props;
+  }
+
+  private List<FlavorEntry> effectiveFlavorSteps(TestaraProjectProfile profile) {
+    if (profile != null && !profile.flavorSteps().isEmpty()) return profile.flavorSteps();
+    return FrameworkKnowledgeStore.instance().flavorCatalog();
+  }
+
+  private String stepCounts(List<FlavorEntry> steps) {
+    return steps.stream()
+        .collect(Collectors.groupingBy(FlavorEntry::slice, LinkedHashMap::new, Collectors.counting()))
+        .entrySet().stream()
+        .map(e -> e.getKey() + "=" + e.getValue())
+        .collect(Collectors.joining(", "));
+  }
+
+  private List<FlavorEntry> representativeSteps(List<FlavorEntry> steps, int limit) {
+    List<String> priority = List.of("using", "open", "is in", "type value {string} to {string} in the", "click the {string} in the",
+        "should see", "process request", "statusCode", "connect", "start kafka", "assign previous");
+    List<FlavorEntry> prioritized = priority.stream()
+        .map(p -> steps.stream()
+            .filter(e -> e.expression().toLowerCase(Locale.ROOT).contains(p.toLowerCase(Locale.ROOT)))
+            .findFirst()
+            .orElse(null))
+        .filter(e -> e != null)
+        .toList();
+    return java.util.stream.Stream.concat(prioritized.stream(), steps.stream())
+        .collect(Collectors.toMap(e -> e.slice() + " " + e.keyword() + " " + e.expression(), e -> e,
+            (a, b) -> a, LinkedHashMap::new))
+        .values().stream()
+        .limit(limit)
+        .toList();
   }
 }

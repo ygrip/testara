@@ -25,6 +25,7 @@ properties -> command conversion -> config binding -> base steps -> request spec
 - UI navigation: every `When user open "X" page` MUST be immediately followed by `Then user is in "X" page`. This pair establishes the current page context in the Testara engine — steps that interact with page elements (click, type, see) will fail without it.
 - UI UserAction classes must be top-level classes under `src/main/java/{basePackage}/action`, annotated with `@OnPage`, and must extend `UserAction` directly. Do not generate wrapper classes with nested `static class ... extends UserAction`; the action scanner expects discoverable top-level action classes.
 - UI cross-page/global actions: if an action is intentionally callable from multiple pages, keep it in a top-level `UserAction` class and annotate the method with `@Action(value = "action name", allowAnonymousCall = true)`. Do not use nested classes to model cross-page access.
+- Bootstrap artifacts: prefer `testara_bootstrap` for Page, UserAction, Command, Validation, API config, and request-spec skeletons. It writes correct packages/imports/scan-location hints when `write=true` and previews the same artifacts when `write=false`.
 - DB/Kafka/Elastic: use built-in steps and exact property prefixes (`sql.service`, `mongo.service`, `kafka.service`, `elasticsearch.service`).
 - DataTables: use `| key | value |` for map-shaped queries/params; use horizontal rows for records/templates/validations.
 - Scan locations must include `io.github.ygrip.testara` and singular project packages: `.command`, `.validation`, `.page`, `.action`.
@@ -57,7 +58,10 @@ properties -> command conversion -> config binding -> base steps -> request spec
 - DB slice: `testara-database` compile; `testara-database-cucumber` test.
 - Kafka slice: `testara-streaming` compile; `testara-streaming-cucumber` test.
 - Elastic slice: `testara-elastic` compile; `testara-elastic-cucumber` test.
-- Generated POM has two Maven profiles: `junit4` (default, uses `surefire-junit47` + `testara-reporter-plugin`) and `junit5` (opt-in, uses `includeJUnit5Engines: testara-cucumber`). Run with `mvn verify` (junit4) or `mvn verify -P junit5`.
+- Generated POM has two Maven profiles: `junit4` (default, uses `surefire-junit47` + `testara-reporter-plugin`) and `junit5` (opt-in, uses `includeJUnit5Engines: testara-cucumber`). Run with `mvn verify` (junit4) or `mvn verify -P junit5`. Maven itself must run on Java 21+ (`mvn -version`); generated POMs enforce this in `validate` so the reporter plugin cannot fail late after tests pass.
+- MCP UI artifact generation: call `testara_ui` with `mode=page`, `mode=action`, or `mode=config`. `mode=action` is enabled in MCP and returns a top-level `UserAction` file preview plus the key/value feature step. If `write=true` returns `write_disabled`, the capability exists; rerun with `write=false` for source preview or enable `TESTARA_AGENT_WRITE_ENABLED=true` in a trusted local session.
+- Selector validation: after generating a Page class, call `testara_ui mode=validate-page pageName={page} htmlSnapshot=<rendered HTML>` to statically check `Locator.id/css/xpath` entries. Static validation supports `id`, `#id`, `.class`, and `[data-test='...']`; XPath is reported as unchecked and should be validated in a browser/runtime.
+- Debugging failed steps: call `testara_debug` with `failedStep` and/or a stack trace/report `snippet`. It classifies unmatched step text, selector/visibility, page context/session, scan-location, and runner/Java mismatch causes before changing code.
 
 ## DataTable format rules
 TransformerService processes DataTables. The required format depends on the target output type.
@@ -152,6 +156,12 @@ Valid browsers: `chrome`, `firefox`, `safari`, `edge`. Valid platforms: `desktop
 
 ## UserAction class — imports and interactions
 
+Verified in Testara 2.0.5 artifacts:
+`io.github.ygrip.testara.ui.interaction.Enter`, `Click`, `Clear`, `Scroll`, `WaitUntil`,
+`SelectOption`, `Navigate`, `SeeThat`, and `io.github.ygrip.testara.ui.page.NamedPage` exist.
+Use only public fluent factories shown below; do not invent Screenplay helper classes or direct
+`UserAction` methods that are not listed here.
+
 Correct imports (all from `testara-ui`):
 ```java
 import io.github.ygrip.testara.ui.model.Action;        // @Action annotation
@@ -165,7 +175,10 @@ import io.github.ygrip.testara.ui.interaction.WaitUntil;
 import io.github.ygrip.testara.ui.interaction.SelectOption;
 import io.github.ygrip.testara.ui.interaction.Navigate;
 import io.github.ygrip.testara.ui.interaction.SeeThat;
+import io.github.ygrip.testara.ui.page.NamedPage;
 ```
+
+`UserAction` does not expose `type()`, `click()`, `enter()`, or Selenium-style helper methods. Use `attemptsTo(Interaction...)` with the interaction classes above, or use `findElement`, `clearText`, and `capability(...)` only for advanced custom logic.
 
 Available interaction classes for use inside `attemptsTo(...)`:
 - `Enter.text("value").into("element name")`
@@ -178,6 +191,23 @@ Available interaction classes for use inside `attemptsTo(...)`:
 - `SeeThat.visible("element name")`
 - `SeeThat.containsText("text").on("element name")`
 - `SeeThat.page(NamedPage.of("page name"))`
+
+Minimal compile-safe action:
+```java
+@OnPage(value = {LoginPage.class})
+public class LoginActions extends UserAction {
+  @Action("login with credentials")
+  public void loginWithCredentials(Map<String, Object> params) {
+    attemptsTo(
+        Enter.text(String.valueOf(params.get("username"))).into("username field"),
+        Enter.text(String.valueOf(params.get("password"))).into("password field"),
+        Click.on("button login"),
+        WaitUntil.visible("inventory list"),
+        SeeThat.visible("inventory list")
+    );
+  }
+}
+```
 
 ## Built-in step usage
 - API: use `[api]` steps for service selection, headers/cookies/path/query/form/body setup, request execution, response assignment, status/success/error assertions, response-time assertions, and load-test flows.

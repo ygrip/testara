@@ -207,6 +207,7 @@ public class TestInitSkill implements AgentSkill<TestInitSkill.Input, String> {
     }
 
     sb.append("## Next steps\n\n");
+    sb.append("Maven must run with Java 21+ (`mvn -version`) because Testara and the reporter plugin are built for Java 21.\n\n");
     sb.append("1. Generate a test plan:  \n");
     sb.append("   `testara-agent test-plan 'describe what to test' --write`\n\n");
     sb.append("2. Run the tests:  \n");
@@ -238,6 +239,7 @@ public class TestInitSkill implements AgentSkill<TestInitSkill.Input, String> {
     StringBuilder sb = new StringBuilder();
     sb.append("# Testara Init: ").append(type.toUpperCase(Locale.ROOT)).append(" Project\n\n");
     sb.append(integrate ? "> Integration mode\n\n" : "> Bootstrap mode\n\n");
+    sb.append("> Maven must run with Java 21+ (`mvn -version`). The generated POM enforces this before tests/reporter run.\n\n");
 
     sb.append("## pom.xml\n\n```xml\n").append(generateFullPom(type, groupId, artifactId, basePkg, engine, root)).append("```\n\n");
     sb.append("## log4j2.xml\n\n```xml\n").append(generateLog4j2Config(basePkg)).append("```\n\n");
@@ -306,6 +308,7 @@ public class TestInitSkill implements AgentSkill<TestInitSkill.Input, String> {
             <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
             <testara.version>%s</testara.version>
             <failsafe.version>3.5.1</failsafe.version>
+            <maven.enforcer.version>3.5.0</maven.enforcer.version>
             <lombok.version>1.18.42</lombok.version>
             <junit-platform.version>1.11.4</junit-platform.version>
             <jvm.options>
@@ -448,6 +451,28 @@ public class TestInitSkill implements AgentSkill<TestInitSkill.Input, String> {
 
           <build>
             <plugins>
+              <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-enforcer-plugin</artifactId>
+                <version>${maven.enforcer.version}</version>
+                <executions>
+                  <execution>
+                    <id>require-java-21-for-testara</id>
+                    <phase>validate</phase>
+                    <goals>
+                      <goal>enforce</goal>
+                    </goals>
+                    <configuration>
+                      <rules>
+                        <requireJavaVersion>
+                          <version>[21,)</version>
+                          <message>Testara ${testara.version} and testara-reporter-plugin require Maven to run with Java 21+. Check mvn -version and set JAVA_HOME to a JDK 21 installation.</message>
+                        </requireJavaVersion>
+                      </rules>
+                    </configuration>
+                  </execution>
+                </executions>
+              </plugin>
               <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
