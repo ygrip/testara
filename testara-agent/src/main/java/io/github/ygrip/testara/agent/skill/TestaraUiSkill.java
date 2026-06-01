@@ -8,6 +8,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Locale;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 /**
@@ -18,7 +19,12 @@ import java.util.stream.Collectors;
  */
 public class TestaraUiSkill implements AgentSkill<TestaraUiSkill.Input, String> {
 
-  public record Input(String mode, String pageName, String actionName, String engine, String basePackage) {}
+  public record Input(String mode, String pageName, String actionName, String engine, String basePackage,
+      String htmlSnapshot) {
+    public Input(String mode, String pageName, String actionName, String engine, String basePackage) {
+      this(mode, pageName, actionName, engine, basePackage, null);
+    }
+  }
 
   @Override
   public String name() { return "testara-ui"; }
@@ -34,6 +40,8 @@ public class TestaraUiSkill implements AgentSkill<TestaraUiSkill.Input, String> 
       case "page"    -> generatePage(input.pageName(), input.engine(), basePkg, context.projectRoot(), write, concise);
       case "action"  -> generateAction(input.pageName(), input.actionName(), basePkg, context.projectRoot(), write, concise);
       case "config"  -> generateUiConfig(input.engine(), basePkg, concise);
+      case "validate-page", "validate" -> validatePage(input.pageName(), basePkg, context.projectRoot(),
+          input.htmlSnapshot(), concise);
       default        -> explainUi(concise);
     };
   }
@@ -65,13 +73,16 @@ public class TestaraUiSkill implements AgentSkill<TestaraUiSkill.Input, String> 
           import io.github.ygrip.testara.ui.interaction.Click;
           import io.github.ygrip.testara.ui.interaction.Enter;
           import io.github.ygrip.testara.ui.interaction.Clear;
+          import io.github.ygrip.testara.ui.interaction.Scroll;
           import io.github.ygrip.testara.ui.interaction.SeeThat;
           import io.github.ygrip.testara.ui.interaction.WaitUntil;
           import io.github.ygrip.testara.ui.interaction.SelectOption;
           import io.github.ygrip.testara.ui.interaction.Navigate;
+          import io.github.ygrip.testara.ui.page.NamedPage;
 
           ## Interactions inside attemptsTo(...) — auto-populated from testara-ui source
           """ + buildInteractionList() + """
+          Do not call nonexistent UserAction helpers such as type(), click(), or enter().
           """;
     }
     return """
@@ -93,9 +104,9 @@ public class TestaraUiSkill implements AgentSkill<TestaraUiSkill.Input, String> 
           private static final Locator ERROR_MESSAGE = Locator.css("[data-test='error']");
         }
         ```
-        URL in properties:
+        URL set in application.properties (or application-{env}.properties):
         ```properties
-        web.page.desktop.login.url=${APP_WEB_LOGIN_URL:http://localhost:3000/login}
+        web.page.desktop.login.url=https://yoursite.com/login
         ```
 
         ## UserAction class
@@ -124,6 +135,8 @@ public class TestaraUiSkill implements AgentSkill<TestaraUiSkill.Input, String> 
         Do not wrap multiple page actions in an outer class with nested static UserAction classes; nested actions are not the Testara pattern.
         If an action is intentionally shared across pages, keep it top-level and use
         `@Action(value = "action name", allowAnonymousCall = true)`.
+        Do not call nonexistent `type()`, `click()`, or `enter()` helper methods on UserAction;
+        put `Enter.text(...)`, `Click.on(...)`, `WaitUntil...`, and `SeeThat...` inside `attemptsTo(...)`.
         """;
   }
 
@@ -139,6 +152,14 @@ public class TestaraUiSkill implements AgentSkill<TestaraUiSkill.Input, String> 
         : "io.github.ygrip.testara.ui.selenium.page.SeleniumPage";
     String locators = pageLocators(pName);
 
+    // application.properties (or application-{env}.properties): one entry per DeviceType in @Page platforms
+    // Generated page declares {DeviceType.DEFAULT, DeviceType.DESKTOP} — generate both
+    List<String> pageUrlEntries = List.of(
+        "web.page.default." + pName + ".url=http://localhost:3000/" + pName,
+        "web.page.desktop." + pName + ".url=http://localhost:3000/" + pName
+    );
+    String pageUrlEntry = String.join("\n", pageUrlEntries); // display block
+
     String source = """
         package %s.page;
 
@@ -149,17 +170,17 @@ public class TestaraUiSkill implements AgentSkill<TestaraUiSkill.Input, String> 
 
         /**
          * Page: %s
-         * URL configured via: web.page.desktop.%s.url=${APP_WEB_%s_URL:http://localhost:3000/%s}
-         * Element names are resolved from Locator field names, e.g. USERNAME_FIELD -> "username field".
+         * Add to application.properties (or application-{env}.properties) — one per platform:
+         *   web.page.default.%s.url=https://your-site.com/%s
+         *   web.page.desktop.%s.url=https://your-site.com/%s
+         * Element names resolve from Locator field names, e.g. USERNAME_FIELD -> "username field".
          */
         @Page(name = "%s", url = "", platforms = {DeviceType.DEFAULT, DeviceType.DESKTOP})
         public class %s extends %s {
         %s
         }
-        """.formatted(basePkg, pageBaseImport, pageName, pName, toEnvKey(pName), pName, pName, pClass, pageBaseClass, locators);
+        """.formatted(basePkg, pageBaseImport, pageName, pName, pName, pName, pName, pName, pClass, pageBaseClass, locators);
 
-    String propEntry = "web.page.desktop." + pName + ".url=${APP_WEB_" + toEnvKey(pName)
-        + "_URL:http://localhost:3000/" + pName + "}";
     String relativePath = "src/main/java/" + pkgPath + "/page/" + pClass + ".java";
     boolean hasTodo = locators.contains("TODO");
     String todoWarning = hasTodo
@@ -171,18 +192,24 @@ public class TestaraUiSkill implements AgentSkill<TestaraUiSkill.Input, String> 
         Path target = root.resolve(relativePath);
         Files.createDirectories(target.getParent());
         Files.writeString(target, source, StandardCharsets.UTF_8);
-        return concise ? "written: " + relativePath + "\nadd to application.properties:\n" + propEntry + todoWarning
-            : "## Page Written\n\n`" + relativePath + "`\n\n```java\n" + source + "```\n\n**Add to application.properties:**\n```properties\n" + propEntry + "\n```\n" + (hasTodo ? "\n> **Next:** replace `TODO` selectors with actual CSS/XPath selectors from the target app before using UI assertion steps.\n" : "");
+        boolean anyWritten = false;
+        for (String entry : pageUrlEntries) {
+          anyWritten |= appendPropertyIfMissing(root, "src/test/resources/application.properties", entry);
+        }
+        String status = anyWritten ? "updated application.properties" : "application.properties unchanged";
+        return concise ? "written: " + relativePath + "\n" + status + todoWarning
+            : "## Page Written\n\n`" + relativePath + "`\n\n```java\n" + source + "```\n\n**Add to application.properties (" + status + "):**\n```properties\n" + pageUrlEntry + "\n```\n"
+                + (hasTodo ? "\n> **Next:** replace `TODO` selectors with actual CSS/XPath selectors from the target app before using UI assertion steps.\n" : "");
       } catch (IOException e) {
         return "Error: " + e.getMessage();
       }
     }
     if (concise) {
       return "file_path: " + relativePath + "\n"
-          + "add_to_application.properties:\n" + propEntry + todoWarning + "\n"
+          + "add_to_application.properties:\n" + pageUrlEntry + todoWarning + "\n"
           + "```java\n" + source.strip() + "\n```\n";
     }
-    return "## Page: " + pClass + "\n\n**Path:** `" + relativePath + "`\n\n**application.properties:**\n```properties\n" + propEntry + "\n```\n\n```java\n" + source + "```\n"
+    return "## Page: " + pClass + "\n\n**Path:** `" + relativePath + "`\n\n**Add to application.properties (or application-{env}.properties):**\n```properties\n" + pageUrlEntry + "\n```\n\n```java\n" + source + "```\n"
         + (hasTodo ? "\n> **Next:** replace `TODO` selectors with real DOM selectors before using UI assertion steps.\n" : "")
         + "\n> Write the source block to `" + relativePath + "` and add the properties entry above.";
   }
@@ -246,12 +273,115 @@ public class TestaraUiSkill implements AgentSkill<TestaraUiSkill.Input, String> 
         + "\n> Write the source block to `" + relativePath + "`.";
   }
 
+  private boolean appendPropertyIfMissing(Path root, String relPath, String propertyLine) throws IOException {
+    Path target = root.resolve(relPath);
+    Files.createDirectories(target.getParent());
+    String content = Files.exists(target)
+        ? Files.readString(target, StandardCharsets.UTF_8)
+        : "";
+    if (content.lines().anyMatch(line -> line.strip().startsWith(propertyLine.split("=")[0].strip() + "="))) {
+      return false; // key already present
+    }
+    String separator = content.isBlank() || content.endsWith("\n") ? "" : "\n";
+    Files.writeString(target, content + separator + propertyLine + "\n", StandardCharsets.UTF_8);
+    return true;
+  }
+
+  private String validatePage(String pageName, String basePkg, Path root, String htmlSnapshot, boolean concise) {
+    if (pageName == null || pageName.isBlank()) {
+      return "needs_input: testara_ui_validate_page\nask_user: pageName is required for selector validation.";
+    }
+    String pClass = toClassName(pageName) + "Page";
+    Path pageFile = root.resolve("src/main/java/" + basePkg.replace('.', '/') + "/page/" + pClass + ".java");
+    if (!Files.exists(pageFile)) {
+      return "not_found: " + root.relativize(pageFile)
+          + "\nhint: generate the page first with testara_ui mode=page pageName=" + toPropertyKey(pageName);
+    }
+    try {
+      String source = Files.readString(pageFile, StandardCharsets.UTF_8);
+      List<SelectorRef> selectors = selectorRefs(source);
+      StringBuilder sb = new StringBuilder();
+      sb.append(concise ? "selector-validation:\n" : "## Selector Validation\n\n");
+      sb.append("page: ").append(toPropertyKey(pageName)).append("\n");
+      sb.append("file: ").append(root.relativize(pageFile)).append("\n");
+      sb.append("selectors: ").append(selectors.size()).append("\n");
+      if (htmlSnapshot == null || htmlSnapshot.isBlank()) {
+        sb.append("status: needs_html_snapshot\n");
+        sb.append("hint: call testara_ui mode=validate-page pageName=").append(toPropertyKey(pageName))
+            .append(" htmlSnapshot=<rendered page HTML> to check selector existence.\n");
+        selectors.forEach(s -> sb.append("- unchecked ").append(s.field()).append(" ")
+            .append(s.kind()).append("=").append(s.value()).append("\n"));
+        return sb.toString();
+      }
+      for (SelectorRef selector : selectors) {
+        SelectorCheck check = checkSelector(selector, htmlSnapshot);
+        sb.append("- ").append(check.status()).append(" ").append(selector.field())
+            .append(" ").append(selector.kind()).append("=").append(selector.value());
+        if (!check.detail().isBlank()) sb.append(" | ").append(check.detail());
+        sb.append("\n");
+      }
+      return sb.toString();
+    } catch (IOException e) {
+      return "error: " + e.getMessage();
+    }
+  }
+
+  private List<SelectorRef> selectorRefs(String source) {
+    Pattern fieldPattern = Pattern.compile("private\\s+static\\s+final\\s+Locator\\s+(\\w+)\\s*=\\s*Locator\\.(id|css|xpath)\\(\"([^\"]*)\"\\)");
+    return fieldPattern.matcher(source).results()
+        .map(m -> new SelectorRef(m.group(1), m.group(2), m.group(3)))
+        .toList();
+  }
+
+  private SelectorCheck checkSelector(SelectorRef selector, String html) {
+    if ("TODO".equalsIgnoreCase(selector.value())) {
+      return new SelectorCheck("missing", "replace TODO with an actual selector from the target DOM");
+    }
+    return switch (selector.kind()) {
+      case "id" -> containsAttribute(html, "id", selector.value())
+          ? new SelectorCheck("found", "")
+          : new SelectorCheck("missing", "no id=\"" + selector.value() + "\" found");
+      case "css" -> checkCssSelector(selector.value(), html);
+      case "xpath" -> new SelectorCheck("unchecked", "xpath requires browser/runtime validation");
+      default -> new SelectorCheck("unchecked", "unsupported selector kind");
+    };
+  }
+
+  private SelectorCheck checkCssSelector(String css, String html) {
+    var dataTest = Pattern.compile("\\[data-test=['\"]([^'\"]+)['\"]\\]").matcher(css);
+    if (dataTest.find()) {
+      String value = dataTest.group(1);
+      return containsAttribute(html, "data-test", value)
+          ? new SelectorCheck("found", "")
+          : new SelectorCheck("missing", "no data-test=\"" + value + "\" found");
+    }
+    if (css.startsWith("#")) {
+      String id = css.substring(1);
+      return containsAttribute(html, "id", id)
+          ? new SelectorCheck("found", "")
+          : new SelectorCheck("missing", "no id=\"" + id + "\" found");
+    }
+    if (css.startsWith(".")) {
+      String className = css.substring(1);
+      return Pattern.compile("class=['\"][^'\"]*\\b" + Pattern.quote(className) + "\\b[^'\"]*['\"]")
+          .matcher(html).find()
+          ? new SelectorCheck("found", "")
+          : new SelectorCheck("missing", "no class containing \"" + className + "\" found");
+    }
+    return new SelectorCheck("unchecked", "provide id, .class, #id, or [data-test='...'] selector for static validation");
+  }
+
+  private boolean containsAttribute(String html, String attr, String value) {
+    return Pattern.compile("\\b" + Pattern.quote(attr) + "=['\"]" + Pattern.quote(value) + "['\"]")
+        .matcher(html).find();
+  }
+
   private static String buildInteractionList() {
     List<String> examples = FrameworkKnowledgeStore.instance().uiInteractionExamples();
     if (examples.isEmpty()) {
       // Fallback when catalog not yet generated (first build before process-classes runs)
       return "Enter.text(\"value\").into(\"element\")  Click.on(\"element\")\n"
-           + "Clear.field(\"element\")  WaitUntil.visible(\"element\")\n"
+           + "Clear.field(\"element\")  Scroll.to(\"element\").andAlignToTop()  WaitUntil.visible(\"element\")\n"
            + "SeeThat.visible(\"element\")  Navigate.to(NamedPage.of(\"page\"))\n";
     }
     return examples.stream()
@@ -417,4 +547,7 @@ public class TestaraUiSkill implements AgentSkill<TestaraUiSkill.Input, String> 
       return value + " ".repeat(length - value.length());
     }
   }
+
+  private record SelectorRef(String field, String kind, String value) {}
+  private record SelectorCheck(String status, String detail) {}
 }
