@@ -77,6 +77,8 @@ class TestaraUiSkillTest {
     assertTrue(output.contains("class.loader.default-scan-locations=io.github.ygrip.testara,io.github.ygrip.automation"));
     assertTrue(output.contains("selenium.driver.page-scan-locations=io.github.ygrip.testara,io.github.ygrip.automation"));
     assertTrue(output.contains("selenium.driver.action-scan-locations=io.github.ygrip.testara,io.github.ygrip.automation"));
+    assertTrue(output.contains("selenium.driver.headless=false"));
+    assertFalse(output.contains("selenium.driver.headless=true"));
   }
 
   private AgentContext context() {

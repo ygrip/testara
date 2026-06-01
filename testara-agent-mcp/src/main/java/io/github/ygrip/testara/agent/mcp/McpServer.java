@@ -157,7 +157,8 @@ public class McpServer {
         requiredStr("input", "Natural-language test run request"),
         optionalBool("dryRun", "Show plan only — default true"),
         optionalBool("execute", "Actually execute Maven — default false"),
-        optionalStr("module", "Restrict to Maven module")));
+        optionalStr("module", "Restrict to Maven module"),
+        optionalStr("projectRoot", "Project root. Required when MCP server was launched outside the workspace (e.g. from home dir).")));
     tools.add(tool("testara_command",    "List project commands, show command detail, or generate a new CommandLogic<T> class. Omit description to list all.",
         optionalStr("description", "Omit to list all commands; 'detail:<name>' for details; or describe a new command to generate"),
         optionalStr("detail", "Command name to show source and usage docs for"),
@@ -177,8 +178,9 @@ public class McpServer {
         optionalStr("slice", "Layer: api, ui, database, streaming, fullstack"),
         optionalStr("domain", "Domain name override")));
     tools.add(tool("testara_guide",      "Return Testara agent guide and generation rules. Call at session start or before generating any artifact.",
-        optionalStr("section", "Rule section to retrieve: properties | request-spec | ui | db | kafka | all (default)")));
-    tools.add(tool("testara_context",    "Return full Testara runtime context — slices installed, config coverage, available steps, commands, validations"));
+        optionalStr("section", "Rule section to retrieve: properties | request-spec | ui | quirks | db | kafka | all (default). Use 'quirks' to get UI runtime quirks before generating UI features.")));
+    tools.add(tool("testara_context",    "Return full Testara runtime context — slices installed, config coverage, available steps, commands, validations",
+        optionalStr("projectRoot", "Project root. Required when MCP server was launched outside the workspace (e.g. from home dir).")));
     tools.add(tool("testara_property",   "Manage property keys — list, suggest key for a value, generate config block, or explain properties() rules",
         optionalStr("mode", "list | suggest | generate | rules"),
         optionalStr("domain", "Domain name for generated keys"),
@@ -201,6 +203,7 @@ public class McpServer {
         optionalStr("mode", "explain | config | feature"),
         optionalStr("name", "Service name (e.g. settlementDb, paymentKafka, catalogElastic)")));
     tools.add(tool("testara_init",       "Bootstrap or integrate a Testara automation project",
+        optionalStr("projectRoot", "Target workspace root. Required for writes when MCP server was launched outside the workspace."),
         optionalStr("type", "api, ui, database, streaming, fullstack"),
         optionalStr("groupId", "Maven groupId. Defaults to io.github.ygrip when omitted."),
         optionalStr("artifactId", "Maven artifactId. Defaults to the project directory name when omitted."),
@@ -208,6 +211,7 @@ public class McpServer {
         optionalStr("engine", "UI engine: selenium, playwright, appium"),
         optionalBool("autoGenerateCoordinates", "Use generated Maven coordinates when groupId/artifactId are omitted. Default false so agents ask first."),
         optionalBool("integrateExisting", "Integrate into existing project"),
+        optionalBool("includeExamples", "Also generate demo sample feature/page/request artifacts. Default false; prefer contextual generation."),
         optionalBool("write", "Create files on disk. Default false."),
         optionalBool("compile", "Run test-compile after writing files. Default true.")));
 
@@ -285,6 +289,7 @@ public class McpServer {
 
   private AgentContext buildContext(String toolName, JsonNode args) {
     Map<String, String> opts = new LinkedHashMap<>();
+    Path effectiveRoot = resolveProjectRoot(args);
     // Secure defaults: no execution, no writes
     opts.put("dryRun", args.path("dryRun").asBoolean(true) ? "true" : "false");
     opts.put("execute", args.path("execute").asBoolean(false) ? "true" : "false");
@@ -300,20 +305,33 @@ public class McpServer {
     if (args.has("autoGenerateCoordinates")) {
       opts.put("autoGenerateCoordinates", args.path("autoGenerateCoordinates").asBoolean(false) ? "true" : "false");
     }
+    if (args.has("includeExamples")) {
+      opts.put("includeExamples", args.path("includeExamples").asBoolean(false) ? "true" : "false");
+    }
+    if (args.has("projectRoot")) opts.put("projectRootExplicit", "true");
 
     AgentMode mode = toolName.equals("testara_run") ? AgentMode.PLAN : AgentMode.READ_ONLY;
 
     LlmConfig cfg = LlmConfig.fromEnv();
     var llm = cfg.hasApiKey() ? new OpenAiLlmClient(cfg) : (io.github.ygrip.testara.agent.llm.LlmClient) new DisabledLlmClient();
-    return new AgentContext(projectRoot, refreshedProfile(), mode, llm, opts);
+    return new AgentContext(effectiveRoot, refreshedProfile(effectiveRoot), mode, llm, opts);
   }
 
-  private TestaraProjectProfile refreshedProfile() {
-    if (!Files.exists(projectRoot.resolve("pom.xml")) && !Files.exists(projectRoot.resolve("build.gradle"))) {
+  private Path resolveProjectRoot(JsonNode args) {
+    if (!args.has("projectRoot") || args.path("projectRoot").asText().isBlank()) return projectRoot;
+    Path requested = Paths.get(args.path("projectRoot").asText());
+    if (!requested.isAbsolute()) requested = projectRoot.resolve(requested);
+    return requested.toAbsolutePath().normalize();
+  }
+
+  private TestaraProjectProfile refreshedProfile(Path root) {
+    if (!Files.exists(root.resolve("pom.xml")) && !Files.exists(root.resolve("build.gradle"))) {
       return profile;
     }
     try {
-      profile = JsonlKnowledgeStore.loadProfile(projectRoot);
+      TestaraProjectProfile refreshed = JsonlKnowledgeStore.loadProfile(root);
+      if (root.equals(projectRoot)) profile = refreshed;
+      return refreshed;
     } catch (Exception e) {
       LOG.fine("Cannot refresh project index: " + e.getMessage());
     }

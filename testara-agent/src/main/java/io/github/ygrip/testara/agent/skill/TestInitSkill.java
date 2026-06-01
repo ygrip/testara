@@ -56,20 +56,41 @@ public class TestInitSkill implements AgentSkill<TestInitSkill.Input, String> {
     boolean integrate = input.integrateExisting();
     boolean write  = "true".equals(context.options().get("write"));
     boolean compile = !"false".equals(context.options().getOrDefault("compile", "true"));
+    boolean includeExamples = "true".equals(context.options().get("includeExamples"));
+    if (write && isUnsafeImplicitRoot(context)) {
+      return """
+          needs_input: testara_init_project_root
+          question: testara_init is about to write files, but the MCP server project root is not a safe workspace target.
+          currentRoot: %s
+          action: call testara_init again with projectRoot set to the intended workspace directory.
+          note: refusing to scaffold into user home or filesystem root.
+          """.formatted(context.projectRoot());
+    }
 
     return write
-        ? applyFiles(type, groupId, artifactId, basePkg, pkgPath, input.engine(), integrate, context.projectRoot(), compile)
-        : renderPreview(type, groupId, artifactId, basePkg, pkgPath, input.engine(), integrate, context.projectRoot());
+        ? applyFiles(type, groupId, artifactId, basePkg, pkgPath, input.engine(), integrate, context.projectRoot(),
+            compile, includeExamples)
+        : renderPreview(type, groupId, artifactId, basePkg, pkgPath, input.engine(), integrate, context.projectRoot(),
+            includeExamples);
+  }
+
+  private boolean isUnsafeImplicitRoot(AgentContext context) {
+    if ("true".equals(context.options().get("projectRootExplicit"))) return false;
+    Path root = context.projectRoot().toAbsolutePath().normalize();
+    Path home = Path.of(System.getProperty("user.home", "")).toAbsolutePath().normalize();
+    return root.equals(home) || root.getParent() == null;
   }
 
   private String coordinatePrompt(Path root, String type, Input input) {
     String defaultArtifact = root.getFileName() != null ? toKebab(root.getFileName().toString()) : "automation";
     return """
         needs_input: testara_init_coordinates
-        question: Choose Maven coordinates for the Testara project.
+        question: Ask the user for their Maven groupId and artifactId before proceeding.
         missing: %s
-        option_manual: ask the user for groupId and artifactId, then call testara_init again with both values.
-        option_auto: call testara_init with autoGenerateCoordinates=true to use groupId=io.github.ygrip and artifactId=%s.
+        instruction: Do NOT guess or auto-generate these values. Ask the user directly.
+        example_groupId: com.example.qa (their company/project Maven group)
+        example_artifactId: %s (the project directory name is a common choice)
+        next_step: call testara_init again with the user-provided groupId and artifactId values.
         current: type=%s, basePackage=%s, engine=%s
         """.formatted(missingCoordinates(input), defaultArtifact, type,
         input.basePackage() == null ? "<auto from coordinates>" : input.basePackage(),
@@ -84,7 +105,7 @@ public class TestInitSkill implements AgentSkill<TestInitSkill.Input, String> {
   // ── Write mode ────────────────────────────────────────────────────────────
 
   private String applyFiles(String type, String groupId, String artifactId, String basePkg, String pkgPath, String engine,
-      boolean integrate, Path root, boolean compile) {
+      boolean integrate, Path root, boolean compile, boolean includeExamples) {
     List<String> created = new ArrayList<>();
     List<String> skipped = new ArrayList<>();
 
@@ -93,7 +114,7 @@ public class TestInitSkill implements AgentSkill<TestInitSkill.Input, String> {
       if (integrate && Files.exists(pom)) {
         skipped.add("pom.xml (existing project — add dependencies manually, see preview)");
       } else if (!Files.exists(pom)) {
-        writeFile(pom, generateFullPom(type, groupId, artifactId, engine, root));
+        writeFile(pom, generateFullPom(type, groupId, artifactId, basePkg, engine, root));
         created.add("pom.xml");
       } else {
         skipped.add("pom.xml (already exists)");
@@ -102,25 +123,25 @@ public class TestInitSkill implements AgentSkill<TestInitSkill.Input, String> {
       mkdirs(root, "src/test/resources/features/" + type);
       mkdirs(root, "src/test/resources/files");
       mkdirs(root, "src/test/resources/validations");
-      mkdirs(root, "src/test/java/" + pkgPath + "/runner");
-      mkdirs(root, "src/test/java/" + pkgPath + "/steps");
       mkdirs(root, "src/main/java/" + pkgPath + "/command");
       mkdirs(root, "src/main/java/" + pkgPath + "/validation");
 
       writeIfAbsent(root, "src/test/resources/configuration.properties",
-          generateProperties(type, basePkg, engine), created, skipped);
+          generateProperties(type, basePkg, engine, includeExamples), created, skipped);
       writeIfAbsent(root, "src/test/resources/cucumber.properties",
           generateCucumberProperties(), created, skipped);
       writeIfAbsent(root, "src/test/resources/junit-platform.properties",
-          generateJunitPlatformProperties(type, basePkg), created, skipped);
+          generateJunitPlatformProperties(type, basePkg, includeExamples), created, skipped);
       writeIfAbsent(root, "src/test/resources/application.properties",
-          generateApplicationProperties(type), created, skipped);
-      writeIfAbsent(root, "src/test/java/" + pkgPath + "/runner/TestRunner.java",
-          generateRunner(basePkg), created, skipped);
-      writeIfAbsent(root, "src/test/java/" + pkgPath + "/steps/StepDefinitions.java",
-          generateStepDefinitions(basePkg, type), created, skipped);
-      writeIfAbsent(root, "src/test/resources/features/" + type + "/sample.feature",
-          generateSampleFeature(type, basePkg), created, skipped);
+          generateApplicationProperties(type, includeExamples), created, skipped);
+      writeIfAbsent(root, "src/test/java/" + pkgPath + "/Junit5RunnerTests.java",
+          generateJunit5Runner(basePkg), created, skipped);
+      writeIfAbsent(root, "src/test/java/" + pkgPath + "/Junit4RunnerTests.java",
+          generateJunit4Runner(basePkg), created, skipped);
+      if (includeExamples) {
+        writeIfAbsent(root, "src/test/resources/features/" + type + "/sample.feature",
+            generateSampleFeature(type, basePkg), created, skipped);
+      }
 
       // Slice-specific extras
       boolean isUi  = type.equals("ui") || type.equals("fullstack");
@@ -128,14 +149,18 @@ public class TestInitSkill implements AgentSkill<TestInitSkill.Input, String> {
       if (isUi) {
         mkdirs(root, "src/main/java/" + pkgPath + "/page");
         mkdirs(root, "src/main/java/" + pkgPath + "/action");
-        writeIfAbsent(root, "src/main/java/" + pkgPath + "/page/HomePage.java",
-            generatePageObject(basePkg, engine), created, skipped);
+        if (includeExamples) {
+          writeIfAbsent(root, "src/main/java/" + pkgPath + "/page/HomePage.java",
+              generatePageObject(basePkg, engine), created, skipped);
+        }
       }
       if (isApi) {
-        mkdirs(root, "src/test/resources/files/sample/request");
-        mkdirs(root, "src/test/resources/files/sample/payload");
-        writeIfAbsent(root, "src/test/resources/files/sample/request/sample-get.json",
-            generateRequestSpec(basePkg, type), created, skipped);
+        if (includeExamples) {
+          mkdirs(root, "src/test/resources/files/sample/request");
+          mkdirs(root, "src/test/resources/files/sample/payload");
+          writeIfAbsent(root, "src/test/resources/files/sample/request/sample-get.json",
+              generateRequestSpec(basePkg, type), created, skipped);
+        }
       }
     } catch (IOException e) {
       return "Error creating project files: " + e.getMessage() + "\n";
@@ -189,159 +214,68 @@ public class TestInitSkill implements AgentSkill<TestInitSkill.Input, String> {
   // ── Preview mode ──────────────────────────────────────────────────────────
 
   private String renderPreview(String type, String groupId, String artifactId, String basePkg, String pkgPath,
-      String engine, boolean integrate, Path root) {
+      String engine, boolean integrate, Path root, boolean includeExamples) {
     StringBuilder sb = new StringBuilder();
     sb.append("# Testara Init: ").append(type.toUpperCase(Locale.ROOT)).append(" Project\n\n");
     sb.append(integrate ? "> Integration mode\n\n" : "> Bootstrap mode\n\n");
 
-    sb.append("## pom.xml\n\n```xml\n").append(generateFullPom(type, groupId, artifactId, engine, root)).append("```\n\n");
-    sb.append("## configuration.properties\n\n```properties\n").append(generateProperties(type, basePkg, engine)).append("```\n\n");
+    sb.append("## pom.xml\n\n```xml\n").append(generateFullPom(type, groupId, artifactId, basePkg, engine, root)).append("```\n\n");
+    sb.append("## configuration.properties\n\n```properties\n").append(generateProperties(type, basePkg, engine, includeExamples)).append("```\n\n");
     sb.append("## cucumber.properties\n\n```properties\n").append(generateCucumberProperties()).append("```\n\n");
-    sb.append("## junit-platform.properties\n\n```properties\n").append(generateJunitPlatformProperties(type, basePkg)).append("```\n\n");
-    sb.append("## application.properties\n\n```properties\n").append(generateApplicationProperties(type)).append("```\n\n");
-    sb.append("## TestRunner.java\n\n```java\n").append(generateRunner(basePkg)).append("```\n\n");
-    sb.append("## sample.feature\n\n```gherkin\n").append(generateSampleFeature(type, basePkg)).append("```\n");
-    if (type.equals("ui") || type.equals("fullstack")) {
+    sb.append("## junit-platform.properties\n\n```properties\n").append(generateJunitPlatformProperties(type, basePkg, includeExamples)).append("```\n\n");
+    sb.append("## application.properties\n\n```properties\n").append(generateApplicationProperties(type, includeExamples)).append("```\n\n");
+    sb.append("## Junit5RunnerTests.java\n\n```java\n").append(generateJunit5Runner(basePkg)).append("```\n\n");
+    sb.append("## Junit4RunnerTests.java\n\n```java\n").append(generateJunit4Runner(basePkg)).append("```\n");
+    if (includeExamples) {
+      sb.append("\n## sample.feature\n\n```gherkin\n").append(generateSampleFeature(type, basePkg)).append("```\n");
+    }
+    if (includeExamples && (type.equals("ui") || type.equals("fullstack"))) {
       sb.append("\n## HomePage.java\n\n```java\n").append(generatePageObject(basePkg, engine)).append("```\n");
     }
-    if (type.equals("api") || type.equals("fullstack")) {
+    if (includeExamples && (type.equals("api") || type.equals("fullstack"))) {
       sb.append("\n## sample-get.json\n\n```json\n").append(generateRequestSpec(basePkg, type)).append("```\n");
+    }
+    if (!includeExamples) {
+      sb.append("\n> Example pages, features, and request specs are omitted by default. ");
+      sb.append("Generate contextual artifacts with `testara_ui`, `testara_api`, or `testara_plan`, ");
+      sb.append("or call `testara_init` with `includeExamples=true` for demo files.\n");
     }
     return sb.toString();
   }
 
   // ── File content generators ───────────────────────────────────────────────
 
-  private String generateFullPom(String type, String groupId, String artifactId, String engine, Path root) {
+  private String generateFullPom(String type, String groupId, String artifactId, String basePkg, String engine, Path root) {
     String uiEngine = engine == null ? "selenium" : engine.toLowerCase(Locale.ROOT);
-    String uiEngineDependency = switch (uiEngine) {
-      case "playwright" -> """
-              <dependency>
-                <groupId>io.github.ygrip</groupId>
-                <artifactId>testara-ui-playwright</artifactId>
-                <version>${testara.version}</version>
-              </dependency>
-          """;
-      case "appium" -> """
-              <dependency>
-                <groupId>io.github.ygrip</groupId>
-                <artifactId>testara-ui-appium</artifactId>
-                <version>${testara.version}</version>
-              </dependency>
-          """;
-      default -> """
-              <dependency>
-                <groupId>io.github.ygrip</groupId>
-                <artifactId>testara-ui-selenium</artifactId>
-                <version>${testara.version}</version>
-              </dependency>
-          """;
+    String uiEngineDep = switch (uiEngine) {
+      case "playwright" -> dep("testara-ui-playwright", null);
+      case "appium"     -> dep("testara-ui-appium", null);
+      default           -> dep("testara-ui-selenium", null);
     };
     String sliceDep = switch (type) {
-      case "api" -> """
-              <dependency>
-                <groupId>io.github.ygrip</groupId>
-                <artifactId>testara-api</artifactId>
-                <version>${testara.version}</version>
-              </dependency>
-              <dependency>
-                <groupId>io.github.ygrip</groupId>
-                <artifactId>testara-api-cucumber</artifactId>
-                <version>${testara.version}</version>
-                <scope>test</scope>
-              </dependency>
-          """;
-      case "ui" -> """
-              <dependency>
-                <groupId>io.github.ygrip</groupId>
-                <artifactId>testara-ui</artifactId>
-                <version>${testara.version}</version>
-              </dependency>
-              <dependency>
-                <groupId>io.github.ygrip</groupId>
-                <artifactId>testara-ui-cucumber</artifactId>
-                <version>${testara.version}</version>
-                <scope>test</scope>
-              </dependency>
-          """ + uiEngineDependency;
-      case "fullstack" -> """
-              <dependency>
-                <groupId>io.github.ygrip</groupId>
-                <artifactId>testara-api</artifactId>
-                <version>${testara.version}</version>
-              </dependency>
-              <dependency>
-                <groupId>io.github.ygrip</groupId>
-                <artifactId>testara-api-cucumber</artifactId>
-                <version>${testara.version}</version>
-                <scope>test</scope>
-              </dependency>
-              <dependency>
-                <groupId>io.github.ygrip</groupId>
-                <artifactId>testara-ui</artifactId>
-                <version>${testara.version}</version>
-              </dependency>
-              <dependency>
-                <groupId>io.github.ygrip</groupId>
-                <artifactId>testara-ui-cucumber</artifactId>
-                <version>${testara.version}</version>
-                <scope>test</scope>
-              </dependency>
-          """ + uiEngineDependency;
-      case "database-sql", "sql" -> """
-              <dependency>
-                <groupId>io.github.ygrip</groupId>
-                <artifactId>testara-database</artifactId>
-                <version>${testara.version}</version>
-              </dependency>
-              <dependency>
-                <groupId>io.github.ygrip</groupId>
-                <artifactId>testara-database-cucumber</artifactId>
-                <version>${testara.version}</version>
-                <scope>test</scope>
-              </dependency>
-          """;
-      case "mongo", "database-mongo" -> """
-              <dependency>
-                <groupId>io.github.ygrip</groupId>
-                <artifactId>testara-database</artifactId>
-                <version>${testara.version}</version>
-              </dependency>
-              <dependency>
-                <groupId>io.github.ygrip</groupId>
-                <artifactId>testara-database-cucumber</artifactId>
-                <version>${testara.version}</version>
-                <scope>test</scope>
-              </dependency>
-          """;
-      case "kafka", "streaming" -> """
-              <dependency>
-                <groupId>io.github.ygrip</groupId>
-                <artifactId>testara-streaming</artifactId>
-                <version>${testara.version}</version>
-              </dependency>
-              <dependency>
-                <groupId>io.github.ygrip</groupId>
-                <artifactId>testara-streaming-cucumber</artifactId>
-                <version>${testara.version}</version>
-                <scope>test</scope>
-              </dependency>
-          """;
-      case "elastic", "elastic-search" -> """
-              <dependency>
-                <groupId>io.github.ygrip</groupId>
-                <artifactId>testara-elastic</artifactId>
-                <version>${testara.version}</version>
-              </dependency>
-              <dependency>
-                <groupId>io.github.ygrip</groupId>
-                <artifactId>testara-elastic-cucumber</artifactId>
-                <version>${testara.version}</version>
-                <scope>test</scope>
-              </dependency>
-          """;
+      case "api"                          -> dep("testara-api", null) + dep("testara-api-cucumber", "test");
+      case "ui"                           -> dep("testara-ui", null) + dep("testara-ui-cucumber", "test") + uiEngineDep;
+      case "fullstack"                    -> dep("testara-api", null) + dep("testara-api-cucumber", "test")
+                                           + dep("testara-ui", null) + dep("testara-ui-cucumber", "test") + uiEngineDep;
+      case "database-sql", "sql"          -> dep("testara-database", null) + dep("testara-database-cucumber", "test");
+      case "mongo", "database-mongo"      -> dep("testara-database", null) + dep("testara-database-cucumber", "test");
+      case "kafka", "streaming"           -> dep("testara-streaming", null) + dep("testara-streaming-cucumber", "test");
+      case "elastic", "elastic-search"    -> dep("testara-elastic", null) + dep("testara-elastic-cucumber", "test");
       default -> "";
     };
+    String stepDefArtifacts = switch (type) {
+      case "api"                        -> "testara-cucumber, testara-api-cucumber";
+      case "ui"                         -> "testara-cucumber, testara-ui-cucumber";
+      case "fullstack"                  -> "testara-cucumber, testara-api-cucumber, testara-ui-cucumber";
+      case "database-sql", "sql",
+           "mongo", "database-mongo"    -> "testara-cucumber, testara-database-cucumber";
+      case "kafka", "streaming"         -> "testara-cucumber, testara-streaming-cucumber";
+      case "elastic", "elastic-search"  -> "testara-cucumber, testara-elastic-cucumber";
+      default                           -> "testara-cucumber";
+    };
+    String allDeps = dep("testara-command", null) + dep("testara-validation", null)
+        + dep("testara-junit5", null) + sliceDep
+        + dep("org.projectlombok", "lombok", "${lombok.version}", "provided");
     String testaraVersion = versionResolver.resolve(root);
     return """
         <?xml version="1.0" encoding="UTF-8"?>
@@ -361,27 +295,139 @@ public class TestInitSkill implements AgentSkill<TestInitSkill.Input, String> {
             <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
             <testara.version>%s</testara.version>
             <failsafe.version>3.5.1</failsafe.version>
+            <lombok.version>1.18.42</lombok.version>
+            <junit-platform.version>1.11.4</junit-platform.version>
+            <jvm.options>
+              --add-opens java.base/java.lang=ALL-UNNAMED
+              --add-opens java.base/java.lang.reflect=ALL-UNNAMED
+              --add-opens java.base/java.lang.invoke=ALL-UNNAMED
+              --add-opens java.base/java.util=ALL-UNNAMED
+              --add-opens java.base/java.net=ALL-UNNAMED
+              --add-opens java.base/java.security=ALL-UNNAMED
+              --add-opens java.base/java.util.concurrent=ALL-UNNAMED
+              -Xms256m -Xmx512m
+              -XX:+UseG1GC
+              -Djava.awt.headless=true
+              -Djava.net.preferIPv4Stack=true
+            </jvm.options>
           </properties>
 
           <dependencies>
-            <dependency>
-              <groupId>io.github.ygrip</groupId>
-              <artifactId>testara-command</artifactId>
-              <version>${testara.version}</version>
-            </dependency>
-            <dependency>
-              <groupId>io.github.ygrip</groupId>
-              <artifactId>testara-validation</artifactId>
-              <version>${testara.version}</version>
-            </dependency>
-            <dependency>
-              <groupId>io.github.ygrip</groupId>
-              <artifactId>testara-junit5</artifactId>
-              <version>${testara.version}</version>
-              <scope>test</scope>
-            </dependency>
-        %s
-          </dependencies>
+        %s      </dependencies>
+
+          <profiles>
+            <!-- Default: JUnit 4 runner via surefire-junit47 — mvn verify -->
+            <profile>
+              <id>junit4</id>
+              <activation>
+                <activeByDefault>true</activeByDefault>
+              </activation>
+              <properties>
+                <it.test>%s.Junit4RunnerTests</it.test>
+              </properties>
+              <build>
+                <plugins>
+                  <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-failsafe-plugin</artifactId>
+                    <version>${failsafe.version}</version>
+                    <dependencies>
+                      <dependency>
+                        <groupId>org.apache.maven.surefire</groupId>
+                        <artifactId>surefire-junit47</artifactId>
+                        <version>${failsafe.version}</version>
+                      </dependency>
+                    </dependencies>
+                    <executions>
+                      <execution>
+                        <goals>
+                          <goal>integration-test</goal>
+                          <goal>verify</goal>
+                        </goals>
+                      </execution>
+                    </executions>
+                    <configuration>
+                      <test>${it.test}</test>
+                      <printSummary>false</printSummary>
+                      <failIfNoTests>false</failIfNoTests>
+                      <argLine>${jvm.options}</argLine>
+                      <reuseForks>true</reuseForks>
+                      <rerunFailingTestsCount>0</rerunFailingTestsCount>
+                      <forkCount>1</forkCount>
+                    </configuration>
+                  </plugin>
+                  <plugin>
+                    <groupId>io.github.ygrip</groupId>
+                    <artifactId>testara-reporter-plugin</artifactId>
+                    <version>${testara.version}</version>
+                    <executions>
+                      <execution>
+                        <phase>post-integration-test</phase>
+                        <goals>
+                          <goal>cucumber-summary</goal>
+                        </goals>
+                        <configuration>
+                          <targetLocation>${project.build.directory}/cucumber-reports/</targetLocation>
+                          <outputLocation>${project.build.directory}/site/</outputLocation>
+                          <reportTemplate>testara-style-report</reportTemplate>
+                          <reportName>test-report</reportName>
+                        </configuration>
+                      </execution>
+                    </executions>
+                  </plugin>
+                </plugins>
+              </build>
+            </profile>
+            <!-- JUnit 5 runner — mvn verify -P junit5 -->
+            <profile>
+              <id>junit5</id>
+              <properties>
+                <it.test>%s.Junit5RunnerTests</it.test>
+              </properties>
+              <dependencies>
+                <dependency>
+                  <groupId>org.junit.platform</groupId>
+                  <artifactId>junit-platform-console-standalone</artifactId>
+                  <version>${junit-platform.version}</version>
+                  <scope>test</scope>
+                </dependency>
+              </dependencies>
+              <build>
+                <plugins>
+                  <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-failsafe-plugin</artifactId>
+                    <version>${failsafe.version}</version>
+                    <executions>
+                      <execution>
+                        <goals>
+                          <goal>integration-test</goal>
+                          <goal>verify</goal>
+                        </goals>
+                      </execution>
+                    </executions>
+                    <configuration>
+                      <includeJUnit5Engines>
+                        <engine>testara-cucumber</engine>
+                      </includeJUnit5Engines>
+                      <excludeJUnit5Engines>
+                        <engine>junit-jupiter</engine>
+                        <engine>junit-platform-suite</engine>
+                        <engine>junit-vintage</engine>
+                      </excludeJUnit5Engines>
+                      <test>${it.test}</test>
+                      <printSummary>false</printSummary>
+                      <failIfNoTests>false</failIfNoTests>
+                      <argLine>${jvm.options}</argLine>
+                      <reuseForks>true</reuseForks>
+                      <rerunFailingTestsCount>0</rerunFailingTestsCount>
+                      <forkCount>1</forkCount>
+                    </configuration>
+                  </plugin>
+                </plugins>
+              </build>
+            </profile>
+          </profiles>
 
           <build>
             <plugins>
@@ -392,30 +438,64 @@ public class TestInitSkill implements AgentSkill<TestInitSkill.Input, String> {
               </plugin>
               <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-failsafe-plugin</artifactId>
-                <version>${failsafe.version}</version>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>3.2.5</version>
+                <configuration>
+                  <skip>true</skip>
+                </configuration>
+              </plugin>
+              <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-dependency-plugin</artifactId>
                 <executions>
                   <execution>
+                    <id>unpack-step-definitions</id>
+                    <phase>generate-test-sources</phase>
                     <goals>
-                      <goal>integration-test</goal>
-                      <goal>verify</goal>
+                      <goal>unpack-dependencies</goal>
                     </goals>
+                    <configuration>
+                      <includeArtifactIds>%s</includeArtifactIds>
+                      <classifier>sources</classifier>
+                      <outputDirectory>${project.basedir}/target/step_definitions/src</outputDirectory>
+                      <includes>**/*.java</includes>
+                    </configuration>
                   </execution>
                 </executions>
-                <configuration>
-                  <includes>
-                    <include>**/*Runner.java</include>
-                  </includes>
-                  <printSummary>false</printSummary>
-                  <failIfNoTests>false</failIfNoTests>
-                  <reuseForks>true</reuseForks>
-                  <forkCount>1</forkCount>
-                </configuration>
               </plugin>
             </plugins>
           </build>
+
+          <repositories>
+            <repository>
+              <id>maven-central</id>
+              <url>https://repo1.maven.org/maven2/</url>
+            </repository>
+          </repositories>
+          <pluginRepositories>
+            <pluginRepository>
+              <id>maven-central</id>
+              <url>https://repo1.maven.org/maven2/</url>
+            </pluginRepository>
+          </pluginRepositories>
         </project>
-        """.formatted(groupId, artifactId, testaraVersion, sliceDep);
+        """.formatted(groupId, artifactId, testaraVersion, allDeps,
+        basePkg, basePkg, stepDefArtifacts);
+  }
+
+  private static String dep(String artifactId, String scope) {
+    return dep("io.github.ygrip", artifactId, "${testara.version}", scope);
+  }
+
+  private static String dep(String groupId, String artifactId, String version, String scope) {
+    String scopeTag = scope != null ? "\n              <scope>" + scope + "</scope>" : "";
+    return """
+              <dependency>
+                <groupId>%s</groupId>
+                <artifactId>%s</artifactId>
+                <version>%s</version>%s
+              </dependency>
+          """.formatted(groupId, artifactId, version, scopeTag);
   }
 
   private String toKebab(String value) {
@@ -424,7 +504,7 @@ public class TestInitSkill implements AgentSkill<TestInitSkill.Input, String> {
         .replaceAll("^-|-$", "");
   }
 
-  private String generateProperties(String type, String basePkg, String engine) {
+  private String generateProperties(String type, String basePkg, String engine, boolean includeExamples) {
     String base = """
         # Scanner configuration
         class.loader.reject-packages=org.*,com.sun.*,java.*,javax.*,io.netty.*,org.springframework.*,net.bytebuddy.*,com.fasterxml.*,org.apache.*,org.junit.*,org.hamcrest.*,org.mockito.*,com.google.*,org.slf4j.*,ch.qos.logback.*,org.seleniumhq.*,net.serenitybdd.*,io.restassured.*,com.browserup.*,org.json.*,org.yaml.*,com.jayway.*,org.objenesis.*,net.sf.*,org.w3c.*,org.xml.*,com.squareup.*,okhttp3.*,retrofit2.*,com.github.*,io.github.classgraph.*,io.github.bonigarcia.*,org.jetbrains.*,kotlin.*,kotlinx.*
@@ -445,13 +525,18 @@ public class TestInitSkill implements AgentSkill<TestInitSkill.Input, String> {
         """.formatted(basePkg, basePkg, basePkg, basePkg, basePkg);
 
     String uiEngine = engine == null ? "selenium" : engine.toLowerCase(Locale.ROOT);
+    String pageConfig = includeExamples ? """
+          web.page.desktop.home.url=properties(app.web.home-url)
+          """ : "";
     String uiProperties = switch (uiEngine) {
       case "playwright" -> """
           # UI engine configuration
           automation.engine.default-engine=playwright
           automation.engine.active-engines=playwright
           automation.engine.screenshot-strategy=ON_EACH_STEP
-          automation.engine.screenshot-output-type=VIDEO
+          automation.engine.screenshot-output-type=IMAGE
+          automation.engine.screenshot-fps=30
+          automation.engine.force-resolution=true
           playwright.browser.owner=testara
           playwright.browser.headless=true
           playwright.browser.scan-locations=io.github.ygrip.testara,%s
@@ -459,60 +544,63 @@ public class TestInitSkill implements AgentSkill<TestInitSkill.Input, String> {
           playwright.browser.action-scan-locations=io.github.ygrip.testara,%s
           playwright.browser.remote-driver.default.enabled=false
           playwright.browser.remote-driver.default.uri=properties(ui.remote.url)
-          web.page.desktop.home.url=properties(app.web.home-url)
-          """.formatted(basePkg, basePkg, basePkg);
+          %s""".formatted(basePkg, basePkg, basePkg, pageConfig);
       default -> """
           # UI engine configuration
           automation.engine.default-engine=selenium
           automation.engine.active-engines=selenium
           automation.engine.screenshot-strategy=ON_EACH_STEP
-          automation.engine.screenshot-output-type=VIDEO
+          automation.engine.screenshot-output-type=IMAGE
+          automation.engine.screenshot-fps=30
+          automation.engine.force-resolution=true
           selenium.driver.owner=testara
-          selenium.driver.headless=true
+          selenium.driver.headless=false
           selenium.driver.scan-locations=io.github.ygrip.testara,%s
           selenium.driver.page-scan-locations=io.github.ygrip.testara,%s
           selenium.driver.action-scan-locations=io.github.ygrip.testara,%s
           selenium.driver.remote-driver.default.enabled=false
           selenium.driver.remote-driver.default.uri=properties(ui.remote.url)
-          web.page.desktop.home.url=properties(app.web.home-url)
-          """.formatted(basePkg, basePkg, basePkg);
+          %s""".formatted(basePkg, basePkg, basePkg, pageConfig);
     };
 
     return base + switch (type) {
-      case "api" -> apiProperties();
+      case "api" -> apiProperties(includeExamples);
       case "ui" -> uiProperties;
-      case "fullstack" -> apiProperties() + "\n" + uiProperties;
-      case "sql", "database-sql" -> """
+      case "fullstack" -> apiProperties(includeExamples) + "\n" + uiProperties;
+      case "sql", "database-sql" -> includeExamples ? """
           # Database configuration
           sql.service.settlementDb.uri=properties(db.settlement.uri)
           sql.service.settlementDb.username=properties(db.settlement.username)
           sql.service.settlementDb.password=properties(db.settlement.password)
           sql.service.settlementDb.dbType=POSTGRESQL
-          """;
-      case "mongo", "database-mongo" -> """
+          """ : deferredConfig("SQL", "sql.service.{alias}.uri|username|password|dbType");
+      case "mongo", "database-mongo" -> includeExamples ? """
           # MongoDB configuration
           mongo.service.productDb.connectionString=properties(mongo.product.connection-string)
           mongo.service.productDb.dbName=properties(mongo.product.db-name)
-          """;
-      case "kafka", "streaming" -> """
+          """ : deferredConfig("MongoDB", "mongo.service.{alias}.connectionString|dbName");
+      case "kafka", "streaming" -> includeExamples ? """
           # Kafka configuration
           kafka.service.orderStream.servers=properties(kafka.order.servers)
           kafka.service.orderStream.groupId=properties(kafka.order.group-id)
           kafka.service.orderStream.topics.orders=properties(kafka.topic.orders)
-          """;
-      case "elastic", "elastic-search" -> """
+          """ : deferredConfig("Kafka", "kafka.service.{alias}.servers|groupId|topics.{topic}");
+      case "elastic", "elastic-search" -> includeExamples ? """
           # ElasticSearch configuration
           elasticsearch.service.catalog.hosts[0]=properties(elasticsearch.catalog.host)
           elasticsearch.service.catalog.username=properties(elasticsearch.catalog.username)
           elasticsearch.service.catalog.password=properties(elasticsearch.catalog.password)
           elasticsearch.service.catalog.secured=false
           elasticsearch.service.catalog.requireAuthentication=false
-          """;
+          """ : deferredConfig("ElasticSearch", "elasticsearch.service.{alias}.hosts[0]|username|password|secured|requireAuthentication");
       default -> "";
     };
   }
 
-  private String apiProperties() {
+  private String apiProperties(boolean includeExamples) {
+    if (!includeExamples) {
+      return deferredConfig("API", "api.service.{alias}.host|basePath|default_specification and spec.api.{alias}.*");
+    }
     return """
         # API service configuration
         api.service.sample-api.host=properties(api.sample-api.host)
@@ -521,6 +609,14 @@ public class TestInitSkill implements AgentSkill<TestInitSkill.Input, String> {
         spec.api.sample-api.header.Content-Type=application/json
         spec.api.sample-api.header.Accept=application/json
         """;
+  }
+
+  private String deferredConfig(String slice, String shape) {
+    return """
+        # %s configuration
+        # Add contextual %s keys before generating or running features.
+        # Expected shape: %s
+        """.formatted(slice, slice, shape);
   }
 
   private String generateCucumberProperties() {
@@ -533,30 +629,24 @@ public class TestInitSkill implements AgentSkill<TestInitSkill.Input, String> {
         """;
   }
 
-  private String generateJunitPlatformProperties(String type, String basePkg) {
-    String tagFilter = switch (type) {
-      case "ui" -> "(@ui or @sample) and not (@manual or @deprecated or @ignored)";
-      case "fullstack" -> "(@api or @ui or @fullstack or @sample) and not (@manual or @deprecated or @ignored)";
-      case "sql", "database-sql", "mongo", "database-mongo" ->
-          "(@database or @sample) and not (@manual or @deprecated or @ignored)";
-      default -> "(@api or @sample) and not (@manual or @deprecated or @ignored)";
-    };
+  private String generateJunitPlatformProperties(String type, String basePkg, boolean includeExamples) {
+    String tagFilter = tagFilter(type, includeExamples);
     return """
         cucumber.publish.quiet=true
         cucumber.publish.enabled=false
         cucumber.snippet-type=camelcase
         cucumber.execution.dry-run=false
-        cucumber.junit-platform.naming-strategy=CUSTOM
+        cucumber.junit-platform.naming-strategy=long
         cucumber.step.notifications.enabled=false
         cucumber.filter.skipped.scenarios=true
-        cucumber.rerun.strategy=DEFERRED
-        cucumber.max.retry.failed.scenarios=2
-        cucumber.execution.parallel.enabled=true
-        cucumber.execution.parallel.virtual-thread.enabled=true
+        cucumber.rerun.strategy=NONE
+        cucumber.max.retry.failed.scenarios=0
+        cucumber.execution.parallel.enabled=false
+        cucumber.execution.parallel.virtual-thread.enabled=false
         cucumber.execution.parallel.virtual-thread.max-threads=32
         cucumber.execution.parallel.config.strategy=dynamic
         cucumber.execution.parallel.config.fixed.parallelism=4
-        junit.jupiter.execution.parallel.enabled=true
+        junit.jupiter.execution.parallel.enabled=false
         cucumber.object-factory=io.github.ygrip.testara.engine.factory.TestaraCucumberObjectFactory
         cucumber.glue=io.github.ygrip.testara,%s
         cucumber.filter.tags=%s
@@ -565,14 +655,34 @@ public class TestInitSkill implements AgentSkill<TestInitSkill.Input, String> {
         """.formatted(basePkg, tagFilter);
   }
 
-  private String generateApplicationProperties(String type) {
+  private String generateApplicationProperties(String type, boolean includeExamples) {
     String common = """
-        # Environment values referenced from Testara config/features via properties(key).
-        app.web.home-url=http://localhost:3000
-        ui.remote.url=http://localhost:4444/
+        # Consul properties
+        config.consul.enabled=${CONSUL_ENABLED:false}
+        config.consul.host=${CONSUL_HOST:localhost}
+        config.consul.port=${CONSUL_PORT:8500}
+        config.consul.acl-token=${CONSUL_TOKEN:local-root-token}
+        config.consul.prefix=${CONFIG_PATH:config/testara-automation}/${TEST_ENV:qa}/
+
+        # Vault properties
+        config.vault.enabled=${VAULT_ENABLED:false}
+        config.vault.address=${VAULT_HOST:http://127.0.0.1:8200}
+        config.vault.token=${VAULT_TOKEN:myroot}
+        config.vault.engine-version=${VAULT_ENGINE_VERSION:2}
+        config.vault.path=${VAULT_PATH:config/testara-automation}/${TEST_ENV:qa}
+
+        # User-defined and environment values referenced from Testara config/features via properties(key).
         """;
-    return common + switch (type) {
+    String uiCommon = type.equals("ui") || type.equals("fullstack") ? """
+        ui.remote.url=http://localhost:4444/
+        """ : "";
+    if (!includeExamples) return common + uiCommon;
+    return common + uiCommon + switch (type) {
+      case "ui" -> """
+          app.web.home-url=http://localhost:3000
+          """;
       case "api", "fullstack" -> """
+          app.web.home-url=http://localhost:3000
           api.sample-api.host=http://localhost:8080
           test.sample.id=00000000-0000-0000-0000-000000000001
           """;
@@ -601,23 +711,56 @@ public class TestInitSkill implements AgentSkill<TestInitSkill.Input, String> {
     };
   }
 
-  private String generateRunner(String basePkg) {
+  private String generateJunit5Runner(String basePkg) {
     return """
-        package %s.runner;
+        package %s;
 
-        import io.cucumber.junit.platform.engine.Constants;
         import io.github.ygrip.testara.engine.suites.TestSuite;
-        import org.junit.platform.suite.api.ConfigurationParameter;
+        import lombok.extern.log4j.Log4j2;
 
+        //@formatter:off
+        @Log4j2
         @TestSuite
-        @ConfigurationParameter(key = Constants.GLUE_PROPERTY_NAME,
-            value = "io.github.ygrip.testara,%s")
-        @ConfigurationParameter(key = Constants.FEATURES_PROPERTY_NAME,
-            value = "src/test/resources/features")
-        @ConfigurationParameter(key = Constants.PLUGIN_PROPERTY_NAME,
-            value = "html:target/destination/cucumber.html,json:target/destination/cucumber.json,rerun:target/rerun/rerun.txt")
-        public class TestRunner {}
+        public class Junit5RunnerTests {
+
+        }
+        //@formatter:on
+        """.formatted(basePkg);
+  }
+
+  private String generateJunit4Runner(String basePkg) {
+    return """
+        package %s;
+
+        import org.junit.runner.RunWith;
+
+        import io.cucumber.junit.Cucumber;
+        import io.cucumber.junit.CucumberOptions;
+
+        //@formatter:off
+        @RunWith(Cucumber.class)
+        @CucumberOptions(
+            features = "classpath:features",
+            glue = {"io.github.ygrip.testara", "%s"}
+        )
+        public class Junit4RunnerTests {
+        }
+        //@formatter:on
         """.formatted(basePkg, basePkg);
+  }
+
+  private String tagFilter(String type, boolean includeExamples) {
+    String sample = includeExamples ? " or @sample" : "";
+    return switch (type) {
+      case "api" -> "(@api%s) and not (@manual or @deprecated or @ignored)".formatted(sample);
+      case "fullstack" -> "(@api or @ui or @fullstack%s) and not (@manual or @deprecated or @ignored)".formatted(sample);
+      case "ui" -> "(@ui%s) and not (@manual or @deprecated or @ignored)".formatted(sample);
+      case "sql", "database-sql", "mongo", "database-mongo" ->
+          "(@database%s) and not (@manual or @deprecated or @ignored)".formatted(sample);
+      case "kafka", "streaming" -> "(@streaming%s) and not (@manual or @deprecated or @ignored)".formatted(sample);
+      case "elastic", "elastic-search" -> "(@elastic%s) and not (@manual or @deprecated or @ignored)".formatted(sample);
+      default -> "not (@manual or @deprecated or @ignored)";
+    };
   }
 
   private String generateStepDefinitions(String basePkg, String type) {

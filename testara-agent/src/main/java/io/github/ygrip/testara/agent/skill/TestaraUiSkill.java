@@ -129,20 +129,24 @@ public class TestaraUiSkill implements AgentSkill<TestaraUiSkill.Input, String> 
 
     String propEntry = "web.page.desktop." + pName + ".url=properties(app.web." + pName + "-url)\napp.web." + pName + "-url=http://localhost:3000/" + pName;
     String relativePath = "src/main/java/" + pkgPath + "/page/" + pClass + ".java";
+    boolean hasTodo = locators.contains("TODO");
+    String todoWarning = hasTodo
+        ? "\nnote: replace TODO selectors with real DOM selectors before generating features that reference this page's elements."
+        : "";
 
     if (write) {
       try {
         Path target = root.resolve(relativePath);
         Files.createDirectories(target.getParent());
         Files.writeString(target, source, StandardCharsets.UTF_8);
-        return concise ? "written: " + relativePath + "\nadd to configuration.properties:\n" + propEntry
-            : "## Page Written\n\n`" + relativePath + "`\n\n```java\n" + source + "```\n\n**Add to configuration.properties:**\n```properties\n" + propEntry + "\n```\n";
+        return concise ? "written: " + relativePath + "\nadd to configuration.properties:\n" + propEntry + todoWarning
+            : "## Page Written\n\n`" + relativePath + "`\n\n```java\n" + source + "```\n\n**Add to configuration.properties:**\n```properties\n" + propEntry + "\n```\n" + (hasTodo ? "\n> **Next:** replace `TODO` selectors with actual CSS/XPath selectors from the target app before using `user should see` steps.\n" : "");
       } catch (IOException e) {
         return "Error: " + e.getMessage();
       }
     }
-    if (concise) return "path: " + relativePath + "\nprops: " + propEntry + "\n" + source;
-    return "## Page: " + pClass + "\n\n**Path:** `" + relativePath + "`\n\n```java\n" + source + "```\n\n**Properties:**\n```properties\n" + propEntry + "\n```\n";
+    if (concise) return "path: " + relativePath + "\nprops: " + propEntry + todoWarning + "\n" + source;
+    return "## Page: " + pClass + "\n\n**Path:** `" + relativePath + "`\n\n```java\n" + source + "```\n\n**Properties:**\n```properties\n" + propEntry + "\n```\n" + (hasTodo ? "\n> **Next:** replace `TODO` selectors with actual CSS/XPath selectors from the target app before using `user should see` steps.\n" : "");
   }
 
   private String generateAction(String pageName, String actionName, String basePkg, Path root, boolean write, boolean concise) {
@@ -220,7 +224,7 @@ public class TestaraUiSkill implements AgentSkill<TestaraUiSkill.Input, String> 
           automation.engine.default-engine=selenium
           automation.engine.active-engines=selenium
           class.loader.default-scan-locations=io.github.ygrip.testara,%s
-          selenium.driver.headless=true
+          selenium.driver.headless=false
           selenium.driver.page-scan-locations=io.github.ygrip.testara,%s
           selenium.driver.action-scan-locations=io.github.ygrip.testara,%s
           """.formatted(basePkg, basePkg, basePkg);
@@ -284,10 +288,15 @@ public class TestaraUiSkill implements AgentSkill<TestaraUiSkill.Input, String> 
           private static final Locator ERROR_MESSAGE = Locator.css("[data-test='error-message']");
       """.stripTrailing();
     }
+    // Unknown page type — emit empty stubs. The agent must supply real selectors from the target app DOM.
+    // Field name → step alias rule: FIELD_NAME → "field name" (SCREAMING_SNAKE_CASE → lower spaced).
+    // Do not generate "user should see 'X' is displayed" steps until these are replaced.
     return """
-          private static final Locator PRIMARY_ACTION = Locator.css("[data-test='primary-action']");
-          private static final Locator SUCCESS_MESSAGE = Locator.css("[data-test='success-message']");
-          private static final Locator ERROR_MESSAGE = Locator.css("[data-test='error-message']");
+          // TODO: replace with actual selectors from the target app's DOM inspector.
+          // Each Locator field name becomes a step alias: e.g. SUBMIT_BUTTON -> "submit button"
+          private static final Locator SUBMIT_BUTTON = Locator.css("TODO");
+          private static final Locator SUCCESS_MESSAGE = Locator.css("TODO");
+          private static final Locator ERROR_MESSAGE = Locator.css("TODO");
       """.stripTrailing();
   }
 

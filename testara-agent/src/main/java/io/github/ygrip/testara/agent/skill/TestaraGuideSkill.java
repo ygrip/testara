@@ -57,8 +57,12 @@ public class TestaraGuideSkill implements AgentSkill<String, String> {
           || line.startsWith("## Utilities") || line.startsWith("## Code") || line.startsWith("## Built-in")
           || line.startsWith("## Helper") || line.startsWith("## POM")) {
         sb.append(line).append("\n");
-      } else if (line.startsWith("## DB Kafka Elastic")) {
+      } else if (line.startsWith("## DB Kafka Elastic") || line.startsWith("## UI Runtime Quirks")) {
         sb.append(line).append("\n");
+      } else if (line.startsWith("### Quirk")) {
+        sb.append(line).append("\n");
+      } else if (line.startsWith("**Rule:**")) {
+        sb.append("  ").append(line).append("\n");
       } else if (line.startsWith("MUST") || line.startsWith("ALLOWED") || line.startsWith("NEVER")
           || line.startsWith("WRONG") || line.startsWith("RIGHT") || line.startsWith("- Reuse")
           || line.startsWith("- Prefer") || line.startsWith("- Do not")) {

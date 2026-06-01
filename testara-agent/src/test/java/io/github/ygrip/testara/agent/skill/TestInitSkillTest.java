@@ -9,6 +9,7 @@ import java.nio.file.Path;
 import java.util.Map;
 import java.util.regex.Pattern;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -51,8 +52,12 @@ class TestInitSkillTest {
 
     assertTrue(output.contains("<groupId>com.acme.qa</groupId>"));
     assertTrue(output.contains("<artifactId>checkout-tests</artifactId>"));
-    assertTrue(output.contains("package com.acme.qa.checkouttests.runner;"));
+    assertTrue(output.contains("package com.acme.qa.checkouttests;"));
+    assertTrue(output.contains("public class Junit5RunnerTests"));
+    assertTrue(output.contains("public class Junit4RunnerTests"));
     assertTrue(output.contains("@TestSuite"));
+    assertFalse(output.contains("Constants.GLUE_PROPERTY_NAME"));
+    assertFalse(output.contains("public class TestRunner"));
   }
 
   @Test
@@ -68,24 +73,49 @@ class TestInitSkillTest {
     assertDependencyScope(output, "testara-command", null);
     assertDependencyScope(output, "testara-validation", null);
     assertTrue(output.contains("<artifactId>testara-junit5</artifactId>"));
-    assertDependencyScope(output, "testara-junit5", "test");
+    assertDependencyScope(output, "testara-junit5", null);  // compile scope — matches sample project
+    assertTrue(output.contains("<artifactId>lombok</artifactId>"));
     assertFalse(output.contains("<artifactId>junit-platform-suite</artifactId>"));
     assertTrue(output.contains("<artifactId>maven-failsafe-plugin</artifactId>"));
     assertTrue(output.contains("<goal>integration-test</goal>"));
     assertTrue(output.contains("<goal>verify</goal>"));
-    assertFalse(output.contains("<artifactId>maven-surefire-plugin</artifactId>"));
+    assertTrue(output.contains("<artifactId>maven-surefire-plugin</artifactId>"));
+    assertTrue(output.contains("<skip>true</skip>"));
+    // it.test is now inside profiles, not top-level properties
+    assertTrue(output.contains("<it.test>io.github.ygrip.example.Junit5RunnerTests</it.test>"));
+    assertTrue(output.contains("<it.test>io.github.ygrip.example.Junit4RunnerTests</it.test>"));
+    assertTrue(output.contains("<id>junit4</id>"));
+    assertTrue(output.contains("<id>junit5</id>"));
+    assertTrue(output.contains("<activeByDefault>true</activeByDefault>"));
+    assertTrue(output.contains("surefire-junit47"));
+    assertTrue(output.contains("testara-cucumber</engine>"));
+    assertTrue(output.contains("testara-reporter-plugin"));
     assertTrue(output.contains("import io.github.ygrip.testara.engine.suites.TestSuite;"));
     assertFalse(output.contains("@IncludeEngines(\"cucumber\")"));
     assertTrue(output.contains("class.loader.default-scan-locations=io.github.ygrip.testara,io.github.ygrip.example"));
-    assertTrue(output.contains("api.service.sample-api.host=properties(api.sample-api.host)"));
-    assertTrue(output.contains("api.sample-api.host=http://localhost:8080"));
+    assertTrue(output.contains("# API configuration"));
+    assertTrue(output.contains("api.service.{alias}.host|basePath|default_specification"));
+    assertFalse(output.contains("api.service.sample-api.host=properties(api.sample-api.host)"));
+    assertFalse(output.contains("api.sample-api.host=http://localhost:8080"));
+    assertTrue(output.contains("config.consul.enabled=${CONSUL_ENABLED:false}"));
+    assertTrue(output.contains("config.vault.enabled=${VAULT_ENABLED:false}"));
+    assertConfigurationPropertiesDoNotContainUserValues(output);
     assertTrue(output.contains("## cucumber.properties"));
     assertTrue(output.contains("## junit-platform.properties"));
     assertTrue(output.contains("cucumber.object-factory=io.github.ygrip.testara.engine.factory.TestaraCucumberObjectFactory"));
-    assertTrue(output.contains("cucumber.filter.tags=(@api or @sample) and not (@manual or @deprecated or @ignored)"));
-    assertTrue(output.contains("Given [api] using service with alias sample-api"));
-    assertTrue(output.contains("When [api] process request to \"files/sample/request/sample-get\""));
-    assertTrue(output.contains("Then [api] response statusCode should be 200"));
+    assertTrue(output.contains("cucumber.junit-platform.naming-strategy=long"));
+    assertFalse(output.contains("cucumber.junit-platform.naming-strategy=CUSTOM"));
+    assertTrue(output.contains("cucumber.max.retry.failed.scenarios=0"));
+    assertTrue(output.contains("cucumber.execution.parallel.enabled=false"));
+    assertTrue(output.contains("cucumber.filter.tags=(@api) and not (@manual or @deprecated or @ignored)"));
+    assertFalse(output.contains("Given [api] using service with alias sample-api"));
+    assertFalse(output.contains("When [api] process request to \"files/sample/request/sample-get\""));
+    assertFalse(output.contains("Then [api] response statusCode should be 200"));
+    assertTrue(output.contains("@RunWith(Cucumber.class)"));
+    // Junit4RunnerTests now matches sample project: no objectFactory, uses classpath:features
+    assertFalse(output.contains("objectFactory = TestaraObjectFactory.class"));
+    assertTrue(output.contains("features = \"classpath:features\""));
+    assertTrue(output.contains("glue = {\"io.github.ygrip.testara\", \"io.github.ygrip.example\"}"));
   }
 
   @Test
@@ -102,8 +132,14 @@ class TestInitSkillTest {
     assertDependencyScope(output, "testara-ui-selenium", null);
     assertDependencyScope(output, "testara-ui-cucumber", "test");
     assertTrue(output.contains("selenium.driver.page-scan-locations=io.github.ygrip.testara,io.github.ygrip.automation"));
-    assertTrue(output.contains("public class HomePage extends SeleniumPage"));
-    assertTrue(output.contains("private static final Locator SEARCH_INPUT"));
+    assertTrue(output.contains("selenium.driver.headless=false"));
+    assertFalse(output.contains("selenium.driver.headless=true"));
+    assertTrue(output.contains("automation.engine.screenshot-output-type=IMAGE"));
+    assertFalse(output.contains("automation.engine.screenshot-output-type=VIDEO"));
+    assertFalse(output.contains("public class HomePage extends SeleniumPage"));
+    assertFalse(output.contains("private static final Locator SEARCH_INPUT"));
+    assertFalse(output.contains("StepDefinitions"));
+    assertFalse(output.contains("sample.feature"));
   }
 
   @Test
@@ -119,12 +155,51 @@ class TestInitSkillTest {
     assertDependencyScope(output, "testara-ui-playwright", null);
     assertTrue(output.contains("class.loader.default-scan-locations=io.github.ygrip.testara,io.github.ygrip.automation"));
     assertTrue(output.contains("playwright.browser.page-scan-locations=io.github.ygrip.testara,io.github.ygrip.automation"));
-    assertTrue(output.contains("web.page.desktop.home.url=properties(app.web.home-url)"));
-    assertTrue(output.contains("app.web.home-url=http://localhost:3000"));
-    assertTrue(output.contains("Given user using chrome in desktop"));
-    assertTrue(output.contains("Then user is in \"home\" page"));
+    assertFalse(output.contains("web.page.desktop.home.url=properties(app.web.home-url)"));
+    assertFalse(output.contains("app.web.home-url=http://localhost:3000"));
+    assertEquals(1, countOccurrences(output, "automation.engine.default-engine=playwright"));
+    assertEquals(1, countOccurrences(output, "automation.engine.active-engines=playwright"));
+    assertTrue(output.contains("automation.engine.screenshot-output-type=IMAGE"));
+    assertFalse(output.contains("automation.engine.screenshot-output-type=VIDEO"));
+    assertFalse(output.contains("automation.engine.default-engine=selenium"));
+    assertFalse(output.contains("Given user using chrome in desktop"));
+    assertFalse(output.contains("Then user is in \"home\" page"));
     assertFalse(output.contains("user using web in desktop"));
     assertFalse(output.contains("io.github.ygrip.testara.ui.page.PageContext"));
+  }
+
+  @Test
+  void defaultInitPreviewOmitsDemoArtifactsAndPlaceholders() {
+    String output = new TestInitSkill().execute(
+        new TestInitSkill.Input("fullstack", "io.github.ygrip.automation", "selenium", false,
+            "io.github.ygrip", "automation"),
+        context());
+
+    assertFalse(output.contains("StepDefinitions.java"));
+    assertFalse(output.contains("public class StepDefinitions"));
+    assertFalse(output.contains("HomePage.java"));
+    assertFalse(output.contains("public class HomePage"));
+    assertFalse(output.contains("sample.feature"));
+    assertFalse(output.contains("sample-get.json"));
+    assertFalse(output.contains("@sample"));
+    assertTrue(output.contains("Generate contextual artifacts with `testara_ui`, `testara_api`, or `testara_plan`"));
+  }
+
+  @Test
+  void examplesOptionKeepsDemoArtifactsExplicit() {
+    String output = new TestInitSkill().execute(
+        new TestInitSkill.Input("fullstack", "io.github.ygrip.automation", "selenium", false,
+            "io.github.ygrip", "automation"),
+        examplesContext());
+
+    assertFalse(output.contains("StepDefinitions.java"));
+    assertFalse(output.contains("public class StepDefinitions"));
+    assertTrue(output.contains("HomePage.java"));
+    assertTrue(output.contains("public class HomePage extends SeleniumPage"));
+    assertTrue(output.contains("sample.feature"));
+    assertTrue(output.contains("sample-get.json"));
+    assertTrue(output.contains("api.service.sample-api.host=properties(api.sample-api.host)"));
+    assertTrue(output.contains("cucumber.filter.tags=(@api or @ui or @fullstack or @sample) and not (@manual or @deprecated or @ignored)"));
   }
 
   @Test
@@ -138,7 +213,7 @@ class TestInitSkillTest {
     assertTrue(sql.contains("<artifactId>testara-database-cucumber</artifactId>"));
     assertDependencyScope(sql, "testara-database", null);
     assertDependencyScope(sql, "testara-database-cucumber", "test");
-    assertTrue(sql.contains("sql.service.settlementDb.uri=properties(db.settlement.uri)"));
+    assertTrue(sql.contains("Expected shape: sql.service.{alias}.uri|username|password|dbType"));
 
     String kafka = skill.execute(new TestInitSkill.Input("kafka", "io.github.ygrip.automation", "selenium", false,
             "io.github.ygrip", "kafka-automation"),
@@ -147,8 +222,8 @@ class TestInitSkillTest {
     assertTrue(kafka.contains("<artifactId>testara-streaming-cucumber</artifactId>"));
     assertDependencyScope(kafka, "testara-streaming", null);
     assertDependencyScope(kafka, "testara-streaming-cucumber", "test");
-    assertTrue(kafka.contains("kafka.service.orderStream.servers=properties(kafka.order.servers)"));
-    assertTrue(kafka.contains("Given user start kafka producer for orderStream"));
+    assertTrue(kafka.contains("Expected shape: kafka.service.{alias}.servers|groupId|topics.{topic}"));
+    assertFalse(kafka.contains("Given user start kafka producer for orderStream"));
 
     String elastic = skill.execute(new TestInitSkill.Input("elastic", "io.github.ygrip.automation", "selenium", false,
             "io.github.ygrip", "elastic-automation"),
@@ -157,8 +232,8 @@ class TestInitSkillTest {
     assertTrue(elastic.contains("<artifactId>testara-elastic-cucumber</artifactId>"));
     assertDependencyScope(elastic, "testara-elastic", null);
     assertDependencyScope(elastic, "testara-elastic-cucumber", "test");
-    assertTrue(elastic.contains("elasticsearch.service.catalog.hosts[0]=properties(elasticsearch.catalog.host)"));
-    assertTrue(elastic.contains("Given [elastic-search] connect to elastic search with name catalog"));
+    assertTrue(elastic.contains("Expected shape: elasticsearch.service.{alias}.hosts[0]|username|password|secured|requireAuthentication"));
+    assertFalse(elastic.contains("Given [elastic-search] connect to elastic search with name catalog"));
   }
 
   @Test
@@ -170,17 +245,64 @@ class TestInitSkillTest {
     assertTrue(output.contains("needs_input: testara_init_coordinates"));
     assertTrue(output.contains("groupId"));
     assertTrue(output.contains("artifactId"));
-    assertTrue(output.contains("autoGenerateCoordinates=true"));
+    assertTrue(output.contains("next_step"));
+    // option_auto removed — agent must ask user, not guess
+    assertFalse(output.contains("autoGenerateCoordinates=true"));
     assertFalse(output.contains("<project xmlns="));
+  }
+
+  @Test
+  void initRefusesToWriteIntoImplicitHomeRoot() {
+    Path home = Path.of(System.getProperty("user.home")).toAbsolutePath().normalize();
+    AgentContext unsafe = new AgentContext(home, null, AgentMode.PATCH, null,
+        Map.of("write", "true", "autoGenerateCoordinates", "true"));
+
+    String output = new TestInitSkill().execute(
+        new TestInitSkill.Input("api", null, "selenium", false),
+        unsafe);
+
+    assertTrue(output.contains("needs_input: testara_init_project_root"));
+    assertTrue(output.contains("projectRoot"));
   }
 
   private AgentContext context() {
     return new AgentContext(projectRoot, null, AgentMode.READ_ONLY, null, Map.of());
   }
 
+  private void assertConfigurationPropertiesDoNotContainUserValues(String output) {
+    String configuration = section(output, "## configuration.properties", "## cucumber.properties");
+    assertFalse(configuration.contains("http://localhost"));
+    assertFalse(configuration.contains("secret_sauce"));
+    assertFalse(configuration.contains("config.consul."));
+    assertFalse(configuration.contains("config.vault."));
+    assertFalse(configuration.contains("api.sample-api"));
+  }
+
+  private String section(String output, String start, String end) {
+    int s = output.indexOf(start);
+    int e = output.indexOf(end);
+    assertTrue(s >= 0 && e > s, "Expected section " + start);
+    return output.substring(s, e);
+  }
+
+  private int countOccurrences(String text, String needle) {
+    int count = 0;
+    int index = 0;
+    while ((index = text.indexOf(needle, index)) >= 0) {
+      count++;
+      index += needle.length();
+    }
+    return count;
+  }
+
   private AgentContext autoContext() {
     return new AgentContext(projectRoot, null, AgentMode.READ_ONLY, null,
         Map.of("autoGenerateCoordinates", "true"));
+  }
+
+  private AgentContext examplesContext() {
+    return new AgentContext(projectRoot, null, AgentMode.READ_ONLY, null,
+        Map.of("includeExamples", "true"));
   }
 
   private void assertDependencyScope(String pomPreview, String artifactId, String expectedScope) {

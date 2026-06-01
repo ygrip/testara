@@ -11,6 +11,7 @@ import picocli.CommandLine.Option;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.nio.file.Path;
+import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
 
@@ -43,6 +44,10 @@ public class TestInitCommand implements Runnable {
       description = "Integrate into existing Maven project instead of bootstrapping")
   private boolean integrateExisting;
 
+  @Option(names = "--examples", defaultValue = "false",
+      description = "Also generate demo sample feature/page/request artifacts. Default false.")
+  private boolean includeExamples;
+
   @Option(names = "--project", defaultValue = ".", description = "Target project root")
   private Path projectRoot;
 
@@ -69,7 +74,9 @@ public class TestInitCommand implements Runnable {
       applyDefaults(root);
     }
 
-    Map<String, String> opts = Map.of("write", preview ? "false" : "true");
+    Map<String, String> opts = new LinkedHashMap<>();
+    opts.put("write", preview ? "false" : "true");
+    opts.put("includeExamples", includeExamples ? "true" : "false");
     AgentContext ctx = new AgentContext(root,
         JsonlKnowledgeStore.loadProfile(root), AgentMode.PATCH,
         new DisabledLlmClient(), opts);

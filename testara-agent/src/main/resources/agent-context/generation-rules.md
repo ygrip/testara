@@ -5,20 +5,29 @@ properties -> command conversion -> config binding -> base steps -> request spec
 
 ## Agent quick guardrails
 - Read this section first; open detailed sections only when generating that artifact type.
+- **UI projects:** read "UI Runtime Quirks" section before generating any feature or page artifact.
 - Prefer built-in Testara steps/helpers over custom Cucumber steps.
 - Keep reusable Java in `src/main/java/{basePackage}`; keep runners/glue in `src/test/java/{basePackage}`.
+- `test-init` is a clean bootstrap by default: do not generate placeholder pages, actions, StepDefinitions, sample features, sample request specs, or sample service aliases unless `includeExamples=true` is explicitly requested.
 - `test-init` must ask for `groupId` and `artifactId` unless the user explicitly chooses auto-generated coordinates.
+- `test-init` writes only to the intended workspace. When using MCP, pass `projectRoot` explicitly if the server root is not the target project — this applies to `testara_init`, `testara_run`, and `testara_context`.
 - Compile scope for Testara modules imported by `src/main/java`; test scope for `testara-*-cucumber`, `testara-junit5`, and JUnit runner deps.
+- Do not add `cucumber-junit-platform-engine` to generated POMs. Testara provides `testara-cucumber` engine; adding the standard engine causes conflicts.
 - Do not pin `junit-platform-suite`; let Testara/JUnit transitive versions follow the resolved `testara.version`.
 - Use `properties(...)` for URLs, hosts, ports, credentials, topics, indexes, IDs, and env data.
 - API: use request specs at `src/test/resources/files/{domain}/request/{flow}.json`; feature path is `files/{domain}/request/{flow}`.
 - UI: generate `page` + `action`; use reusable action labels such as `login with credentials`; infer/ask pageName instead of producing SamplePage/SampleActions.
+- UI: keep scenario/video recording disabled by default. Generate `automation.engine.screenshot-output-type=IMAGE`; use `VIDEO` only when the user explicitly asks for scenario recording.
 - UI plans must emit executable Testara steps. `# MISSING` in generated UI login flows means the plan is not done.
+- UI: `testara_ui` emits `TODO-replace-selector` placeholders for unknown page types — replace all of them with real DOM selectors before generating features that reference those elements.
+- UI plans: use page names and action names that exactly match existing Page/UserAction classes. Do not invent names for pages or actions not yet created.
 - DB/Kafka/Elastic: use built-in steps and exact property prefixes (`sql.service`, `mongo.service`, `kafka.service`, `elasticsearch.service`).
 - DataTables: use `| key | value |` for map-shaped queries/params; use horizontal rows for records/templates/validations.
 - Scan locations must include `io.github.ygrip.testara` and singular project packages: `.command`, `.validation`, `.page`, `.action`.
 - Compile generated scaffolds with `mvn test-compile`; run full tests only when Docker/Testcontainers dependencies are available.
 - Generated automation POMs use `maven-failsafe-plugin` and run Cucumber/Testara runners in `mvn verify`, matching the example projects.
+- Generated `junit-platform.properties` defaults to stable serial execution, no retries, and `cucumber.junit-platform.naming-strategy=long`; enable parallelism/retry only when the project has proven engine isolation.
+- Generated runners match the examples: `Junit5RunnerTests` is only `@Log4j2` + `@TestSuite`; detailed Cucumber config belongs in properties or `Junit4RunnerTests`.
 
 ## Code conventions
 - Reuse Testara built-ins before creating project code. Built-in steps, commands, validations, request specs, pages/actions, and helpers are preferred over custom Cucumber steps.
@@ -30,14 +39,18 @@ properties -> command conversion -> config binding -> base steps -> request spec
 
 ## POM dependency scope rules
 - Compile scope: any Testara module imported by Java under `src/main/java`. Do not write `<scope>test</scope>` for these.
-- Test scope: Cucumber step modules (`testara-*-cucumber`), `testara-junit5`, JUnit Platform, and runner/test bootstrap dependencies used only under `src/test/java` or feature execution.
-- Avoid explicit JUnit Platform versions in generated POMs unless the project already pins a compatible BOM.
+- Compile scope: `testara-junit5` — matches the sample project; it provides runner annotations needed at compile and runtime.
+- Test scope: Cucumber step modules (`testara-*-cucumber`) and runner/test bootstrap dependencies used only under `src/test/java` or feature execution.
+- `lombok` scope: `provided` — annotation processor only, not needed at runtime.
+- NEVER add `cucumber-junit-platform-engine` to generated POMs. It is not in the sample project and is not required; Testara provides its own JUnit Platform engine (`testara-cucumber`).
+- Avoid explicit JUnit Platform versions in generated POMs unless the project already pins a compatible BOM; the `junit5` Maven profile uses `${junit-platform.version}` for `junit-platform-console-standalone`.
 - Always include compile-scope `testara-command` and `testara-validation` when generating `{basePackage}.command` or `{basePackage}.validation`.
 - API slice: `testara-api` compile, `testara-api-cucumber` test.
 - UI slice: `testara-ui` and selected engine (`testara-ui-selenium`, `testara-ui-playwright`, or `testara-ui-appium`) compile; `testara-ui-cucumber` test.
 - DB slice: `testara-database` compile; `testara-database-cucumber` test.
 - Kafka slice: `testara-streaming` compile; `testara-streaming-cucumber` test.
 - Elastic slice: `testara-elastic` compile; `testara-elastic-cucumber` test.
+- Generated POM has two Maven profiles: `junit4` (default, uses `surefire-junit47` + `testara-reporter-plugin`) and `junit5` (opt-in, uses `includeJUnit5Engines: testara-cucumber`). Run with `mvn verify` (junit4) or `mvn verify -P junit5`.
 
 ## DataTable format rules
 TransformerService processes DataTables. The required format depends on the target output type.
@@ -200,6 +213,49 @@ After test-init --write, run mvn test-compile to verify the scaffold compiles.
 ## RULE 10: scan locations on new artifact
 When generating a new Command or Validator class, verify command.executor.scan-locations
 and validator.helper.scan-locations in configuration.properties include the target package.
+
+## UI Runtime Quirks — Read Before Generating UI Features
+
+These are confirmed framework behaviors that cause debugging loops when not respected upfront.
+
+### Quirk 1: Element name resolution uses Locator field names exactly
+`user should see "X" is displayed`, `user click the "X"`, and `Enter.text(...).into("X")` all resolve "X" by
+converting it to SCREAMING_SNAKE_CASE and looking up a matching `Locator` field on the current page class.
+- `"username field"` → `USERNAME_FIELD` ✅
+- `"cart item"` → `CART_ITEM` ✅ (only if `CART_ITEM` exists and the locator matches a real element)
+- `"primary action"` → `PRIMARY_ACTION` — **only works if that locator targets a real visible element**
+
+**Rule:** Before using `user should see "X"`, confirm the page class has a Locator field that maps to X AND that locator points to an element that is actually visible after the preceding steps.
+
+### Quirk 2: Page context does not auto-advance after UserAction
+After `When user do "add item to cart" in "inventory" page`, the page context is still `inventory`, NOT `cart`.
+`Then user is in "cart" page` will fail if the action only clicked an add-to-cart button — no page navigation occurred.
+
+**Rule:** To land on a different page after a UserAction, emit an explicit navigation step:
+```gherkin
+When user open "cart" page          # URL navigation — always works
+# NOT: Then user is in "cart" page  # fails after click-only UserAction
+```
+
+### Quirk 3: Do not enable Cucumber retry for UI
+`cucumber.max.retry.failed.scenarios > 0` is not safe for UI tests — Testara manages its own session lifecycle and retry support may be added at the framework level in a future version.
+
+**Rule:** Always keep `cucumber.max.retry.failed.scenarios=0`. Do not suggest enabling it.
+
+### Quirk 4: Parallel execution registers duplicate engines
+`cucumber.execution.parallel.enabled=true` causes multiple Selenium/Playwright engines to register under the same ID.
+
+**Rule:** Keep `cucumber.execution.parallel.enabled=false` for UI projects. Both are already set correctly by `testara_init` — do not override them.
+
+### Quirk 5: testara_run and testara_context require projectRoot when MCP is launched globally
+When the MCP server starts from outside the project workspace (e.g. `~/`), the project index is empty.
+`testara_run` will show `indexed-features: 0` and fail to resolve any tags.
+
+**Rule:** Pass `projectRoot` to every tool call after a global-scope MCP launch:
+```
+testara_context(projectRoot="/path/to/project")
+testara_run(input="...", projectRoot="/path/to/project")
+```
 
 ## Quick reference: key steps by slice
 API:    Given [api] using service with alias {name} | [api] prepare pathParam for id with value "properties(test.{domain}.id)" | When [api] process request to "files/{domain}/request/{flow}" | Then [api] response statusCode should be 200 | [api] assign previous response data to {alias}

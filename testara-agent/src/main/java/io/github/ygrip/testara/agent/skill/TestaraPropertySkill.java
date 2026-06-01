@@ -135,7 +135,7 @@ public class TestaraPropertySkill implements AgentSkill<TestaraPropertySkill.Inp
         automation.engine.default-engine=selenium
         automation.engine.active-engines=selenium
         class.loader.default-scan-locations=io.github.ygrip.testara,{basePackage}
-        selenium.driver.headless=true
+        selenium.driver.headless=false
         selenium.driver.page-scan-locations=io.github.ygrip.testara,{basePackage}
         selenium.driver.action-scan-locations=io.github.ygrip.testara,{basePackage}
 

@@ -221,6 +221,7 @@ testara-agent test-init \
   --base-package com.company.payment.automation \
   --yes
 testara-agent test-init --type ui                # Selenium UI project
+testara-agent test-init --examples              # include demo sample artifacts
 testara-agent test-init --preview                # show files without writing
 ```
 
@@ -244,16 +245,22 @@ generated defaults.
 ```
 pom.xml
 src/test/resources/configuration.properties
-src/test/resources/features/api/sample.feature
-src/test/resources/files/sample/request/sample-get.json
-src/test/java/{pkg}/runner/TestRunner.java
-src/test/java/{pkg}/steps/StepDefinitions.java
+src/test/java/{pkg}/Junit5RunnerTests.java
+src/test/java/{pkg}/Junit4RunnerTests.java
 src/main/java/{pkg}/command/
 src/main/java/{pkg}/validation/
 ```
 
+By default `test-init` creates only bootstrap infrastructure. It does not create
+generic `StepDefinitions`, `HomePage`, sample feature files, sample request
+specs, or sample service aliases. Use `testara_ui`, `testara_api`, and
+`testara_plan` to generate contextual artifacts, or pass `--examples` /
+`includeExamples=true` when a demo scaffold is explicitly desired.
+
 After writing, runs `mvn test-compile` and reports the result. Generated POMs
-use Failsafe, so executable automation runs use `mvn verify`.
+use Failsafe, so executable automation runs use `mvn verify`. Generated
+`junit-platform.properties` defaults to serial execution and no retries to avoid
+duplicate engine/retry-state issues during bootstrap.
 
 **MCP tool:** `testara_init`
 
@@ -536,7 +543,9 @@ The cache stores the project profile in `.testara-agent/knowledge/profile-cache.
 7. **Compile gate** — `mvn test-compile` after `test-init --write`
 8. **Step priority** — built-in Testara steps > project steps > extension artifacts > custom step (last resort)
 9. **No duplicate custom steps** — command for dynamic data, validation for assertions
-10. **Scan locations for new artifacts** — update `command.executor.scan-locations` when adding commands
+10. **Clean init by default** — no placeholder `StepDefinitions`, `HomePage`, sample features/specs, or fake service aliases unless examples are requested
+11. **Scenario recording off by default** — generated UI configs use `automation.engine.screenshot-output-type=IMAGE`; switch to `VIDEO` only when requested
+12. **Scan locations for new artifacts** — update `command.executor.scan-locations` when adding commands
 
 ---
 
