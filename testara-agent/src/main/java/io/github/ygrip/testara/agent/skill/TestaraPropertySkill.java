@@ -85,7 +85,7 @@ public class TestaraPropertySkill implements AgentSkill<TestaraPropertySkill.Inp
     if (concise) {
       return cls == PropertyRuleEngine.Classification.ALLOWED_HARDCODED
           ? "'" + value + "' can be hardcoded (status code or boolean)"
-          : "feature/request value: " + expr + "\nadd to application.properties: " + suggested + "=${" + env + ":" + value + "}";
+          : "feature/request value: " + expr + "\nadd to src/test/resources/application.properties: " + suggested + "=${" + env + ":" + value + "}";
     }
     if (cls == PropertyRuleEngine.Classification.ALLOWED_HARDCODED) {
       return "Value `" + value + "` is a status code or boolean — it may be hardcoded in features.";
@@ -93,7 +93,7 @@ public class TestaraPropertySkill implements AgentSkill<TestaraPropertySkill.Inp
     return "**Value:** `" + value + "`  \n"
         + "**Classification:** " + cls + "  \n"
         + "**Use in feature/request spec:** `" + expr + "`  \n"
-        + "**Add to application.properties:**\n```properties\n" + suggested + "=${" + env + ":" + value + "}\n```\n";
+        + "**Add to `src/test/resources/application.properties`:**\n```properties\n" + suggested + "=${" + env + ":" + value + "}\n```\n";
   }
 
   // ── Generate ──────────────────────────────────────────────────────────────

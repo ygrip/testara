@@ -158,7 +158,8 @@ setup_mcp() {
       "command": "$WRAPPER",
       "args": ["mcp"],
       "env": {
-        "TESTARA_AGENT_RUN_ENABLED": "true"
+        "TESTARA_AGENT_RUN_ENABLED": "true",
+        "TESTARA_AGENT_WRITE_ENABLED": "true"
       }
     }
 ENTRY_EOF
@@ -186,7 +187,7 @@ except Exception:
     pass
 cfg.setdefault("servers", {})["testara"] = {
     "type": "stdio", "command": wrapper, "args": ["mcp"],
-    "env": {"TESTARA_AGENT_RUN_ENABLED": "true"}
+    "env": {"TESTARA_AGENT_RUN_ENABLED": "true", "TESTARA_AGENT_WRITE_ENABLED": "true"}
 }
 with open(path, "w") as f:
     json.dump(cfg, f, indent=2)
@@ -206,7 +207,8 @@ PYEOF
       "command": "$WRAPPER",
       "args": ["mcp"],
       "env": {
-        "TESTARA_AGENT_RUN_ENABLED": "true"
+        "TESTARA_AGENT_RUN_ENABLED": "true",
+        "TESTARA_AGENT_WRITE_ENABLED": "true"
       }
     }
   }
@@ -231,7 +233,7 @@ except Exception:
     pass
 cfg.setdefault("mcpServers", {})["testara"] = {
     "command": wrapper, "args": ["mcp"],
-    "env": {"TESTARA_AGENT_RUN_ENABLED": "true"}
+    "env": {"TESTARA_AGENT_RUN_ENABLED": "true", "TESTARA_AGENT_WRITE_ENABLED": "true"}
 }
 with open(path, "w") as f:
     json.dump(cfg, f, indent=2)
@@ -249,7 +251,8 @@ PYEOF
       "command": "$WRAPPER",
       "args": ["mcp"],
       "env": {
-        "TESTARA_AGENT_RUN_ENABLED": "true"
+        "TESTARA_AGENT_RUN_ENABLED": "true",
+        "TESTARA_AGENT_WRITE_ENABLED": "true"
       }
     }
   }
@@ -298,7 +301,7 @@ if os.path.exists(path):
         pass
 cfg.setdefault("mcpServers", {})["testara"] = {
     "command": wrapper, "args": ["mcp"],
-    "env": {"TESTARA_AGENT_RUN_ENABLED": "true"}
+    "env": {"TESTARA_AGENT_RUN_ENABLED": "true", "TESTARA_AGENT_WRITE_ENABLED": "true"}
 }
 with open(path, "w") as f:
     json.dump(cfg, f, indent=2)

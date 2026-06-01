@@ -171,12 +171,17 @@ public class TestaraApiSkill implements AgentSkill<TestaraApiSkill.Input, String
           List.of("src/test/resources/configuration.properties", "configuration.properties"));
       appendToProperties(projectRoot, applicationBlock,
           List.of("src/test/resources/application.properties", "application.properties"));
-      return concise ? "appended api config for '" + d + "' to configuration.properties and application.properties"
-          : "## API Config Written\n\nAppended runtime config to `configuration.properties`:\n```properties\n"
-              + configBlock + "```\n\nAppended environment values to `application.properties`:\n```properties\n"
+      return concise ? "appended api config for '" + d + "' to src/test/resources/configuration.properties and src/test/resources/application.properties"
+          : "## API Config Written\n\nAppended runtime config to `src/test/resources/configuration.properties`:\n```properties\n"
+              + configBlock + "```\n\nAppended environment values to `src/test/resources/application.properties`:\n```properties\n"
               + applicationBlock + "```\n";
     }
-    return concise ? block : "## API Config — " + d + "\n\n```properties\n" + block + "```\n";
+    return concise
+        ? "add_to_src/test/resources/configuration.properties:\n" + configBlock
+            + "\nadd_to_src/test/resources/application.properties:\n" + applicationBlock
+        : "## API Config — " + d + "\n\n**Add to `src/test/resources/configuration.properties`:**\n```properties\n"
+            + configBlock + "```\n\n**Add to `src/test/resources/application.properties`:**\n```properties\n"
+            + applicationBlock + "```\n";
   }
 
   private String generateRequestSpec(String domain, String flow, String method, String endpoint,
@@ -248,6 +253,14 @@ public class TestaraApiSkill implements AgentSkill<TestaraApiSkill.Input, String
         catch (IOException ignored) {}
         return;
       }
+    }
+    // File doesn't exist yet — create at the canonical test-scope location (first candidate)
+    if (!candidates.isEmpty()) {
+      Path target = root.resolve(candidates.get(0));
+      try {
+        Files.createDirectories(target.getParent());
+        Files.writeString(target, block, StandardCharsets.UTF_8);
+      } catch (IOException ignored) {}
     }
   }
 }
