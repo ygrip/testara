@@ -13,8 +13,9 @@ import java.util.stream.Collectors;
 /**
  * Skill: manage Testara property keys — list, suggest, generate, migrate.
  *
- * Hard rule: feature-file values must use properties() for URLs, credentials,
- * topic names, DB names, emails, test data, and any environment-specific value.
+ * Hard rule: property-file values must use env placeholders (${ENV:fallback})
+ * or concrete local fallbacks, not nested properties(...). Feature/request
+ * values can reference application properties with properties(key).
  */
 public class TestaraPropertySkill implements AgentSkill<TestaraPropertySkill.Input, String> {
 
@@ -79,19 +80,20 @@ public class TestaraPropertySkill implements AgentSkill<TestaraPropertySkill.Inp
     PropertyRuleEngine.Classification cls = PropertyRuleEngine.classify(value);
     String suggested = PropertyRuleEngine.suggestKey(value, domain != null ? domain : "app", null);
     String expr = "properties(" + suggested + ")";
+    String env = toEnvKey(suggested);
 
     if (concise) {
       return cls == PropertyRuleEngine.Classification.ALLOWED_HARDCODED
           ? "'" + value + "' can be hardcoded (status code or boolean)"
-          : "suggestion: " + expr + "\nadd to configuration.properties: " + suggested + "=" + value;
+          : "feature/request value: " + expr + "\nadd to application.properties: " + suggested + "=${" + env + ":" + value + "}";
     }
     if (cls == PropertyRuleEngine.Classification.ALLOWED_HARDCODED) {
       return "Value `" + value + "` is a status code or boolean — it may be hardcoded in features.";
     }
     return "**Value:** `" + value + "`  \n"
         + "**Classification:** " + cls + "  \n"
-        + "**Use in feature:** `" + expr + "`  \n"
-        + "**Add to configuration.properties:**\n```properties\n" + suggested + "=" + value + "\n```\n";
+        + "**Use in feature/request spec:** `" + expr + "`  \n"
+        + "**Add to application.properties:**\n```properties\n" + suggested + "=${" + env + ":" + value + "}\n```\n";
   }
 
   // ── Generate ──────────────────────────────────────────────────────────────
@@ -114,22 +116,23 @@ public class TestaraPropertySkill implements AgentSkill<TestaraPropertySkill.Inp
   }
 
   private String generateApiBlock(String domain) {
+    String env = toEnvKey(domain);
     return """
         # API service — %s
-        api.service.%s-api.host=properties(%s.host)
-        api.service.%s-api.basePath=properties(%s.basePath)
+        api.service.%s-api.host=${%s_API_HOST:http://localhost:8080}
+        api.service.%s-api.basePath=${%s_API_BASE_PATH:/api/v1}
         api.service.%s-api.default_specification=%s-api
         spec.api.%s-api.header.Content-Type=application/json
         spec.api.%s-api.header.Accept=application/json
 
-        # Actual values (replace with real environment values)
-        %s.host=http://localhost:8080
-        %s.basePath=/api/v1
-        """.formatted(domain, domain, domain + ".api.host", domain, domain + ".api.basePath",
-        domain, domain, domain, domain, domain + ".api", domain + ".api");
+        # Application values referenced from features/request specs
+        %s.api.endpoint=/sample/{id}
+        """.formatted(domain, domain, env, domain, env,
+        domain, domain, domain, domain, domain);
   }
 
   private String generateUiSeleniumBlock(String domain) {
+    String key = toPropertyKey(domain);
     return """
         # UI engine config
         automation.engine.default-engine=selenium
@@ -140,62 +143,47 @@ public class TestaraPropertySkill implements AgentSkill<TestaraPropertySkill.Inp
         selenium.driver.action-scan-locations=io.github.ygrip.testara,{basePackage}
 
         # Page URLs — %s
-        web.page.desktop.%s.url=properties(app.web.%s-url)
-        app.web.%s-url=http://localhost:3000/%s
-        """.formatted(domain, domain, domain, domain, domain);
+        web.page.desktop.%s.url=${APP_WEB_%s_URL:http://localhost:3000/%s}
+        """.formatted(domain, key, toEnvKey(key), key);
   }
 
   private String generateSqlBlock(String domain) {
     return """
         # SQL database — %s
-        sql.service.%sDb.host-name=properties(db.%s.host)
+        sql.service.%sDb.host-name=${DB_%s_HOST:localhost}
         sql.service.%sDb.port=5432
-        sql.service.%sDb.username=properties(db.%s.username)
-        sql.service.%sDb.password=properties(db.%s.password)
-        sql.service.%sDb.db-name=properties(db.%s.name)
+        sql.service.%sDb.username=${DB_%s_USERNAME:postgres}
+        sql.service.%sDb.password=${DB_%s_PASSWORD:postgres}
+        sql.service.%sDb.db-name=${DB_%s_NAME:%s}
         sql.service.%sDb.db-type=POSTGRESQL
         sql.service.%sDb.timeout=3
 
-        # Actual values
-        db.%s.host=localhost
-        db.%s.username=postgres
-        db.%s.password=postgres
-        db.%s.name=%s
-        """.formatted(domain, domain, domain, domain, domain, domain, domain, domain,
-        domain, domain, domain, domain, domain, domain, domain, domain, domain);
+        """.formatted(domain, domain, toEnvKey(domain), domain, domain, toEnvKey(domain),
+        domain, toEnvKey(domain), domain, toEnvKey(domain), domain, domain, domain);
   }
 
   private String generateMongoBlock(String domain) {
     return """
         # MongoDB — %s
-        mongo.service.%sDb.hosts=properties(db.%s.hosts)
-        mongo.service.%sDb.db-name=properties(db.%s.name)
-        mongo.service.%sDb.username=properties(db.%s.username)
-        mongo.service.%sDb.password=properties(db.%s.password)
+        mongo.service.%sDb.hosts=${MONGO_%s_HOSTS:localhost:27017}
+        mongo.service.%sDb.db-name=${MONGO_%s_NAME:%s}
+        mongo.service.%sDb.username=${MONGO_%s_USERNAME:}
+        mongo.service.%sDb.password=${MONGO_%s_PASSWORD:}
         mongo.service.%sDb.ssl-enabled=false
 
-        # Actual values
-        db.%s.hosts=localhost:27017
-        db.%s.name=%s
-        db.%s.username=
-        db.%s.password=
-        """.formatted(domain, domain, domain, domain, domain, domain, domain, domain, domain,
-        domain, domain, domain, domain, domain, domain);
+        """.formatted(domain, domain, toEnvKey(domain), domain, toEnvKey(domain), domain,
+        domain, toEnvKey(domain), domain, toEnvKey(domain));
   }
 
   private String generateKafkaBlock(String domain) {
     return """
         # Kafka — %s
-        kafka.service.%sKafka.servers=properties(kafka.%s.servers)
-        kafka.service.%sKafka.group-id=properties(kafka.%s.group-id)
-        kafka.service.%sKafka.topics.%sEvent=properties(kafka.topic.%s-event)
+        kafka.service.%sKafka.servers=${KAFKA_%s_SERVERS:localhost:9092}
+        kafka.service.%sKafka.group-id=${KAFKA_%s_GROUP_ID:testara-%s-test}
+        kafka.service.%sKafka.topics.%sEvent=${KAFKA_TOPIC_%s_EVENT:%s.event.v1}
 
-        # Actual values
-        kafka.%s.servers=localhost:9092
-        kafka.%s.group-id=testara-%s-test
-        kafka.topic.%s-event=%s.event.v1
-        """.formatted(domain, domain, domain, domain, domain, domain, domain, domain,
-        domain, domain, domain, domain, domain);
+        """.formatted(domain, domain, toEnvKey(domain), domain, toEnvKey(domain), domain,
+        domain, domain, toEnvKey(domain), domain);
   }
 
   // ── Rules ─────────────────────────────────────────────────────────────────
@@ -207,14 +195,20 @@ public class TestaraPropertySkill implements AgentSkill<TestaraPropertySkill.Inp
           MUST: URLs, hosts, ports, emails, passwords, tokens, topic names, DB names, request IDs, test data
           ALLOWED hardcoded: status codes (200/400), booleans (true/false), stable enum labels
           NEVER: hardcode localhost, credentials, or env-specific values directly in feature files
-          Usage: properties(key) or prop(key) — resolved from configuration.properties at runtime
+          Property files: use ${ENV:fallback}; do not set a property value to properties(other.key)
+          Feature/request values: use properties(key) for application.properties values, or uuid()/random()/oneOf() for dynamic data
           """;
     }
     return """
         ## properties() Usage Rules
 
-        ### Must use properties()
-        - URLs and hostnames: `http://localhost:8080` → `properties(api.service.*.host)`
+        ### Property-file values
+        - Use env placeholders: `api.service.orders-api.host=${ORDERS_API_HOST:http://localhost:8080}`
+        - Do not nest indirection: avoid `api.service.orders-api.host=properties(orders.api.host)`
+
+        ### Feature/request values
+        - URLs, credentials, topics, DB names, and reusable test data can use `properties(key)` when the key lives in `application.properties`
+        - Dynamic data should use commands: `uuid()`, `random(6,NUMERIC)`, `oneOf(a,b,c)`
         - Credentials: passwords, tokens, secrets, API keys
         - Topic names: `payment.event.v1` → `properties(kafka.topic.payment-event)`
         - DB names and hosts
@@ -250,5 +244,17 @@ public class TestaraPropertySkill implements AgentSkill<TestaraPropertySkill.Inp
       }
     }
     return props;
+  }
+
+  private String toPropertyKey(String value) {
+    return value.toLowerCase(Locale.ROOT)
+        .replaceAll("[^a-z0-9]+", "-")
+        .replaceAll("^-|-$", "");
+  }
+
+  private String toEnvKey(String value) {
+    return value.toUpperCase(Locale.ROOT)
+        .replaceAll("[^A-Z0-9]+", "_")
+        .replaceAll("^_|_$", "");
   }
 }

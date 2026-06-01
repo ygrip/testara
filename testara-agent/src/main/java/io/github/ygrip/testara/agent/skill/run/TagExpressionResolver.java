@@ -77,6 +77,8 @@ public class TagExpressionResolver {
         }
       }
       if (positiveTags.isEmpty()) {
+        String specific = inferSpecificExpressionFromFeatureAndScenarioText(lower, profile, negativeTags);
+        if (!specific.isBlank()) return appendNegative(specific, negativeTags);
         positiveTags.addAll(inferFromFeatureAndScenarioText(lower, profile, negativeTags));
       }
     }
@@ -102,9 +104,7 @@ public class TagExpressionResolver {
 
     if (positiveTags.isEmpty() && negativeTags.isEmpty()) return "";
 
-    String positive = positiveTags.size() > 1
-        ? "(" + positiveTags.stream().distinct().collect(Collectors.joining(" or ")) + ")"
-        : positiveTags.stream().distinct().collect(Collectors.joining(" and "));
+    String positive = formatPositiveTags(positiveTags, lower);
     String negative = negativeTags.stream().distinct()
         .map(t -> "not " + t)
         .collect(Collectors.joining(" and "));
@@ -114,13 +114,66 @@ public class TagExpressionResolver {
     return positive + " and " + negative;
   }
 
+  private String formatPositiveTags(List<String> positiveTags, String lower) {
+    List<String> distinct = positiveTags.stream().distinct().toList();
+    if (distinct.size() <= 1) return String.join("", distinct);
+    if (lower.contains(" or ")) return "(" + String.join(" or ", distinct) + ")";
+    return String.join(" and ", distinct);
+  }
+
+  private String appendNegative(String positive, List<String> negativeTags) {
+    String negative = negativeTags.stream().distinct()
+        .map(t -> "not " + t)
+        .collect(Collectors.joining(" and "));
+    return negative.isBlank() ? positive : positive + " and " + negative;
+  }
+
+  private String inferSpecificExpressionFromFeatureAndScenarioText(String lower, TestaraProjectProfile profile,
+      List<String> negativeTags) {
+    Set<String> words = meaningfulWords(lower);
+    if (words.isEmpty()) return "";
+
+    Match best = null;
+    boolean tie = false;
+    for (var feature : profile.features()) {
+      for (var scenario : feature.scenarios()) {
+        Set<String> scenarioTags = new LinkedHashSet<>(feature.tags());
+        scenarioTags.addAll(scenario.tags());
+        String haystack = (feature.featureName() + " " + scenario.name() + " " + String.join(" ", scenarioTags))
+            .toLowerCase(Locale.ROOT).replace("@", " ");
+        int score = score(haystack, words);
+        if (score == 0) continue;
+        if (best == null || score > best.score()) {
+          best = new Match(score, scenarioTags);
+          tie = false;
+        } else if (score == best.score()) {
+          tie = true;
+        }
+      }
+    }
+    if (best == null || (tie && best.tags().isEmpty())) return "";
+    List<String> significant = best.tags().stream()
+        .filter(t -> !negativeTags.contains(t))
+        .filter(t -> !t.matches("@P\\d+") && !Set.of("@positive", "@negative", "@manual").contains(t))
+        .distinct()
+        .toList();
+    if (significant.isEmpty()) {
+      significant = best.tags().stream().filter(t -> !negativeTags.contains(t)).distinct().toList();
+    }
+    return String.join(" and ", significant);
+  }
+
+  private int score(String haystack, Set<String> words) {
+    int score = 0;
+    for (String word : words) {
+      if (haystack.contains(word)) score++;
+    }
+    return score;
+  }
+
   private List<String> inferFromFeatureAndScenarioText(String lower, TestaraProjectProfile profile,
       List<String> negativeTags) {
-    Set<String> words = Arrays.stream(lower.split("[\\s,;]+"))
-        .map(w -> w.replaceAll("[^a-z0-9_-]", ""))
-        .filter(w -> !w.isBlank())
-        .filter(w -> !STOP_WORDS.contains(w))
-        .collect(Collectors.toCollection(LinkedHashSet::new));
+    Set<String> words = meaningfulWords(lower);
     if (words.isEmpty()) return List.of();
 
     Set<String> inferred = new LinkedHashSet<>();
@@ -156,6 +209,16 @@ public class TagExpressionResolver {
       "run", "test", "tests", "dry", "mode", "the", "a", "an", "in", "on", "for", "with",
       "and", "or", "please", "execute", "only", "all", "scenario", "scenarios"
   );
+
+  private Set<String> meaningfulWords(String lower) {
+    return Arrays.stream(lower.split("[\\s,;]+"))
+        .map(w -> w.replaceAll("[^a-z0-9_-]", ""))
+        .filter(w -> !w.isBlank())
+        .filter(w -> !STOP_WORDS.contains(w))
+        .collect(Collectors.toCollection(LinkedHashSet::new));
+  }
+
+  private record Match(int score, Set<String> tags) {}
 
   /** Count scenarios matching the resolved expression (simple tag set match). */
   public int countMatching(String tagExpression, TestaraProjectProfile profile) {

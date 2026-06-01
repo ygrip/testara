@@ -49,7 +49,8 @@ public class TestaraApiSkill implements AgentSkill<TestaraApiSkill.Input, String
           - spec fields map to CreateRequestSpecification: specification, httpMethod, url, contentType, cookies, queryParameters, formParameters, headers, pathParameters, multiPartData, payload, requestLog, responseLog, autoCloseConnection
           - response: [api] response statusCode should be 200 | [api] assign previous response data to alias
           - validations: [api] do these validations with response($['alias']) / request($['alias'])
-          - properties() for all URLs, credentials, and test data values
+          - property files: use ${ENV:fallback} values; do not nest properties(...) as property values
+          - feature/request values: use properties(key) for application.properties values, or commands like uuid()/random()/oneOf() for dynamic data
           - DataTable for header/form/query param steps: MUST use |key|value| headers (each row = one entry)
           - DataTable for template binding (prepare request data ... from template): horizontal multi-column (column names = JSONPath keys in template)
           """;
@@ -59,8 +60,8 @@ public class TestaraApiSkill implements AgentSkill<TestaraApiSkill.Input, String
 
         ## Service Config
         ```properties
-        api.service.{name}.host=properties({name}.host)
-        api.service.{name}.basePath=properties({name}.basePath)
+        api.service.{name}.host=${API_SERVICE_HOST:http://localhost:8080}
+        api.service.{name}.basePath=${API_SERVICE_BASE_PATH:/api/v1}
         api.service.{name}.default_specification={name}
         spec.api.{name}.header.Content-Type=application/json
         spec.api.{name}.header.Accept=application/json
@@ -143,26 +144,25 @@ public class TestaraApiSkill implements AgentSkill<TestaraApiSkill.Input, String
   private String generateApiConfig(String domain, Path projectRoot, boolean write, boolean concise) {
     if (domain == null) domain = "sample";
     String d = domain;
+    String envPrefix = d.replaceAll("[^a-zA-Z0-9]+", "_").toUpperCase(Locale.ROOT);
     String configBlock = """
         # API service — %s
-        api.service.%s-api.host=properties(%s.api.host)
-        api.service.%s-api.basePath=properties(%s.api.basePath)
+        api.service.%s-api.host=${%s_API_HOST:http://localhost:8080}
+        api.service.%s-api.basePath=${%s_API_BASE_PATH:/api/v1}
         api.service.%s-api.default_specification=%s-api
         spec.api.%s-api.header.Content-Type=application/json
         spec.api.%s-api.header.Accept=application/json
         api.enable-request-log=true
         api.enable-response-log=true
-        """.formatted(d, d, d, d, d, d, d, d, d);
+        """.formatted(d, d, envPrefix, d, envPrefix, d, d, d, d);
 
     String applicationBlock = """
-        # Environment values
-        %s.api.host=http://localhost:8080
-        %s.api.basePath=/api/v1
+        # Application values referenced by features/request specs
         %s.api.endpoint=/sample/{id}
         test.%s.id=00000000-0000-0000-0000-000000000001
         test.%s.field=sample-value
         test.%s.include=details
-        """.formatted(d, d, d, d, d, d);
+        """.formatted(d, d, d, d);
 
     String block = configBlock + "\n" + applicationBlock;
 

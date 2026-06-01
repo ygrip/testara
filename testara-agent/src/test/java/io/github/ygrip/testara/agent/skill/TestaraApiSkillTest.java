@@ -46,8 +46,9 @@ class TestaraApiSkillTest {
         new TestaraApiSkill.Input("config", "checkout", null, null, null),
         context(Map.of()));
 
-    assertTrue(output.contains("api.service.checkout-api.host=properties(checkout.api.host)"));
-    assertTrue(output.contains("checkout.api.host=http://localhost:8080"));
+    assertTrue(output.contains("api.service.checkout-api.host=${CHECKOUT_API_HOST:http://localhost:8080}"));
+    assertFalse(output.contains("api.service.checkout-api.host=properties(checkout.api.host)"));
+    assertFalse(output.contains("checkout.api.host=http://localhost:8080"));
     assertTrue(output.contains("test.checkout.field=sample-value"));
   }
 

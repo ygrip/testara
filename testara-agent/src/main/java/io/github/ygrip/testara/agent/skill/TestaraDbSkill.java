@@ -5,7 +5,8 @@ import java.util.Locale;
 /**
  * Skill: explain and generate DB (SQL/Mongo) and Kafka config and feature templates.
  *
- * All config values use properties() for env-specific data.
+ * Config values use ${ENV:fallback}; feature/request values can reference
+ * application properties with properties(key).
  */
 public class TestaraDbSkill implements AgentSkill<TestaraDbSkill.Input, String> {
 
@@ -49,16 +50,16 @@ public class TestaraDbSkill implements AgentSkill<TestaraDbSkill.Input, String> 
   // ── SQL ───────────────────────────────────────────────────────────────────
 
   private String sqlExplain(boolean concise) {
-    if (concise) return "sql steps: [sql] connect to database with name {name} | [sql] prepare query with value : (multiline) | [sql] execute database query | [sql] assign previous database response to {alias}. Config: sql.service.{name}.* Use properties() for host/user/password/db-name.";
+    if (concise) return "sql steps: [sql] connect to database with name {name} | [sql] prepare query with value : (multiline) | [sql] execute database query | [sql] assign previous database response to {alias}. Config: sql.service.{name}.* uses ${ENV:fallback}; feature values use properties() or dynamic commands.";
     return """
         ## SQL Guide
 
         Config:
         ```properties
-        sql.service.{name}.host-name=properties(db.{name}.host)
-        sql.service.{name}.db-name=properties(db.{name}.name)
-        sql.service.{name}.username=properties(db.{name}.username)
-        sql.service.{name}.password=properties(db.{name}.password)
+        sql.service.{name}.host-name=${DB_NAME_HOST:localhost}
+        sql.service.{name}.db-name=${DB_NAME_NAME:testdb}
+        sql.service.{name}.username=${DB_NAME_USERNAME:postgres}
+        sql.service.{name}.password=${DB_NAME_PASSWORD:postgres}
         sql.service.{name}.db-type=POSTGRESQL
         ```
 
@@ -77,19 +78,15 @@ public class TestaraDbSkill implements AgentSkill<TestaraDbSkill.Input, String> 
 
   private String sqlConfig(String name, boolean concise) {
     String block = """
-        sql.service.%sDb.host-name=properties(db.%s.host)
+        sql.service.%sDb.host-name=${DB_%s_HOST:localhost}
         sql.service.%sDb.port=5432
-        sql.service.%sDb.username=properties(db.%s.username)
-        sql.service.%sDb.password=properties(db.%s.password)
-        sql.service.%sDb.db-name=properties(db.%s.name)
+        sql.service.%sDb.username=${DB_%s_USERNAME:postgres}
+        sql.service.%sDb.password=${DB_%s_PASSWORD:postgres}
+        sql.service.%sDb.db-name=${DB_%s_NAME:%s}
         sql.service.%sDb.db-type=POSTGRESQL
         sql.service.%sDb.timeout=3
-
-        db.%s.host=localhost
-        db.%s.username=postgres
-        db.%s.password=postgres
-        db.%s.name=%s
-        """.formatted(name, name, name, name, name, name, name, name, name, name, name, name, name, name, name, name);
+        """.formatted(name, toEnvKey(name), name, name, toEnvKey(name), name, toEnvKey(name),
+        name, toEnvKey(name), toPropertyKey(name), name, name);
     return concise ? block : "```properties\n" + block + "```";
   }
 
@@ -111,16 +108,16 @@ public class TestaraDbSkill implements AgentSkill<TestaraDbSkill.Input, String> 
   // ── Mongo ─────────────────────────────────────────────────────────────────
 
   private String mongoExplain(boolean concise) {
-    if (concise) return "mongo steps: [mongo] connect to database with name {name} | [mongo] select collection with name {col} | [mongo] select data with query : (|key|value| table — keys: query/sort/project/limit/skip) | [mongo] assign previous database response to {alias}. Config: mongo.service.{name}.* Use properties() for hosts/user/password/db-name. IMPORTANT: query DataTable MUST use |key|value| headers — without them the map is built wrong.";
+    if (concise) return "mongo steps: [mongo] connect to database with name {name} | [mongo] select collection with name {col} | [mongo] select data with query : (|key|value| table — keys: query/sort/project/limit/skip) | [mongo] assign previous database response to {alias}. Config: mongo.service.{name}.* uses ${ENV:fallback}. IMPORTANT: query DataTable MUST use |key|value| headers.";
     return """
         ## MongoDB Guide
 
         Config:
         ```properties
-        mongo.service.{name}.hosts=properties(mongo.{name}.hosts)
-        mongo.service.{name}.db-name=properties(mongo.{name}.name)
-        mongo.service.{name}.username=properties(mongo.{name}.username)
-        mongo.service.{name}.password=properties(mongo.{name}.password)
+        mongo.service.{name}.hosts=${MONGO_NAME_HOSTS:localhost:27017}
+        mongo.service.{name}.db-name=${MONGO_NAME_DB:testdb}
+        mongo.service.{name}.username=${MONGO_NAME_USERNAME:}
+        mongo.service.{name}.password=${MONGO_NAME_PASSWORD:}
         ```
 
         DataTable format for query steps — MUST use |key|value| headers:
@@ -144,17 +141,13 @@ public class TestaraDbSkill implements AgentSkill<TestaraDbSkill.Input, String> 
 
   private String mongoConfig(String name, boolean concise) {
     String block = """
-        mongo.service.%sDb.hosts=properties(mongo.%s.hosts)
-        mongo.service.%sDb.db-name=properties(mongo.%s.name)
-        mongo.service.%sDb.username=properties(mongo.%s.username)
-        mongo.service.%sDb.password=properties(mongo.%s.password)
+        mongo.service.%sDb.hosts=${MONGO_%s_HOSTS:localhost:27017}
+        mongo.service.%sDb.db-name=${MONGO_%s_NAME:%s}
+        mongo.service.%sDb.username=${MONGO_%s_USERNAME:}
+        mongo.service.%sDb.password=${MONGO_%s_PASSWORD:}
         mongo.service.%sDb.ssl-enabled=false
-
-        mongo.%s.hosts=localhost:27017
-        mongo.%s.name=%s
-        mongo.%s.username=
-        mongo.%s.password=
-        """.formatted(name, name, name, name, name, name, name, name, name, name, name, name, name, name);
+        """.formatted(name, toEnvKey(name), name, toEnvKey(name), toPropertyKey(name),
+        name, toEnvKey(name), name, toEnvKey(name), name);
     return concise ? block : "```properties\n" + block + "```";
   }
 
@@ -174,15 +167,15 @@ public class TestaraDbSkill implements AgentSkill<TestaraDbSkill.Input, String> 
   // ── Kafka ─────────────────────────────────────────────────────────────────
 
   private String kafkaExplain(boolean concise) {
-    if (concise) return "kafka steps: [kafka] start kafka producer for {name} | [kafka] send kafka message to topic \"properties(kafka.topic.*)\" with key \"properties(test.*.id)\" and data \"properties(test.*.payload)\" | [kafka] stop kafka producer. Consumer: [kafka] start kafka consumer for {name} | [kafka] listen kafka from topic {topicAlias} | [kafka] assign N latest records from topic \"properties(kafka.topic.*)\" to {alias} | [kafka] stop kafka consumer. Config: kafka.service.{name}.* Use properties() for servers/group-id/topic names.";
+    if (concise) return "kafka steps: [kafka] start kafka producer for {name} | [kafka] send kafka message to topic \"properties(kafka.topic.*)\" with key \"uuid()\" or properties(test.*.id) and data \"request($['event'])\" | [kafka] stop kafka producer. Config uses ${ENV:fallback}.";
     return """
         ## Kafka Guide
 
         Config:
         ```properties
-        kafka.service.{name}.servers=properties(kafka.{name}.servers)
-        kafka.service.{name}.group-id=properties(kafka.{name}.group-id)
-        kafka.service.{name}.topics.{alias}=properties(kafka.topic.{alias})
+        kafka.service.{name}.servers=${KAFKA_NAME_SERVERS:localhost:9092}
+        kafka.service.{name}.group-id=${KAFKA_NAME_GROUP_ID:testara-name-test}
+        kafka.service.{name}.topics.{alias}=${KAFKA_TOPIC_ALIAS:alias.event.v1}
         ```
 
         Producer feature:
@@ -204,14 +197,11 @@ public class TestaraDbSkill implements AgentSkill<TestaraDbSkill.Input, String> 
 
   private String kafkaConfig(String name, boolean concise) {
     String block = """
-        kafka.service.%sKafka.servers=properties(kafka.%s.servers)
-        kafka.service.%sKafka.group-id=properties(kafka.%s.group-id)
-        kafka.service.%sKafka.topics.%sEvent=properties(kafka.topic.%s-event)
-
-        kafka.%s.servers=localhost:9092
-        kafka.%s.group-id=testara-%s-test
-        kafka.topic.%s-event=%s.event.v1
-        """.formatted(name, name, name, name, name, name, name, name, name, name, name, name);
+        kafka.service.%sKafka.servers=${KAFKA_%s_SERVERS:localhost:9092}
+        kafka.service.%sKafka.group-id=${KAFKA_%s_GROUP_ID:testara-%s-test}
+        kafka.service.%sKafka.topics.%sEvent=${KAFKA_TOPIC_%s_EVENT:%s.event.v1}
+        """.formatted(name, toEnvKey(name), name, toEnvKey(name), toPropertyKey(name),
+        name, name, toEnvKey(name), toPropertyKey(name));
     return concise ? block : "```properties\n" + block + "```";
   }
 
@@ -234,8 +224,8 @@ public class TestaraDbSkill implements AgentSkill<TestaraDbSkill.Input, String> 
 
         Config:
         ```properties
-        elastic-search.service.{name}.host=properties(elastic.{name}.host)
-        elastic-search.service.{name}.port=properties(elastic.{name}.port)
+        elastic-search.service.{name}.host=${ELASTIC_NAME_HOST:localhost}
+        elastic-search.service.{name}.port=${ELASTIC_NAME_PORT:9200}
         elastic-search.service.{name}.scheme=https
         ```
 
@@ -266,13 +256,10 @@ public class TestaraDbSkill implements AgentSkill<TestaraDbSkill.Input, String> 
 
   private String elasticConfig(String name, boolean concise) {
     String block = """
-        elastic-search.service.%s.host=properties(elastic.%s.host)
-        elastic-search.service.%s.port=properties(elastic.%s.port)
+        elastic-search.service.%s.host=${ELASTIC_%s_HOST:localhost}
+        elastic-search.service.%s.port=${ELASTIC_%s_PORT:9200}
         elastic-search.service.%s.scheme=https
-
-        elastic.%s.host=localhost
-        elastic.%s.port=9200
-        """.formatted(name, name, name, name, name, name, name);
+        """.formatted(name, toEnvKey(name), name, toEnvKey(name), name);
     return concise ? block : "```properties\n" + block + "```";
   }
 
@@ -286,5 +273,17 @@ public class TestaraDbSkill implements AgentSkill<TestaraDbSkill.Input, String> 
         Then [elastic-search] assign previous elastic search response to %sResults
         """.formatted(name, name, name, name, name);
     return concise ? feature : "```gherkin\n" + feature + "```";
+  }
+
+  private String toPropertyKey(String value) {
+    return value.toLowerCase(Locale.ROOT)
+        .replaceAll("[^a-z0-9]+", "-")
+        .replaceAll("^-|-$", "");
+  }
+
+  private String toEnvKey(String value) {
+    return value.toUpperCase(Locale.ROOT)
+        .replaceAll("[^A-Z0-9]+", "_")
+        .replaceAll("^_|_$", "");
   }
 }

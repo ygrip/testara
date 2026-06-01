@@ -101,4 +101,41 @@ class TagExpressionResolverTest {
     assertTrue(result.contains("@saucedemo"));
     assertEquals(1, resolver.countMatching(result, profile));
   }
+
+  @Test
+  void usesConjunctionForSpecificScenarioText() {
+    ScenarioIndex purchase = new ScenarioIndex("Complete purchase flow - login, add to cart, and checkout",
+        ScenarioType.SCENARIO, List.of("@P1", "@positive", "@smoke"), List.of(), List.of());
+    FeatureIndex feature = new FeatureIndex(Path.of("saucedemo-e2e.feature"),
+        "SauceDemo E2E - Login, Add to Cart, and Checkout",
+        List.of("@ui", "@saucedemo", "@regression"), List.of(purchase), List.of());
+    TestaraProjectProfile profile = new TestaraProjectProfile(
+        Path.of("."), BuildTool.MAVEN, "21", List.of(),
+        List.of(), List.of(), List.of(),
+        List.of(feature), List.of(), List.of(), List.of(), List.of(),
+        List.of(new TagIndex("@ui", 1, 1, List.of(), List.of()),
+            new TagIndex("@saucedemo", 1, 1, List.of(), List.of()),
+            new TagIndex("@regression", 1, 1, List.of(), List.of()),
+            new TagIndex("@smoke", 1, 1, List.of(), List.of())),
+        Map.of(), Map.of(), List.of(), List.of());
+
+    String result = resolver.resolve("run complete purchase flow", profile);
+
+    assertTrue(result.contains("@ui"));
+    assertTrue(result.contains("@saucedemo"));
+    assertTrue(result.contains("@smoke"));
+    assertFalse(result.contains(" or "), "Specific text should narrow with AND, not broaden with OR");
+    assertEquals(1, resolver.countMatching(result, profile));
+  }
+
+  @Test
+  void defaultsToAndForMultipleNaturalTagsUnlessUserSaysOr() {
+    String result = resolver.resolve("run api smoke tests",
+        profileWithTags("@api", "@smoke", "@regression"));
+    String orResult = resolver.resolve("run api or ui tests",
+        profileWithTags("@api", "@ui", "@regression"));
+
+    assertEquals("@api and @smoke", result);
+    assertEquals("(@api or @ui)", orResult);
+  }
 }

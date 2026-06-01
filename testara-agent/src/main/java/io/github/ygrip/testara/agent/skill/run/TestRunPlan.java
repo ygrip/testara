@@ -11,6 +11,8 @@ public record TestRunPlan(
     List<String> matchedScenarioNames
 ) {
   public String toMarkdown() {
+    String matchedNames = matchedScenarioNames.isEmpty() ? ""
+        : "\n**Matched scenario examples:** " + String.join(" | ", matchedScenarioNames) + "\n";
     return String.format("""
         ## Test Run Plan
 
@@ -18,10 +20,11 @@ public record TestRunPlan(
         **Resolved tag expression:** `%s`
         **Matched features:** %d
         **Matched scenarios:** %d
+        %s
         **Command:**
         ```
         %s
         ```
-        """, intent, tagExpression, matchedFeatures, matchedScenarios, mavenCommand);
+        """, intent, tagExpression, matchedFeatures, matchedScenarios, matchedNames, mavenCommand);
   }
 }

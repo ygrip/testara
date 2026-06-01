@@ -48,6 +48,9 @@ class TestaraGuideSkillTest {
     assertTrue(guide.contains("## Agent quick guardrails"));
     assertTrue(guide.contains("Compile scope for Testara modules imported by `src/main/java`"));
     assertTrue(guide.contains("DataTables: use `| key | value |`"));
+    assertTrue(guide.contains("UserAction classes must be top-level classes"));
+    assertTrue(guide.contains("Do not generate wrapper classes with nested `static class"));
+    assertTrue(guide.contains("allowAnonymousCall = true"));
     assertTrue(guide.contains("## Utilities and helpers"));
     assertTrue(guide.contains("## Built-in step usage"));
     assertTrue(guide.contains("## POM dependency scope rules"));

@@ -63,14 +63,11 @@ public class TestRunSkill implements AgentSkill<String, String> {
     }
 
     String tagExpr = resolver.resolve(input, profile);
-    if (tagExpr.isBlank()) return "Could not resolve a tag expression from: \"" + input + "\"\n"
-        + "project-root: " + context.projectRoot() + "\n"
-        + "indexed-features: " + profile.features().size() + " | indexed-scenarios: " + profile.totalScenarios() + "\n"
-        + "Available tags: " + profile.tags().stream()
-            .map(t -> t.tag()).collect(Collectors.joining(", ")) + "\n"
-        + "Try an explicit tag such as @ui, @api, @regression, or a project tag shown by testara_context.";
+    if (tagExpr.isBlank()) return unresolvedPrompt(input, context, profile);
 
     int matched = resolver.countMatching(tagExpr, profile);
+    if (matched == 0) return unresolvedPrompt(input, context, profile)
+        + "\nresolved-expression-without-matches: " + tagExpr;
     int matchedFeatures = (int) profile.features().stream()
         .filter(f -> f.scenarios().stream().anyMatch(s ->
             resolver.countMatching(tagExpr, profileForScenario(profile, f, s)) > 0))
@@ -95,6 +92,25 @@ public class TestRunSkill implements AgentSkill<String, String> {
       return plan.toMarkdown() + "\n> **Execution blocked.** Set TESTARA_AGENT_RUN_ENABLED=true to allow test execution.\n";
     }
     return executeAndReport(command, tagExpr, context.projectRoot());
+  }
+
+  private String unresolvedPrompt(String input, AgentContext context, TestaraProjectProfile profile) {
+    String availableTags = profile.tags().stream()
+        .map(t -> t.tag())
+        .limit(20)
+        .collect(Collectors.joining(", "));
+    String scenarioExamples = profile.features().stream()
+        .flatMap(f -> f.scenarios().stream().map(s -> s.name()))
+        .limit(8)
+        .collect(Collectors.joining(" | "));
+    return "needs_input: test_run_filter\n"
+        + "question: Which tests should run? Provide an explicit tag, feature name, or scenario name from the project.\n"
+        + "input: " + input + "\n"
+        + "project-root: " + context.projectRoot() + "\n"
+        + "indexed-features: " + profile.features().size() + " | indexed-scenarios: " + profile.totalScenarios() + "\n"
+        + "available-tags: " + availableTags + "\n"
+        + "scenario-examples: " + scenarioExamples + "\n"
+        + "examples: @smoke, @ui and @checkout, feature name, exact scenario name";
   }
 
   private String executeAndReport(String command, String tagExpr, Path projectRoot) {

@@ -45,6 +45,8 @@ class TestaraUiSkillTest {
     assertTrue(output.contains("import io.github.ygrip.testara.ui.model.OnPage;"));
     assertTrue(output.contains("import io.github.ygrip.testara.ui.model.Action;"));
     assertTrue(output.contains("@OnPage(value = {LoginPage.class})"));
+    assertTrue(output.contains("public class LoginActions extends UserAction"));
+    assertFalse(output.contains("public static class"));
     assertTrue(output.contains("| username"));
     assertTrue(output.contains("| password"));
     assertTrue(output.contains("properties(test.user.username)"));
@@ -63,7 +65,15 @@ class TestaraUiSkillTest {
     assertTrue(output.contains("import io.github.ygrip.automation.page.LoginPage;"));
     assertTrue(output.contains("@OnPage(value = {LoginPage.class})"));
     assertTrue(output.contains("@Action(\"login with credentials\")"));
+    assertTrue(output.contains("public class LoginActions extends UserAction"));
+    assertFalse(output.contains("public static class"));
     assertTrue(output.contains("When user do \"login with credentials\" in \"login\" page with parameter"));
+    assertTrue(output.contains("|key|value|"));
+    assertTrue(output.contains("| username"));
+    assertTrue(output.contains("properties(test.user.username)"));
+    assertTrue(output.contains("| password"));
+    assertTrue(output.contains("properties(test.user.password)"));
+    assertFalse(output.contains("| username                       | password"));
     assertFalse(output.contains("SampleActions"));
     assertFalse(output.contains("SamplePage"));
   }
@@ -79,6 +89,19 @@ class TestaraUiSkillTest {
     assertTrue(output.contains("selenium.driver.action-scan-locations=io.github.ygrip.testara,io.github.ygrip.automation"));
     assertTrue(output.contains("selenium.driver.headless=false"));
     assertFalse(output.contains("selenium.driver.headless=true"));
+  }
+
+  @Test
+  void pagePropertyKeysUseKebabCaseAndEnvPlaceholders() {
+    String output = new TestaraUiSkill().execute(
+        new TestaraUiSkill.Input("page", "cart page", null, "selenium", "io.github.ygrip.automation"),
+        context());
+
+    assertTrue(output.contains("@Page(name = \"cart-page\""));
+    assertTrue(output.contains("web.page.desktop.cart-page.url=${APP_WEB_CART_PAGE_URL:http://localhost:3000/cart-page}"));
+    assertFalse(output.contains("cart page.url"));
+    assertFalse(output.contains("=properties("));
+    assertTrue(output.contains("application.properties"));
   }
 
   private AgentContext context() {

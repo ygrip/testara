@@ -279,11 +279,16 @@ testara-agent test-plan 'payment kafka event' --slice kafka
 
 **Output includes:**
 - Testara-flavor steps using `[api]`, `[sql]`, `[mongo]`, `[kafka]`, or `UIBaseSteps`
-- `properties()` expressions for all env-specific values
+- `${ENV:fallback}` in property files; `properties(key)` only in features/request specs for application values
 - Request spec path (`files/{domain}/request/{flow}`) instead of inline params
 - **Testara Flavor Score** — % of steps using built-in Testara steps
 - **Runtime Context Score** — % of generated values correctly using `properties()`
 - **Guardrail warnings** if hardcoded URLs or credentials are detected
+
+If the request is underspecified, `testara_plan` returns `needs_input` instead
+of guessing. Agents should ask the user for the missing slice-specific context:
+API method/service/path/expected validation, UI page/action/expected state and
+selectors, or DB/Kafka/Elastic alias/query/topic/index details.
 
 **`--write` flag:** writes the `.feature` file and (for API) generates request spec + payload stubs.
 
@@ -302,6 +307,13 @@ testara-agent test-run 'rerun failed'  --rerun-failed         # rerun from rerun
 ```
 
 Requires `TESTARA_AGENT_RUN_ENABLED=true` to execute.
+
+`testara_run` is context-driven. Exact `@tags` win, project-indexed tag words
+map to tags, and feature/scenario text maps to the matching scenario's feature
+and scenario tags. Multiple resolved tags are joined with `and` by default;
+`or` is used only when the user explicitly asks for an OR run. If the MCP server
+was launched outside the project, pass `projectRoot` so the tool can index the
+features before resolving natural language.
 
 **MCP tool:** `testara_run`
 
@@ -324,7 +336,7 @@ testara-agent test-command 'generate customer code' # generate new command
 |---|---|---|
 | `uuid()` | String | Random UUID |
 | `timestamp()` | Long | Current timestamp |
-| `properties(key)` | String | Read from configuration.properties |
+| `properties(key)` | String | Read application/config value at runtime |
 | `prop(key)` | String | Alias for properties() |
 | `combine(a,b)` | String | Concatenate values |
 | `randomNumber(min,max)` | Integer | Random number |
@@ -428,7 +440,7 @@ testara-agent testara-property --mode generate --slice api --domain payment
 testara-agent testara-property --mode rules            # explain properties() rules
 ```
 
-**Rule:** Use `properties(key)` for ALL env-specific values. Never hardcode URLs, credentials, topic names, or DB names in feature files.
+**Rule:** property files should use `${ENV:fallback}` and should not point at another key with `properties(...)`. Use `properties(key)` in feature files/request specs when the key lives in `application.properties`.
 
 **MCP tool:** `testara_property`
 
@@ -471,13 +483,13 @@ testara-agent testara-ui --mode config --engine selenium
 
 **Page URL goes in properties:**
 ```properties
-web.page.desktop.login.url=properties(app.web.login-url)
-app.web.login-url=http://localhost:3000/login
+web.page.desktop.login.url=${APP_WEB_LOGIN_URL:http://localhost:3000/login}
 ```
 
 **UserAction usage:**
 ```gherkin
 When user do "login with credential" in "login" page with parameter
+  |key|value|
   | username | properties(test.user.username) |
   | password | properties(test.user.password) |
 ```
@@ -496,7 +508,7 @@ testara-agent testara-db --slice mongo --mode feature --name product
 testara-agent testara-db --slice kafka --mode config --name payment
 ```
 
-All generated config uses `properties()` for host, credentials, and topic names.
+Generated config uses `${ENV:fallback}` for host, credential, and topic values. Feature/request data can still use `properties(key)` for application values.
 
 **MCP tool:** `testara_db`
 
@@ -534,9 +546,9 @@ The cache stores the project profile in `.testara-agent/knowledge/profile-cache.
 
 ## Generation Rules
 
-1. **`properties(key)` for env-specific values** — URLs, hosts, credentials, topic names, DB names, emails, test data
+1. **Property value split** — `configuration.properties` for framework wiring, `application.properties` for user values, `${ENV:fallback}` in property files, `properties(key)` only in features/specs
 2. **Request spec for non-trivial API requests** — any request with payload, path/query params, or reuse
-3. **`UserAction` for reusable UI flows** — 3+ operations on the same page
+3. **`UserAction` for reusable UI flows** — top-level `@OnPage` classes only; use `allowAnonymousCall = true` for intentional cross-page actions
 4. **Page URL in properties** — `web.page.desktop.{name}.url`, never in `@Page(url=...)`
 5. **Include `io.github.ygrip.testara` in scan-locations** — always
 6. **Generate service config before features** — `api.service.*` must exist first
@@ -556,7 +568,7 @@ properties → command conversion → config binding
     → base steps → request specs → pages/actions → screenplay → compile gate
 ```
 
-Testara resolves all `properties(key)` expressions at runtime from `configuration.properties`. Commands (`uuid()`, `timestamp()`, etc.) are resolved inside step parameters. Requests specs define full HTTP context as JSON. Pages/actions encapsulate UI behavior. The compile gate verifies generated code before test execution.
+Testara resolves `properties(key)` expressions at runtime from loaded property sources such as `application.properties` and `configuration.properties`. Commands (`uuid()`, `timestamp()`, etc.) are resolved inside step parameters. Request specs define full HTTP context as JSON. Pages/actions encapsulate UI behavior. The compile gate verifies generated code before test execution.
 
 ---
 
