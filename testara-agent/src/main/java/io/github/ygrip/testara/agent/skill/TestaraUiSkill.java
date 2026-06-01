@@ -54,8 +54,9 @@ public class TestaraUiSkill implements AgentSkill<TestaraUiSkill.Input, String> 
           When  user open "login" page                 # navigates to web.page.desktop.login.url
           Then  user is in "login" page                # REQUIRED after open — registers active page context
           When  user do "action name" in "page" page with parameter
-                |key|value|
-                | field | value |
+                | key      | value                          |   # ALWAYS include this header row
+                | username | properties(test.user.username) |
+                | password | properties(test.user.password) |
           When  user click the "button login"          # element = Locator field SCREAMING_SNAKE -> "lower spaced"
           When  user type value "text" to "element name"
           When  user enter value "text" on "element name"

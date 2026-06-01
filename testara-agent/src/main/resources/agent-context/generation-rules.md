@@ -27,7 +27,7 @@ properties -> command conversion -> config binding -> base steps -> request spec
 - UI cross-page/global actions: if an action is intentionally callable from multiple pages, keep it in a top-level `UserAction` class and annotate the method with `@Action(value = "action name", allowAnonymousCall = true)`. Do not use nested classes to model cross-page access.
 - Bootstrap artifacts: prefer `testara_bootstrap` for Page, UserAction, Command, Validation, API config, and request-spec skeletons. It writes correct packages/imports/scan-location hints when `write=true` and previews the same artifacts when `write=false`.
 - DB/Kafka/Elastic: use built-in steps and exact property prefixes (`sql.service`, `mongo.service`, `kafka.service`, `elasticsearch.service`).
-- DataTables: use `| key | value |` for map-shaped queries/params; use horizontal rows for records/templates/validations.
+- DataTables: ALL steps that pass key-value pairs MUST have `| key | value |` as the FIRST row (the header). This includes `user do "..." in "..." page with parameter`, API headers/params, Mongo queries, Elastic queries. Missing the header silently produces wrong data. Horizontal (multi-column) format is ONLY for `toList()` targets (cookies, multipart, Kafka batch) and validation tables.
 - Scan locations must include `io.github.ygrip.testara` and singular project packages: `.command`, `.validation`, `.page`, `.action`.
 - Compile generated scaffolds with `mvn test-compile`; run full tests only when Docker/Testcontainers dependencies are available.
 - Generated automation POMs use `maven-failsafe-plugin` and run Cucumber/Testara runners in `mvn verify`, matching the example projects.
@@ -68,8 +68,24 @@ TransformerService processes DataTables. The required format depends on the targ
 
 ### Pattern 1 — vertical key-value `|key|value|`: use when the step builds a `Map` from multiple rows
 The header row MUST be exactly `| key | value |`. Each subsequent row becomes one map entry.
-Steps that use this: API headers, API form/query params, Mongo query (`select/delete/count/update/distinct`), Elastic query (`assign data ... with query`), UI proxy rules.
+
+**Steps that use Pattern 1 (ALWAYS include the `| key | value |` header):**
+- `user do "action" in "page" page with parameter` — UI UserAction params
+- `user do "action" with parameter` — UI UserAction params (current page)
+- `[api] prepare header with value` — API request headers
+- `[api] prepare queryParams with data` — API query parameters
+- `[api] prepare formParams with data` — API form parameters
+- `[mongo] select/delete/count/update/distinct data with query :` — Mongo query fields
+- `[elastic-search] assign data ... with query :` — Elastic search fields
+- UI proxy rules
+
 ```gherkin
+# UI UserAction parameters — MUST have |key|value| header
+When user do "login with credentials" in "login" page with parameter
+  | key      | value                                  |
+  | username | properties(test.user.username)         |
+  | password | properties(test.user.password)         |
+
 # API headers
 And [api] prepare header with value
   | key           | value            |
@@ -89,7 +105,16 @@ When [elastic-search] assign data results from index products with query :
   | luceneQuery | {"term":{"id":"properties(x.id)"}} |
   | size        | 10                                 |
 ```
-Without `|key|value|` headers, a 2-column table interprets row 0 as column identifiers and silently produces a wrong map.
+
+**WRONG — missing header causes silent data corruption:**
+```gherkin
+# WRONG: no |key|value| header
+When user do "login with credentials" in "login" page with parameter
+  | username | properties(test.user.username) |
+  | password | properties(test.user.password) |
+```
+
+Without `|key|value|` header, TransformerService treats row 0 as column names and row 1+ as data records — the map is built from the wrong structure.
 
 ### Pattern 2 — horizontal multi-column: use when each row is one object/record or binds a template
 Row 0 = field/column names; each subsequent row = one record. For template binding, column names are JSONPath keys.
@@ -264,7 +289,7 @@ If UI scenario has 3+ operations on the same page -> generate UserAction class
   public class LoginActions extends UserAction
   Feature:
     When user do "action name" in "page" page with parameter
-      |key|value|
+      | key      | value                          |
       | username | properties(test.user.email)    |
       | password | properties(test.user.password) |
 Not a custom Cucumber step.
@@ -333,8 +358,9 @@ converting it to SCREAMING_SNAKE_CASE and looking up a matching `Locator` field 
 When user open "login" page
 Then user is in "login" page      # REQUIRED — sets active page context
 When user do "login with credentials" in "login" page with parameter
-  | username | password |
-  | ...      | ...      |
+  | key      | value                          |
+  | username | properties(test.user.username) |
+  | password | properties(test.user.password) |
 ```
 
 Page context does not auto-advance after a UserAction. After `When user do "add item to cart" in "inventory" page`, the context is still `inventory`. To switch pages, use URL navigation:
