@@ -22,6 +22,7 @@ properties -> command conversion -> config binding -> base steps -> request spec
 - UI plans must emit executable Testara steps. `# MISSING` in generated UI login flows means the plan is not done.
 - UI: `testara_ui` emits `TODO-replace-selector` placeholders for unknown page types — replace all of them with real DOM selectors before generating features that reference those elements.
 - UI plans: use page names and action names that exactly match existing Page/UserAction classes. Do not invent names for pages or actions not yet created.
+- UI navigation: every `When user open "X" page` MUST be immediately followed by `Then user is in "X" page`. This pair establishes the current page context in the Testara engine — steps that interact with page elements (click, type, see) will fail without it.
 - UI UserAction classes must be top-level classes under `src/main/java/{basePackage}/action`, annotated with `@OnPage`, and must extend `UserAction` directly. Do not generate wrapper classes with nested `static class ... extends UserAction`; the action scanner expects discoverable top-level action classes.
 - UI cross-page/global actions: if an action is intentionally callable from multiple pages, keep it in a top-level `UserAction` class and annotate the method with `@Action(value = "action name", allowAnonymousCall = true)`. Do not use nested classes to model cross-page access.
 - DB/Kafka/Elastic: use built-in steps and exact property prefixes (`sql.service`, `mongo.service`, `kafka.service`, `elasticsearch.service`).
@@ -244,14 +245,22 @@ converting it to SCREAMING_SNAKE_CASE and looking up a matching `Locator` field 
 
 **Rule:** Before using `user should see "X"`, confirm the page class has a Locator field that maps to X AND that locator points to an element that is actually visible after the preceding steps.
 
-### Quirk 2: Page context does not auto-advance after UserAction
-After `When user do "add item to cart" in "inventory" page`, the page context is still `inventory`, NOT `cart`.
-`Then user is in "cart" page` will fail if the action only clicked an add-to-cart button — no page navigation occurred.
+### Quirk 2: `user open "X" page` MUST be followed by `user is in "X" page`
+`Then user is in "X" page` is not just an assertion — it registers `X` as the current active page in the Testara engine. Without it, subsequent element lookups and UserAction calls have no page context and will fail.
 
-**Rule:** To land on a different page after a UserAction, emit an explicit navigation step:
+**Rule:** Always pair them:
 ```gherkin
-When user open "cart" page          # URL navigation — always works
-# NOT: Then user is in "cart" page  # fails after click-only UserAction
+When user open "login" page
+Then user is in "login" page      # REQUIRED — sets active page context
+When user do "login with credentials" in "login" page with parameter
+  | username | password |
+  | ...      | ...      |
+```
+
+Page context does not auto-advance after a UserAction. After `When user do "add item to cart" in "inventory" page`, the context is still `inventory`. To switch pages, use URL navigation:
+```gherkin
+When user open "cart" page        # navigates by URL
+Then user is in "cart" page       # REQUIRED — registers new active page
 ```
 
 ### Quirk 3: Do not enable Cucumber retry for UI
@@ -279,7 +288,7 @@ testara_run(input="...", projectRoot="/path/to/project")
 
 ## Quick reference: key steps by slice
 API:    Given [api] using service with alias {name} | [api] prepare pathParam for id with value "properties(test.{domain}.id)" | When [api] process request to "files/{domain}/request/{flow}" | Then [api] response statusCode should be 200 | [api] assign previous response data to {alias}
-UI:     Given user using chrome in desktop | When user open "{page}" page | Then user is in "{page}" page | When user do "{action}" in "{page}" page with parameter | Then user see that (actual | validation | expectation)
+UI:     Given user using chrome in desktop | When user open "{page}" page → Then user is in "{page}" page [ALWAYS PAIR] | When user do "{action}" in "{page}" page with parameter | Then user see that (actual | validation | expectation)
 SQL:    Given [sql] connect to database with name {name}Db | [sql] prepare query with value : | When [sql] execute database query | Then [sql] assign previous database response to {alias}Rows
 Mongo:  Given [mongo] connect to database with name {name}Db | [mongo] select collection with name {col} | When [mongo] select data with query : (|key|value| table — keys: query/sort/project/limit/skip) | Then [mongo] assign previous database response to {alias}Rows
 Kafka:  Given user start kafka producer for {name} | When user send kafka message to topic "properties(kafka.topic.{alias})" with data "request($['event'])" | Then user stop kafka producer
