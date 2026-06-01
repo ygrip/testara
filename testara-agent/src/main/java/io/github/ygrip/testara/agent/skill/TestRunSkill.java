@@ -54,7 +54,7 @@ public class TestRunSkill implements AgentSkill<String, String> {
     if (rerunFail) {
       String rerunResult = buildRerunExpression(context.projectRoot());
       if (rerunResult != null) {
-        String command = cmdBuilder.build(rerunResult, module, false);
+        String command = cmdBuilder.build(rerunResult, module, true);
         return new TestRunPlan("rerun-failed", rerunResult, 0, 0, command, List.of()).toMarkdown()
             + "\n> **Rerun-failed** uses Cucumber rerun file or previous report.\n";
       }
@@ -64,8 +64,11 @@ public class TestRunSkill implements AgentSkill<String, String> {
 
     String tagExpr = resolver.resolve(input, profile);
     if (tagExpr.isBlank()) return "Could not resolve a tag expression from: \"" + input + "\"\n"
+        + "project-root: " + context.projectRoot() + "\n"
+        + "indexed-features: " + profile.features().size() + " | indexed-scenarios: " + profile.totalScenarios() + "\n"
         + "Available tags: " + profile.tags().stream()
-            .map(t -> t.tag()).collect(Collectors.joining(", "));
+            .map(t -> t.tag()).collect(Collectors.joining(", ")) + "\n"
+        + "Try an explicit tag such as @ui, @api, @regression, or a project tag shown by testara_context.";
 
     int matched = resolver.countMatching(tagExpr, profile);
     int matchedFeatures = (int) profile.features().stream()
@@ -81,7 +84,7 @@ public class TestRunSkill implements AgentSkill<String, String> {
         .limit(10)
         .collect(Collectors.toList());
 
-    String command = cmdBuilder.build(tagExpr, module, false);
+    String command = cmdBuilder.build(tagExpr, module, true);
     TestRunPlan plan = new TestRunPlan(input, tagExpr, matchedFeatures, matched, command, matchedNames);
 
     if (dryRun || !execute) return plan.toMarkdown();

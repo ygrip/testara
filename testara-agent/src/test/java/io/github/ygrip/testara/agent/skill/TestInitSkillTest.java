@@ -7,6 +7,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Path;
 import java.util.Map;
+import java.util.regex.Pattern;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -25,7 +26,7 @@ class TestInitSkillTest {
   void previewUsesCurrentTestaraVersionInsteadOfStaleLiteral() {
     String output = new TestInitSkill().execute(
         new TestInitSkill.Input("api", "io.github.ygrip.sample", "selenium", false),
-        context());
+        autoContext());
 
     assertTrue(output.contains("<testara.version>2.0.4</testara.version>"));
     assertFalse(output.contains("<testara.version>2.0.1</testara.version>"));
@@ -37,7 +38,7 @@ class TestInitSkillTest {
 
     String output = new TestInitSkill().execute(
         new TestInitSkill.Input("ui", "io.github.ygrip.sample", "selenium", false),
-        context());
+        autoContext());
 
     assertTrue(output.contains("<testara.version>9.8.7</testara.version>"));
   }
@@ -62,7 +63,17 @@ class TestInitSkillTest {
         context());
 
     assertTrue(output.contains("<artifactId>testara-api-cucumber</artifactId>"));
+    assertDependencyScope(output, "testara-api", null);
+    assertDependencyScope(output, "testara-api-cucumber", "test");
+    assertDependencyScope(output, "testara-command", null);
+    assertDependencyScope(output, "testara-validation", null);
     assertTrue(output.contains("<artifactId>testara-junit5</artifactId>"));
+    assertDependencyScope(output, "testara-junit5", "test");
+    assertFalse(output.contains("<artifactId>junit-platform-suite</artifactId>"));
+    assertTrue(output.contains("<artifactId>maven-failsafe-plugin</artifactId>"));
+    assertTrue(output.contains("<goal>integration-test</goal>"));
+    assertTrue(output.contains("<goal>verify</goal>"));
+    assertFalse(output.contains("<artifactId>maven-surefire-plugin</artifactId>"));
     assertTrue(output.contains("import io.github.ygrip.testara.engine.suites.TestSuite;"));
     assertFalse(output.contains("@IncludeEngines(\"cucumber\")"));
     assertTrue(output.contains("class.loader.default-scan-locations=io.github.ygrip.testara,io.github.ygrip.example"));
@@ -87,6 +98,9 @@ class TestInitSkillTest {
     assertTrue(output.contains("<artifactId>testara-ui</artifactId>"));
     assertTrue(output.contains("<artifactId>testara-ui-cucumber</artifactId>"));
     assertTrue(output.contains("<artifactId>testara-ui-selenium</artifactId>"));
+    assertDependencyScope(output, "testara-ui", null);
+    assertDependencyScope(output, "testara-ui-selenium", null);
+    assertDependencyScope(output, "testara-ui-cucumber", "test");
     assertTrue(output.contains("selenium.driver.page-scan-locations=io.github.ygrip.testara,io.github.ygrip.automation"));
     assertTrue(output.contains("public class HomePage extends SeleniumPage"));
     assertTrue(output.contains("private static final Locator SEARCH_INPUT"));
@@ -102,6 +116,7 @@ class TestInitSkillTest {
     assertTrue(output.contains("<artifactId>testara-ui</artifactId>"));
     assertTrue(output.contains("<artifactId>testara-ui-cucumber</artifactId>"));
     assertTrue(output.contains("<artifactId>testara-ui-playwright</artifactId>"));
+    assertDependencyScope(output, "testara-ui-playwright", null);
     assertTrue(output.contains("class.loader.default-scan-locations=io.github.ygrip.testara,io.github.ygrip.automation"));
     assertTrue(output.contains("playwright.browser.page-scan-locations=io.github.ygrip.testara,io.github.ygrip.automation"));
     assertTrue(output.contains("web.page.desktop.home.url=properties(app.web.home-url)"));
@@ -116,25 +131,70 @@ class TestInitSkillTest {
   void dbKafkaElasticPreviewUsesFrameworkPropertyPrefixes() {
     TestInitSkill skill = new TestInitSkill();
 
-    String sql = skill.execute(new TestInitSkill.Input("sql", "io.github.ygrip.automation", "selenium", false),
+    String sql = skill.execute(new TestInitSkill.Input("sql", "io.github.ygrip.automation", "selenium", false,
+            "io.github.ygrip", "sql-automation"),
         context());
+    assertTrue(sql.contains("<artifactId>testara-database</artifactId>"));
     assertTrue(sql.contains("<artifactId>testara-database-cucumber</artifactId>"));
+    assertDependencyScope(sql, "testara-database", null);
+    assertDependencyScope(sql, "testara-database-cucumber", "test");
     assertTrue(sql.contains("sql.service.settlementDb.uri=properties(db.settlement.uri)"));
 
-    String kafka = skill.execute(new TestInitSkill.Input("kafka", "io.github.ygrip.automation", "selenium", false),
+    String kafka = skill.execute(new TestInitSkill.Input("kafka", "io.github.ygrip.automation", "selenium", false,
+            "io.github.ygrip", "kafka-automation"),
         context());
+    assertTrue(kafka.contains("<artifactId>testara-streaming</artifactId>"));
     assertTrue(kafka.contains("<artifactId>testara-streaming-cucumber</artifactId>"));
+    assertDependencyScope(kafka, "testara-streaming", null);
+    assertDependencyScope(kafka, "testara-streaming-cucumber", "test");
     assertTrue(kafka.contains("kafka.service.orderStream.servers=properties(kafka.order.servers)"));
     assertTrue(kafka.contains("Given user start kafka producer for orderStream"));
 
-    String elastic = skill.execute(new TestInitSkill.Input("elastic", "io.github.ygrip.automation", "selenium", false),
+    String elastic = skill.execute(new TestInitSkill.Input("elastic", "io.github.ygrip.automation", "selenium", false,
+            "io.github.ygrip", "elastic-automation"),
         context());
+    assertTrue(elastic.contains("<artifactId>testara-elastic</artifactId>"));
     assertTrue(elastic.contains("<artifactId>testara-elastic-cucumber</artifactId>"));
+    assertDependencyScope(elastic, "testara-elastic", null);
+    assertDependencyScope(elastic, "testara-elastic-cucumber", "test");
     assertTrue(elastic.contains("elasticsearch.service.catalog.hosts[0]=properties(elasticsearch.catalog.host)"));
     assertTrue(elastic.contains("Given [elastic-search] connect to elastic search with name catalog"));
   }
 
+  @Test
+  void initAsksForCoordinatesBeforeUsingDefaults() {
+    String output = new TestInitSkill().execute(
+        new TestInitSkill.Input("api", null, "selenium", false),
+        context());
+
+    assertTrue(output.contains("needs_input: testara_init_coordinates"));
+    assertTrue(output.contains("groupId"));
+    assertTrue(output.contains("artifactId"));
+    assertTrue(output.contains("autoGenerateCoordinates=true"));
+    assertFalse(output.contains("<project xmlns="));
+  }
+
   private AgentContext context() {
     return new AgentContext(projectRoot, null, AgentMode.READ_ONLY, null, Map.of());
+  }
+
+  private AgentContext autoContext() {
+    return new AgentContext(projectRoot, null, AgentMode.READ_ONLY, null,
+        Map.of("autoGenerateCoordinates", "true"));
+  }
+
+  private void assertDependencyScope(String pomPreview, String artifactId, String expectedScope) {
+    Pattern pattern = Pattern.compile("<dependency>\\s*<groupId>io\\.github\\.ygrip</groupId>\\s*<artifactId>"
+        + Pattern.quote(artifactId)
+        + "</artifactId>\\s*<version>\\$\\{testara\\.version}</version>(?:\\s*<scope>([^<]+)</scope>)?\\s*</dependency>",
+        Pattern.DOTALL);
+    var matcher = pattern.matcher(pomPreview);
+    assertTrue(matcher.find(), "Missing dependency " + artifactId);
+    String actualScope = matcher.group(1);
+    if (expectedScope == null) {
+      assertTrue(actualScope == null || actualScope.isBlank(), artifactId + " should use compile scope");
+    } else {
+      assertTrue(expectedScope.equals(actualScope), artifactId + " should use " + expectedScope + " scope");
+    }
   }
 }

@@ -29,8 +29,11 @@ public class TestReviewSkill implements AgentSkill<Path, String> {
 
   @Override
   public String execute(Path target, AgentContext context) {
-    List<FeatureIndex> features = loadFeatures(target);
-    if (features.isEmpty()) return "No feature files found at: " + target;
+    Path resolvedTarget = resolveTarget(target, context.projectRoot());
+    List<FeatureIndex> features = loadFeatures(resolvedTarget);
+    if (features.isEmpty()) return "No feature files found at: " + resolvedTarget
+        + "\nproject-root: " + context.projectRoot()
+        + "\nPath inputs may be absolute or relative to the project root.";
 
     List<ReviewFinding> findings = new ArrayList<>();
     findings.addAll(findDuplicateScenarioNames(features));
@@ -46,7 +49,7 @@ public class TestReviewSkill implements AgentSkill<Path, String> {
     FlavorScore flavorScore = computeFlavorScore(features, flavorSteps);
     findings.addAll(flavorScore.migratableFindings());
 
-    return renderMarkdown(findings, target, features, flavorScore);
+    return renderMarkdown(findings, resolvedTarget, features, flavorScore);
   }
 
   // ── Flavor score ──────────────────────────────────────────────────
@@ -398,6 +401,12 @@ public class TestReviewSkill implements AgentSkill<Path, String> {
       }
     } catch (IOException e) { /* return what we have */ }
     return out;
+  }
+
+  private Path resolveTarget(Path target, Path projectRoot) {
+    Path effective = target == null ? Path.of(".") : target;
+    if (effective.isAbsolute()) return effective.normalize();
+    return projectRoot.resolve(effective).normalize();
   }
 
   private String renderMarkdown(List<ReviewFinding> findings, Path target,

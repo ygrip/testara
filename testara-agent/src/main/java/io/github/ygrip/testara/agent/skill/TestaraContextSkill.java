@@ -55,8 +55,16 @@ public class TestaraContextSkill implements AgentSkill<Void, String> {
   private String renderConcise(TestaraProjectProfile profile, Set<String> slices,
       Map<String, String> props, Map<String, Boolean> coverage, long missing) {
     StringBuilder sb = new StringBuilder();
+    sb.append("project-root: ").append(profile.projectRoot()).append("\n");
     sb.append("slices: ").append(String.join(", ", slices)).append("\n");
     sb.append("modules: ").append(profile.mavenModules().size()).append("\n");
+    sb.append("feature-files: ").append(profile.features().size()).append(" | scenarios: ")
+        .append(profile.totalScenarios()).append("\n");
+    if (!profile.tags().isEmpty()) {
+      sb.append("top-tags: ").append(profile.tags().stream().limit(12)
+          .map(t -> t.tag() + "(" + t.scenarioCount() + ")")
+          .collect(Collectors.joining(", "))).append("\n");
+    }
     sb.append("flavor-steps: ").append(profile.flavorSteps().size()).append(" | ");
     sb.append("commands: ").append(profile.commands().size()).append(" | ");
     sb.append("validations: ").append(profile.validations().size()).append("\n");
@@ -66,6 +74,11 @@ public class TestaraContextSkill implements AgentSkill<Void, String> {
       coverage.entrySet().stream().filter(e -> !e.getValue())
           .map(Map.Entry::getKey).forEach(p -> sb.append(p).append(" "));
       sb.append("\n");
+    }
+    if (!profile.flavorSteps().isEmpty()) {
+      sb.append("sample-steps:\n");
+      profile.flavorSteps().stream().limit(8)
+          .forEach(s -> sb.append("- ").append(s.keyword()).append(" ").append(s.example()).append("\n"));
     }
     sb.append("properties() command: available for env-specific values\n");
     sb.append("prop(key) = alias for properties(key)");

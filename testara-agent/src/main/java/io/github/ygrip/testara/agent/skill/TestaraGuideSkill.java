@@ -44,12 +44,18 @@ public class TestaraGuideSkill implements AgentSkill<String, String> {
   }
 
   private String extractRulesOnly(String guide) {
-    // Concise: just the rule lines (## RULE N: ...) without examples
+    // Concise: quick guardrails plus section headings and hard rules.
     StringBuilder sb = new StringBuilder();
+    boolean inQuickGuardrails = false;
     for (String line : guide.split("\n")) {
-      if (line.startsWith("## RULE") || line.startsWith("## Quick") || line.startsWith("## Testara")
+      if (line.startsWith("## ")) {
+        inQuickGuardrails = line.startsWith("## Agent quick guardrails");
+      }
+      if (inQuickGuardrails && (line.startsWith("## ") || line.startsWith("- "))) {
+        sb.append(line).append("\n");
+      } else if (line.startsWith("## RULE") || line.startsWith("## Quick") || line.startsWith("## Testara")
           || line.startsWith("## Utilities") || line.startsWith("## Code") || line.startsWith("## Built-in")
-          || line.startsWith("## Helper")) {
+          || line.startsWith("## Helper") || line.startsWith("## POM")) {
         sb.append(line).append("\n");
       } else if (line.startsWith("## DB Kafka Elastic")) {
         sb.append(line).append("\n");

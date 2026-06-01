@@ -3,6 +3,23 @@
 ## Testara runtime chain
 properties -> command conversion -> config binding -> base steps -> request specs -> pages/actions -> screenplay -> compile gate
 
+## Agent quick guardrails
+- Read this section first; open detailed sections only when generating that artifact type.
+- Prefer built-in Testara steps/helpers over custom Cucumber steps.
+- Keep reusable Java in `src/main/java/{basePackage}`; keep runners/glue in `src/test/java/{basePackage}`.
+- `test-init` must ask for `groupId` and `artifactId` unless the user explicitly chooses auto-generated coordinates.
+- Compile scope for Testara modules imported by `src/main/java`; test scope for `testara-*-cucumber`, `testara-junit5`, and JUnit runner deps.
+- Do not pin `junit-platform-suite`; let Testara/JUnit transitive versions follow the resolved `testara.version`.
+- Use `properties(...)` for URLs, hosts, ports, credentials, topics, indexes, IDs, and env data.
+- API: use request specs at `src/test/resources/files/{domain}/request/{flow}.json`; feature path is `files/{domain}/request/{flow}`.
+- UI: generate `page` + `action`; use reusable action labels such as `login with credentials`; infer/ask pageName instead of producing SamplePage/SampleActions.
+- UI plans must emit executable Testara steps. `# MISSING` in generated UI login flows means the plan is not done.
+- DB/Kafka/Elastic: use built-in steps and exact property prefixes (`sql.service`, `mongo.service`, `kafka.service`, `elasticsearch.service`).
+- DataTables: use `| key | value |` for map-shaped queries/params; use horizontal rows for records/templates/validations.
+- Scan locations must include `io.github.ygrip.testara` and singular project packages: `.command`, `.validation`, `.page`, `.action`.
+- Compile generated scaffolds with `mvn test-compile`; run full tests only when Docker/Testcontainers dependencies are available.
+- Generated automation POMs use `maven-failsafe-plugin` and run Cucumber/Testara runners in `mvn verify`, matching the example projects.
+
 ## Code conventions
 - Reuse Testara built-ins before creating project code. Built-in steps, commands, validations, request specs, pages/actions, and helpers are preferred over custom Cucumber steps.
 - Place reusable project Java under `src/main/java/{basePackage}`. Use singular package names that match the example projects: `page`, `action`, `command`, `validation`, `data`, `model`.
@@ -10,6 +27,17 @@ properties -> command conversion -> config binding -> base steps -> request spec
 - Use `src/test/resources/features` for Gherkin, `src/test/resources/files/{domain}/request` for API request specs, `src/test/resources/templates` for reusable payload/template files, and `src/test/resources/schemas` for JSON schemas.
 - Do not create direct Selenium/Playwright/Appium drivers. Use Testara driver/session abstractions, built-in UI steps, `UserAction`, and `Locator` fields.
 - Do not generate helper classes that duplicate `MapperHelper`, `TransformerService`, `CommandExecutor`, `ValidatorHelper`, `DataHolder`, `RestApiFacade`, `SqlHelper`, `MongoHelper`, `Kafka*Helper`, `ElasticSearchHelper`, `PageFinder`, or `Actor`.
+
+## POM dependency scope rules
+- Compile scope: any Testara module imported by Java under `src/main/java`. Do not write `<scope>test</scope>` for these.
+- Test scope: Cucumber step modules (`testara-*-cucumber`), `testara-junit5`, JUnit Platform, and runner/test bootstrap dependencies used only under `src/test/java` or feature execution.
+- Avoid explicit JUnit Platform versions in generated POMs unless the project already pins a compatible BOM.
+- Always include compile-scope `testara-command` and `testara-validation` when generating `{basePackage}.command` or `{basePackage}.validation`.
+- API slice: `testara-api` compile, `testara-api-cucumber` test.
+- UI slice: `testara-ui` and selected engine (`testara-ui-selenium`, `testara-ui-playwright`, or `testara-ui-appium`) compile; `testara-ui-cucumber` test.
+- DB slice: `testara-database` compile; `testara-database-cucumber` test.
+- Kafka slice: `testara-streaming` compile; `testara-streaming-cucumber` test.
+- Elastic slice: `testara-elastic` compile; `testara-elastic-cucumber` test.
 
 ## DataTable format rules
 TransformerService processes DataTables. The required format depends on the target output type.
@@ -99,11 +127,11 @@ When [elastic-search] insert to index "products" with data :
 - Page/action: for UI, represent locators in Page classes and reusable flows in `UserAction` classes; do not create Selenium/Playwright helper wrappers.
 
 ## DB Kafka Elastic patterns
-- SQL: configure `sql.service.{alias}.host-name|db-name|username|password|db-type`; connect with `Given [sql] connect to database with name {alias}`; use `Given [sql] prepare query with value :` for multiline SQL; execute; assign with `Then [sql] assign previous database response to {alias}`. Use `sqlQuery(alias,query)` command only inside expressions/custom Java when built-in steps are not enough.
-- Mongo: configure `mongo.service.{alias}.hosts|db-name|username|password`; connect with `Given [mongo] connect to database with name {alias}`; select collection; DataTable query bodies use **Pattern 1** (`|key|value|` headers) — supported keys: `query`, `sort`, `project`, `limit`, `skip` (select), `query`+`useMany` (delete), `query`+`update`+`useMany` (update), `field`+`query` (distinct); assign with `Then [mongo] assign previous database response to {alias}`.
+- SQL: configure `sql.service.{alias}.uri|username|password|dbType` or `hostName|port|dbName|username|password|dbType`; connect with `Given [sql] connect to database with name {alias}`; use `Given [sql] prepare query with value :` for multiline SQL; execute; assign with `Then [sql] assign previous database response to {alias}`. Use `sqlQuery(alias,query)` command only inside expressions/custom Java when built-in steps are not enough.
+- Mongo: configure `mongo.service.{alias}.connectionString|dbName` or `hosts|dbName|username|password`; connect with `Given [mongo] connect to database with name {alias}`; select collection; DataTable query bodies use **Pattern 1** (`|key|value|` headers) — supported keys: `query`, `sort`, `project`, `limit`, `skip` (select), `query`+`useMany` (delete), `query`+`update`+`useMany` (update), `field`+`query` (distinct); assign with `Then [mongo] assign previous database response to {alias}`.
 - Kafka producer: configure `kafka.service.{alias}.servers`; start with `Given user start kafka producer for {alias}`; send with `When user send kafka message to topic "properties(kafka.topic.{name})" with data "request($['event'])"` or key+data; always stop producer.
 - Kafka consumer: start with `Given user start kafka consumer for {alias}`; listen with `Given user listen kafka from topic {topicAlias}`; assign count/latest/filter results; always stop consumer. Use filter tables instead of custom polling code.
-- Elastic: configure `elastic-search.service.{alias}.host|port|scheme`; connect with `Given [elastic-search] connect to elastic search with name {alias}`; search/assign uses **Pattern 1** (`|key|value|` headers) — supported keys: `luceneQuery`, `routing`, `type`, `sortBy`, `from`, `size`; insert/update uses **Pattern 3** (horizontal single-row document); assign with `Then [elastic-search] assign previous elastic search response to {alias}`.
+- Elastic: configure `elasticsearch.service.{alias}.hosts[0]|username|password|secured|requireAuthentication`; connect with `Given [elastic-search] connect to elastic search with name {alias}`; search/assign uses **Pattern 1** (`|key|value|` headers) — supported keys: `luceneQuery`, `routing`, `type`, `sortBy`, `from`, `size`; insert/update uses **Pattern 3** (horizontal single-row document); assign with `Then [elastic-search] assign previous elastic search response to {alias}`.
 - Use `properties(...)` for hosts, ports, credentials, topic names, index names, document IDs, and query literals that vary by environment.
 
 ## RULE 1: properties() for env-specific values
@@ -149,7 +177,7 @@ Generate api.service.{name}.* and spec.api.{name}.* in configuration.properties
 BEFORE generating feature files that reference that service.
 
 ## RULE 6: DB config pattern
-  sql.service.{name}.host-name=properties(db.{name}.host)
+  sql.service.{name}.uri=properties(db.{name}.uri)
   mongo.service.{name}.connectionString=properties(mongo.{name}.connection-string)
   kafka.service.{name}.servers=properties(kafka.{name}.servers)
 Values (host, port, credentials) go as separate properties: db.{name}.host=localhost

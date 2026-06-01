@@ -64,13 +64,50 @@ public final class GenerationGuard {
     boolean hasValidatorScan = props.contains("validator.helper.scan-locations");
     if (!hasCommandScan) {
       violations.add(new Violation(Violation.Severity.WARN, "7", "command.executor.scan-locations missing",
-          "Add: command.executor.scan-locations=io.github.ygrip.testara,{basePackage}.commands"));
+          "Add: command.executor.scan-locations=io.github.ygrip.testara,{basePackage}.command"));
     }
     if (!hasValidatorScan) {
       violations.add(new Violation(Violation.Severity.WARN, "7", "validator.helper.scan-locations missing",
-          "Add: validator.helper.scan-locations=io.github.ygrip.testara,{basePackage}.validations"));
+          "Add: validator.helper.scan-locations=io.github.ygrip.testara,{basePackage}.validation"));
     }
     return violations;
+  }
+
+  /** Validate generated pom.xml dependency scopes for scaffolded Testara modules. */
+  public static List<Violation> validatePom(String pom) {
+    List<Violation> violations = new ArrayList<>();
+    if (pom == null || pom.isBlank()) return violations;
+
+    for (String artifact : List.of("testara-command", "testara-validation", "testara-api", "testara-ui",
+        "testara-ui-selenium", "testara-ui-playwright", "testara-ui-appium", "testara-database",
+        "testara-streaming", "testara-elastic")) {
+      if (hasDependencyWithScope(pom, artifact, "test")) {
+        violations.add(new Violation(Violation.Severity.ERROR, "POM",
+            artifact + " has test scope",
+            "Use compile scope because project code under src/main/java may import " + artifact));
+      }
+    }
+
+    for (String artifact : List.of("testara-api-cucumber", "testara-ui-cucumber", "testara-database-cucumber",
+        "testara-streaming-cucumber", "testara-elastic-cucumber", "testara-junit5")) {
+      if (hasDependency(pom, artifact) && !hasDependencyWithScope(pom, artifact, "test")) {
+        violations.add(new Violation(Violation.Severity.WARN, "POM",
+            artifact + " is not test scoped",
+            "Use test scope for Cucumber/JUnit runner dependencies"));
+      }
+    }
+    return violations;
+  }
+
+  private static boolean hasDependency(String pom, String artifact) {
+    return Pattern.compile("<dependency>.*?<artifactId>" + Pattern.quote(artifact) + "</artifactId>.*?</dependency>",
+        Pattern.DOTALL).matcher(pom).find();
+  }
+
+  private static boolean hasDependencyWithScope(String pom, String artifact, String scope) {
+    return Pattern.compile("<dependency>.*?<artifactId>" + Pattern.quote(artifact)
+        + "</artifactId>.*?<scope>" + Pattern.quote(scope) + "</scope>.*?</dependency>", Pattern.DOTALL)
+        .matcher(pom).find();
   }
 
   /**

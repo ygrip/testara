@@ -12,9 +12,9 @@ public class MavenCommandBuilder {
       "^[@\\w\\s()\\-and not]*$");
   private static final Pattern SAFE_MODULE   = Pattern.compile("^[\\w-]+$");
 
-  /** Build `mvn test -Dcucumber.filter.tags="expr"` */
+  /** Build `mvn verify -Dcucumber.filter.tags="expr"` for Failsafe-based Testara runners. */
   public String build(String tagExpression) {
-    return build(tagExpression, null, false);
+    return build(tagExpression, null, true);
   }
 
   /** Build with optional module and verify flag. */

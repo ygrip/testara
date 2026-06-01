@@ -51,6 +51,11 @@ public class TestPlanSkill implements AgentSkill<TestPlanSkill.Input, String> {
       writtenPath = writeFeatureFile(context.projectRoot(), placement, fileName, featureContent);
       if ("api".equals(slice)) {
         generatedArtifacts.addAll(generateRequestSpecs(context.projectRoot(), domain, input.intent()));
+      } else if ("ui".equals(slice)) {
+        String pageName = inferUiPage(input.intent(), domain);
+        String actionName = inferUiAction(input.intent(), domain);
+        generatedArtifacts.add("suggested: testara_ui page pageName=" + pageName);
+        generatedArtifacts.add("suggested: testara_ui action pageName=" + pageName + " actionName=\"" + actionName + "\"");
       }
     }
 
@@ -107,6 +112,11 @@ public class TestPlanSkill implements AgentSkill<TestPlanSkill.Input, String> {
     sb.append(tags.stream().collect(Collectors.joining(" "))).append("\n");
     sb.append("Feature: ").append(toFeatureName(intent)).append("\n\n");
 
+    if ("ui".equals(slice)) {
+      sb.append(buildStandardUiFeature(intent, domain));
+      return sb.toString();
+    }
+
     // Background
     String background = buildBackground(domain, slice, flavorSteps);
     if (!background.isBlank()) {
@@ -140,7 +150,7 @@ public class TestPlanSkill implements AgentSkill<TestPlanSkill.Input, String> {
       case "ui" -> {
         String sessionStep = findExample(flavorSteps, "Given", "using");
         if (sessionStep != null) {
-          String step = sessionStep.replace("{name}", "web").replace("{param}", "desktop");
+          String step = sessionStep.replace("{name}", "chrome").replace("{param}", "desktop");
           yield "    Given " + step + "\n";
         }
         yield "";
@@ -271,6 +281,38 @@ public class TestPlanSkill implements AgentSkill<TestPlanSkill.Input, String> {
       if (seeStep != null) sb.append("    Then ").append(seeStep.replace("{value}", "errorMessage").replace("{param}", "displayed")).append("\n");
     }
     return sb.toString();
+  }
+
+  private String buildStandardUiFeature(String intent, String domain) {
+    String pageName = inferUiPage(intent, domain);
+    String actionName = inferUiAction(intent, domain);
+    String successPage = inferUiSuccessPage(intent, domain, pageName);
+    String successElement = inferUiSuccessElement(intent);
+    UiActionParameters params = uiActionParameters(pageName, actionName, false);
+    UiActionParameters invalidParams = uiActionParameters(pageName, actionName, true);
+    return """
+          Background:
+            Given user using chrome in desktop
+
+          @P1 @positive
+          Scenario: %s succeeds
+            When user open "%s" page
+            Then user is in "%s" page
+            When user do "%s" in "%s" page with parameter
+        %s
+            Then user is in "%s" page
+            Then user should see "%s" is displayed
+
+          @P2 @negative
+          Scenario: %s shows validation error
+            When user open "%s" page
+            Then user is in "%s" page
+            When user do "%s" in "%s" page with parameter
+        %s
+            Then user should see "error message" is displayed
+        """.formatted(toFeatureName(actionName), pageName, pageName, actionName, pageName,
+        params.toFeatureTable(12), successPage, successElement,
+        toFeatureName(actionName), pageName, pageName, actionName, pageName, invalidParams.toFeatureTable(12));
   }
 
   // ── SQL scenario steps ────────────────────────────────────────────────────
@@ -482,6 +524,78 @@ public class TestPlanSkill implements AgentSkill<TestPlanSkill.Input, String> {
         || lower.contains("button") || lower.contains("login") || lower.contains("browser")
         || lower.contains("selenium") || lower.contains("playwright")) return "ui";
     return "api"; // default
+  }
+
+  private String inferUiPage(String intent, String domain) {
+    String lower = intent == null ? "" : intent.toLowerCase(Locale.ROOT);
+    if (lower.contains("login") || lower.contains("credential")) return "login";
+    if (lower.contains("checkout")) return "checkout";
+    if (lower.contains("cart")) return "cart";
+    if (lower.contains("search")) return "search";
+    return domain;
+  }
+
+  private String inferUiAction(String intent, String domain) {
+    String lower = intent == null ? "" : intent.toLowerCase(Locale.ROOT);
+    if (lower.contains("login") || lower.contains("credential")) return "login with credentials";
+    if (lower.contains("search")) return "search " + domain;
+    if (lower.contains("checkout")) return "checkout " + domain;
+    String verb = extractVerb(intent);
+    if ("process".equals(verb)) return "submit " + domain;
+    return verb + " " + domain;
+  }
+
+  private String inferUiSuccessPage(String intent, String domain, String pageName) {
+    String lower = intent == null ? "" : intent.toLowerCase(Locale.ROOT);
+    for (String candidate : List.of("inventory", "dashboard", "home", "cart", "checkout", "confirmation", "results")) {
+      if (!candidate.equals(pageName) && lower.contains(candidate)) return candidate;
+    }
+    if (lower.contains("search")) return "results";
+    if (lower.contains("checkout")) return "confirmation";
+    return pageName;
+  }
+
+  private String inferUiSuccessElement(String intent) {
+    String lower = intent == null ? "" : intent.toLowerCase(Locale.ROOT);
+    if (lower.contains("search")) return "search results";
+    if (lower.contains("checkout")) return "success message";
+    if (lower.contains("login")) return "success message";
+    return "success message";
+  }
+
+  private UiActionParameters uiActionParameters(String pageName, String actionName, boolean invalid) {
+    String prefix = invalid ? "test.invalid-" + pageName : "test." + pageName;
+    String lower = actionName.toLowerCase(Locale.ROOT);
+    if (lower.contains("login") || lower.contains("credential")) {
+      String userPrefix = invalid ? "test.invalid-user" : "test.user";
+      return new UiActionParameters(List.of("username", "password"),
+          List.of("properties(" + userPrefix + ".username)", "properties(" + userPrefix + ".password)"));
+    }
+    if (lower.contains("search")) {
+      return new UiActionParameters(List.of("query"),
+          List.of("properties(" + prefix + ".query)"));
+    }
+    return new UiActionParameters(List.of("value"),
+        List.of("properties(" + prefix + ".value)"));
+  }
+
+  private record UiActionParameters(List<String> columns, List<String> values) {
+    String toFeatureTable(int spaces) {
+      String indent = " ".repeat(spaces);
+      StringBuilder header = new StringBuilder(indent).append("|");
+      StringBuilder row = new StringBuilder(indent).append("|");
+      for (int i = 0; i < columns.size(); i++) {
+        int width = Math.max(columns.get(i).length(), values.get(i).length()) + 2;
+        header.append(" ").append(pad(columns.get(i), width - 1)).append("|");
+        row.append(" ").append(pad(values.get(i), width - 1)).append("|");
+      }
+      return header.append("\n").append(row).toString();
+    }
+
+    private static String pad(String value, int length) {
+      if (value.length() >= length) return value + " ";
+      return value + " ".repeat(length - value.length());
+    }
   }
 
   private String inferDomain(String intent) {

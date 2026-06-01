@@ -81,4 +81,24 @@ class TagExpressionResolverTest {
     assertTrue(result.contains("@api"));
     assertTrue(result.contains("not @flaky"));
   }
+
+  @Test
+  void resolvesNaturalLanguageFromFeatureAndScenarioText() {
+    ScenarioIndex scenario = new ScenarioIndex("User logs in to SauceDemo",
+        ScenarioType.SCENARIO, List.of("@positive"), List.of(), List.of());
+    FeatureIndex feature = new FeatureIndex(Path.of("login.feature"), "SauceDemo login",
+        List.of("@ui", "@saucedemo"), List.of(scenario), List.of());
+    TestaraProjectProfile profile = new TestaraProjectProfile(
+        Path.of("."), BuildTool.MAVEN, "21", List.of(),
+        List.of(), List.of(), List.of(),
+        List.of(feature), List.of(), List.of(), List.of(), List.of(),
+        List.of(new TagIndex("@ui", 1, 1, List.of(), List.of()),
+            new TagIndex("@saucedemo", 1, 1, List.of(), List.of())),
+        Map.of(), Map.of(), List.of(), List.of());
+
+    String result = resolver.resolve("run the saucedemo login tests in dry-run mode", profile);
+
+    assertTrue(result.contains("@saucedemo"));
+    assertEquals(1, resolver.countMatching(result, profile));
+  }
 }

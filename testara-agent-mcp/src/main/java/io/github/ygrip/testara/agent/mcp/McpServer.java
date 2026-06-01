@@ -206,6 +206,7 @@ public class McpServer {
         optionalStr("artifactId", "Maven artifactId. Defaults to the project directory name when omitted."),
         optionalStr("basePackage", "Base Java package"),
         optionalStr("engine", "UI engine: selenium, playwright, appium"),
+        optionalBool("autoGenerateCoordinates", "Use generated Maven coordinates when groupId/artifactId are omitted. Default false so agents ask first."),
         optionalBool("integrateExisting", "Integrate into existing project"),
         optionalBool("write", "Create files on disk. Default false."),
         optionalBool("compile", "Run test-compile after writing files. Default true.")));
@@ -296,12 +297,27 @@ public class McpServer {
     if (args.has("detail"))  opts.put("detail", args.path("detail").asText());
     if (args.has("write"))   opts.put("write", args.path("write").asBoolean(false) ? "true" : "false");
     if (args.has("compile")) opts.put("compile", args.path("compile").asBoolean(true) ? "true" : "false");
+    if (args.has("autoGenerateCoordinates")) {
+      opts.put("autoGenerateCoordinates", args.path("autoGenerateCoordinates").asBoolean(false) ? "true" : "false");
+    }
 
     AgentMode mode = toolName.equals("testara_run") ? AgentMode.PLAN : AgentMode.READ_ONLY;
 
     LlmConfig cfg = LlmConfig.fromEnv();
     var llm = cfg.hasApiKey() ? new OpenAiLlmClient(cfg) : (io.github.ygrip.testara.agent.llm.LlmClient) new DisabledLlmClient();
-    return new AgentContext(projectRoot, profile, mode, llm, opts);
+    return new AgentContext(projectRoot, refreshedProfile(), mode, llm, opts);
+  }
+
+  private TestaraProjectProfile refreshedProfile() {
+    if (!Files.exists(projectRoot.resolve("pom.xml")) && !Files.exists(projectRoot.resolve("build.gradle"))) {
+      return profile;
+    }
+    try {
+      profile = JsonlKnowledgeStore.loadProfile(projectRoot);
+    } catch (Exception e) {
+      LOG.fine("Cannot refresh project index: " + e.getMessage());
+    }
+    return profile;
   }
 
   // ── MCP helpers ───────────────────────────────────────────────────

@@ -27,6 +27,7 @@ class TestaraUiSkillTest {
     assertTrue(output.contains("import io.github.ygrip.testara.ui.model.Locator;"));
     assertTrue(output.contains("import io.github.ygrip.testara.ui.selenium.page.SeleniumPage;"));
     assertTrue(output.contains("private static final Locator USERNAME_FIELD"));
+    assertTrue(output.contains("private static final Locator ERROR_MESSAGE"));
     assertFalse(output.contains("PageElement"));
     assertFalse(output.contains("io.github.ygrip.testara.ui.page.Page;"));
     assertFalse(output.contains("io.github.ygrip.testara.ui.selenium.SeleniumPage"));
@@ -44,9 +45,27 @@ class TestaraUiSkillTest {
     assertTrue(output.contains("import io.github.ygrip.testara.ui.model.OnPage;"));
     assertTrue(output.contains("import io.github.ygrip.testara.ui.model.Action;"));
     assertTrue(output.contains("@OnPage(value = {LoginPage.class})"));
-    assertTrue(output.contains("| username                    | password                       |"));
-    assertTrue(output.contains("| properties(test.user.email) | properties(test.user.password) |"));
+    assertTrue(output.contains("| username"));
+    assertTrue(output.contains("| password"));
+    assertTrue(output.contains("properties(test.user.username)"));
+    assertTrue(output.contains("properties(test.user.password)"));
     assertFalse(output.contains("io.github.ygrip.testara.ui.actor"));
+  }
+
+  @Test
+  void actionTemplateInfersLoginPageAndReusableActionName() {
+    String output = new TestaraUiSkill().execute(
+        new TestaraUiSkill.Input("action", null, "login with valid credentials", "selenium",
+            "io.github.ygrip.automation"),
+        context());
+
+    assertTrue(output.contains("src/main/java/io/github/ygrip/automation/action/LoginActions.java"));
+    assertTrue(output.contains("import io.github.ygrip.automation.page.LoginPage;"));
+    assertTrue(output.contains("@OnPage(value = {LoginPage.class})"));
+    assertTrue(output.contains("@Action(\"login with credentials\")"));
+    assertTrue(output.contains("When user do \"login with credentials\" in \"login\" page with parameter"));
+    assertFalse(output.contains("SampleActions"));
+    assertFalse(output.contains("SamplePage"));
   }
 
   @Test

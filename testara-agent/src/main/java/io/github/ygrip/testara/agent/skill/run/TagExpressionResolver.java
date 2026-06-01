@@ -76,6 +76,9 @@ public class TagExpressionResolver {
           if (!negativeTags.contains("@" + word)) positiveTags.add("@" + word);
         }
       }
+      if (positiveTags.isEmpty()) {
+        positiveTags.addAll(inferFromFeatureAndScenarioText(lower, profile, negativeTags));
+      }
     }
 
     // 4. Handle OR groups: "payment or order tests" → "(payment or order)"
@@ -111,13 +114,57 @@ public class TagExpressionResolver {
     return positive + " and " + negative;
   }
 
+  private List<String> inferFromFeatureAndScenarioText(String lower, TestaraProjectProfile profile,
+      List<String> negativeTags) {
+    Set<String> words = Arrays.stream(lower.split("[\\s,;]+"))
+        .map(w -> w.replaceAll("[^a-z0-9_-]", ""))
+        .filter(w -> !w.isBlank())
+        .filter(w -> !STOP_WORDS.contains(w))
+        .collect(Collectors.toCollection(LinkedHashSet::new));
+    if (words.isEmpty()) return List.of();
+
+    Set<String> inferred = new LinkedHashSet<>();
+    for (var feature : profile.features()) {
+      Set<String> featureTags = new LinkedHashSet<>(feature.tags());
+      String featureText = (feature.featureName() + " " + String.join(" ", featureTags))
+          .toLowerCase(Locale.ROOT).replace("@", "");
+      if (containsAny(featureText, words)) addPreferredTags(inferred, featureTags, negativeTags);
+      for (var scenario : feature.scenarios()) {
+        Set<String> scenarioTags = new LinkedHashSet<>(featureTags);
+        scenarioTags.addAll(scenario.tags());
+        String scenarioText = (scenario.name() + " " + String.join(" ", scenarioTags))
+            .toLowerCase(Locale.ROOT).replace("@", "");
+        if (containsAny(scenarioText, words)) addPreferredTags(inferred, scenarioTags, negativeTags);
+      }
+    }
+    return List.copyOf(inferred);
+  }
+
+  private boolean containsAny(String text, Set<String> words) {
+    return words.stream().anyMatch(text::contains);
+  }
+
+  private void addPreferredTags(Set<String> target, Set<String> source, List<String> negativeTags) {
+    source.stream()
+        .filter(t -> !negativeTags.contains(t))
+        .filter(t -> !t.matches("@P\\d+") && !Set.of("@positive", "@negative", "@manual").contains(t))
+        .forEach(target::add);
+    if (target.isEmpty()) source.stream().filter(t -> !negativeTags.contains(t)).forEach(target::add);
+  }
+
+  private static final Set<String> STOP_WORDS = Set.of(
+      "run", "test", "tests", "dry", "mode", "the", "a", "an", "in", "on", "for", "with",
+      "and", "or", "please", "execute", "only", "all", "scenario", "scenarios"
+  );
+
   /** Count scenarios matching the resolved expression (simple tag set match). */
   public int countMatching(String tagExpression, TestaraProjectProfile profile) {
     if (tagExpression.isBlank()) return profile.totalScenarios();
     return (int) profile.features().stream()
-        .flatMap(f -> f.scenarios().stream())
-        .filter(s -> {
-          Set<String> scenarioTags = new HashSet<>(s.tags());
+        .flatMap(f -> f.scenarios().stream().map(s -> Map.entry(f, s)))
+        .filter(entry -> {
+          Set<String> scenarioTags = new HashSet<>(entry.getKey().tags());
+          scenarioTags.addAll(entry.getValue().tags());
           return matchesExpression(tagExpression, scenarioTags);
         })
         .count();
@@ -128,6 +175,14 @@ public class TagExpressionResolver {
     String[] parts = expr.split("\\s+and\\s+");
     for (String part : parts) {
       part = part.strip();
+      if (part.startsWith("(") && part.endsWith(")") && part.contains(" or ")) {
+        String inside = part.substring(1, part.length() - 1);
+        boolean any = Arrays.stream(inside.split("\\s+or\\s+"))
+            .map(String::strip)
+            .anyMatch(tags::contains);
+        if (!any) return false;
+        continue;
+      }
       if (part.startsWith("not ")) {
         String negTag = part.substring(4).strip();
         if (tags.contains(negTag)) return false;

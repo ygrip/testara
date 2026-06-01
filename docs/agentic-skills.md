@@ -224,6 +224,12 @@ testara-agent test-init --type ui                # Selenium UI project
 testara-agent test-init --preview                # show files without writing
 ```
 
+MCP/agent usage is deliberately interactive for Maven coordinates: if `groupId`
+or `artifactId` is omitted, `testara_init` returns `needs_input:
+testara_init_coordinates`. The agent must ask the user for manual coordinates,
+or call again with `autoGenerateCoordinates=true` when the user chooses the
+generated defaults.
+
 **Interactive prompts:**
 
 ```
@@ -242,11 +248,12 @@ src/test/resources/features/api/sample.feature
 src/test/resources/files/sample/request/sample-get.json
 src/test/java/{pkg}/runner/TestRunner.java
 src/test/java/{pkg}/steps/StepDefinitions.java
-src/test/java/{pkg}/commands/
-src/test/java/{pkg}/validations/
+src/main/java/{pkg}/command/
+src/main/java/{pkg}/validation/
 ```
 
-After writing, runs `mvn test-compile` and reports the result.
+After writing, runs `mvn test-compile` and reports the result. Generated POMs
+use Failsafe, so executable automation runs use `mvn verify`.
 
 **MCP tool:** `testara_init`
 
@@ -464,7 +471,7 @@ app.web.login-url=http://localhost:3000/login
 **UserAction usage:**
 ```gherkin
 When user do "login with credential" in "login" page with parameter
-  | username | properties(test.user.email)    |
+  | username | properties(test.user.username) |
   | password | properties(test.user.password) |
 ```
 

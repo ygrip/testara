@@ -45,8 +45,12 @@ class TestaraGuideSkillTest {
   void conciseGuideMentionsBuiltInReuse() {
     String guide = new TestaraGuideSkill().execute("all", context("concise"));
 
+    assertTrue(guide.contains("## Agent quick guardrails"));
+    assertTrue(guide.contains("Compile scope for Testara modules imported by `src/main/java`"));
+    assertTrue(guide.contains("DataTables: use `| key | value |`"));
     assertTrue(guide.contains("## Utilities and helpers"));
     assertTrue(guide.contains("## Built-in step usage"));
+    assertTrue(guide.contains("## POM dependency scope rules"));
     assertTrue(guide.contains("## Helper step command validation decisions"));
     assertTrue(guide.contains("## DB Kafka Elastic patterns"));
     assertTrue(guide.contains("Reuse Testara built-ins before creating project code"));
@@ -71,6 +75,16 @@ class TestaraGuideSkillTest {
     assertTrue(guide.contains("Custom Cucumber step: last resort"));
     assertTrue(guide.contains("Request spec: for API"));
     assertTrue(guide.contains("Page/action: for UI"));
+  }
+
+  @Test
+  void guideDocumentsPomScopeRules() {
+    String guide = new TestaraGuideSkill().execute("POM dependency scope", context("markdown"));
+
+    assertTrue(guide.contains("Compile scope: any Testara module imported by Java under `src/main/java`"));
+    assertTrue(guide.contains("UI slice: `testara-ui` and selected engine"));
+    assertTrue(guide.contains("testara-ui-cucumber` test"));
+    assertTrue(guide.contains("API slice: `testara-api` compile, `testara-api-cucumber` test"));
   }
 
   private AgentContext context(String format) {

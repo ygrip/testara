@@ -14,8 +14,8 @@ import java.util.logging.Logger;
 /**
  * Skill: bootstrap a Testara project with slice-aware scaffold.
  *
- * write=true  → creates files on disk, runs mvn test-compile
- * preview     → returns markdown with all file content (MCP / AI mode)
+ * write=true  -> creates files on disk, runs mvn test-compile
+ * preview     -> returns markdown with all file content (MCP / AI mode)
  */
 public class TestInitSkill implements AgentSkill<TestInitSkill.Input, String> {
 
@@ -43,9 +43,13 @@ public class TestInitSkill implements AgentSkill<TestInitSkill.Input, String> {
   @Override
   public String execute(Input input, AgentContext context) {
     String type    = input.type() != null ? input.type().toLowerCase(Locale.ROOT) : "api";
+    boolean autoCoordinates = "true".equals(context.options().get("autoGenerateCoordinates"));
+    if (!autoCoordinates && (input.groupId() == null || input.artifactId() == null)) {
+      return coordinatePrompt(context.projectRoot(), type, input);
+    }
     String groupId = input.groupId() != null ? input.groupId() : "io.github.ygrip";
     String artifactId = input.artifactId() != null ? input.artifactId()
-        : context.projectRoot().getFileName() != null ? context.projectRoot().getFileName().toString() : "automation";
+        : context.projectRoot().getFileName() != null ? toKebab(context.projectRoot().getFileName().toString()) : "automation";
     String basePkg = input.basePackage() != null ? input.basePackage()
         : groupId + "." + artifactId.replaceAll("[^a-zA-Z0-9]+", "").toLowerCase(Locale.ROOT);
     String pkgPath = basePkg.replace('.', '/');
@@ -56,6 +60,25 @@ public class TestInitSkill implements AgentSkill<TestInitSkill.Input, String> {
     return write
         ? applyFiles(type, groupId, artifactId, basePkg, pkgPath, input.engine(), integrate, context.projectRoot(), compile)
         : renderPreview(type, groupId, artifactId, basePkg, pkgPath, input.engine(), integrate, context.projectRoot());
+  }
+
+  private String coordinatePrompt(Path root, String type, Input input) {
+    String defaultArtifact = root.getFileName() != null ? toKebab(root.getFileName().toString()) : "automation";
+    return """
+        needs_input: testara_init_coordinates
+        question: Choose Maven coordinates for the Testara project.
+        missing: %s
+        option_manual: ask the user for groupId and artifactId, then call testara_init again with both values.
+        option_auto: call testara_init with autoGenerateCoordinates=true to use groupId=io.github.ygrip and artifactId=%s.
+        current: type=%s, basePackage=%s, engine=%s
+        """.formatted(missingCoordinates(input), defaultArtifact, type,
+        input.basePackage() == null ? "<auto from coordinates>" : input.basePackage(),
+        input.engine() == null ? "selenium" : input.engine());
+  }
+
+  private String missingCoordinates(Input input) {
+    if (input.groupId() == null && input.artifactId() == null) return "groupId, artifactId";
+    return input.groupId() == null ? "groupId" : "artifactId";
   }
 
   // ── Write mode ────────────────────────────────────────────────────────────
@@ -197,7 +220,6 @@ public class TestInitSkill implements AgentSkill<TestInitSkill.Input, String> {
                 <groupId>io.github.ygrip</groupId>
                 <artifactId>testara-ui-playwright</artifactId>
                 <version>${testara.version}</version>
-                <scope>test</scope>
               </dependency>
           """;
       case "appium" -> """
@@ -205,7 +227,6 @@ public class TestInitSkill implements AgentSkill<TestInitSkill.Input, String> {
                 <groupId>io.github.ygrip</groupId>
                 <artifactId>testara-ui-appium</artifactId>
                 <version>${testara.version}</version>
-                <scope>test</scope>
               </dependency>
           """;
       default -> """
@@ -213,17 +234,52 @@ public class TestInitSkill implements AgentSkill<TestInitSkill.Input, String> {
                 <groupId>io.github.ygrip</groupId>
                 <artifactId>testara-ui-selenium</artifactId>
                 <version>${testara.version}</version>
-                <scope>test</scope>
               </dependency>
           """;
     };
     String sliceDep = switch (type) {
-      case "ui", "fullstack" -> """
+      case "api" -> """
+              <dependency>
+                <groupId>io.github.ygrip</groupId>
+                <artifactId>testara-api</artifactId>
+                <version>${testara.version}</version>
+              </dependency>
+              <dependency>
+                <groupId>io.github.ygrip</groupId>
+                <artifactId>testara-api-cucumber</artifactId>
+                <version>${testara.version}</version>
+                <scope>test</scope>
+              </dependency>
+          """;
+      case "ui" -> """
               <dependency>
                 <groupId>io.github.ygrip</groupId>
                 <artifactId>testara-ui</artifactId>
                 <version>${testara.version}</version>
+              </dependency>
+              <dependency>
+                <groupId>io.github.ygrip</groupId>
+                <artifactId>testara-ui-cucumber</artifactId>
+                <version>${testara.version}</version>
                 <scope>test</scope>
+              </dependency>
+          """ + uiEngineDependency;
+      case "fullstack" -> """
+              <dependency>
+                <groupId>io.github.ygrip</groupId>
+                <artifactId>testara-api</artifactId>
+                <version>${testara.version}</version>
+              </dependency>
+              <dependency>
+                <groupId>io.github.ygrip</groupId>
+                <artifactId>testara-api-cucumber</artifactId>
+                <version>${testara.version}</version>
+                <scope>test</scope>
+              </dependency>
+              <dependency>
+                <groupId>io.github.ygrip</groupId>
+                <artifactId>testara-ui</artifactId>
+                <version>${testara.version}</version>
               </dependency>
               <dependency>
                 <groupId>io.github.ygrip</groupId>
@@ -235,12 +291,22 @@ public class TestInitSkill implements AgentSkill<TestInitSkill.Input, String> {
       case "database-sql", "sql" -> """
               <dependency>
                 <groupId>io.github.ygrip</groupId>
+                <artifactId>testara-database</artifactId>
+                <version>${testara.version}</version>
+              </dependency>
+              <dependency>
+                <groupId>io.github.ygrip</groupId>
                 <artifactId>testara-database-cucumber</artifactId>
                 <version>${testara.version}</version>
                 <scope>test</scope>
               </dependency>
           """;
       case "mongo", "database-mongo" -> """
+              <dependency>
+                <groupId>io.github.ygrip</groupId>
+                <artifactId>testara-database</artifactId>
+                <version>${testara.version}</version>
+              </dependency>
               <dependency>
                 <groupId>io.github.ygrip</groupId>
                 <artifactId>testara-database-cucumber</artifactId>
@@ -251,12 +317,22 @@ public class TestInitSkill implements AgentSkill<TestInitSkill.Input, String> {
       case "kafka", "streaming" -> """
               <dependency>
                 <groupId>io.github.ygrip</groupId>
+                <artifactId>testara-streaming</artifactId>
+                <version>${testara.version}</version>
+              </dependency>
+              <dependency>
+                <groupId>io.github.ygrip</groupId>
                 <artifactId>testara-streaming-cucumber</artifactId>
                 <version>${testara.version}</version>
                 <scope>test</scope>
               </dependency>
           """;
       case "elastic", "elastic-search" -> """
+              <dependency>
+                <groupId>io.github.ygrip</groupId>
+                <artifactId>testara-elastic</artifactId>
+                <version>${testara.version}</version>
+              </dependency>
               <dependency>
                 <groupId>io.github.ygrip</groupId>
                 <artifactId>testara-elastic-cucumber</artifactId>
@@ -284,14 +360,19 @@ public class TestInitSkill implements AgentSkill<TestInitSkill.Input, String> {
             <maven.compiler.target>21</maven.compiler.target>
             <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
             <testara.version>%s</testara.version>
+            <failsafe.version>3.5.1</failsafe.version>
           </properties>
 
           <dependencies>
             <dependency>
               <groupId>io.github.ygrip</groupId>
-              <artifactId>testara-api-cucumber</artifactId>
+              <artifactId>testara-command</artifactId>
               <version>${testara.version}</version>
-              <scope>test</scope>
+            </dependency>
+            <dependency>
+              <groupId>io.github.ygrip</groupId>
+              <artifactId>testara-validation</artifactId>
+              <version>${testara.version}</version>
             </dependency>
             <dependency>
               <groupId>io.github.ygrip</groupId>
@@ -300,12 +381,6 @@ public class TestInitSkill implements AgentSkill<TestInitSkill.Input, String> {
               <scope>test</scope>
             </dependency>
         %s
-            <dependency>
-              <groupId>org.junit.platform</groupId>
-              <artifactId>junit-platform-suite</artifactId>
-              <version>1.10.2</version>
-              <scope>test</scope>
-            </dependency>
           </dependencies>
 
           <build>
@@ -317,16 +392,36 @@ public class TestInitSkill implements AgentSkill<TestInitSkill.Input, String> {
               </plugin>
               <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-surefire-plugin</artifactId>
-                <version>3.2.5</version>
+                <artifactId>maven-failsafe-plugin</artifactId>
+                <version>${failsafe.version}</version>
+                <executions>
+                  <execution>
+                    <goals>
+                      <goal>integration-test</goal>
+                      <goal>verify</goal>
+                    </goals>
+                  </execution>
+                </executions>
                 <configuration>
-                  <includes><include>**/*Runner.java</include></includes>
+                  <includes>
+                    <include>**/*Runner.java</include>
+                  </includes>
+                  <printSummary>false</printSummary>
+                  <failIfNoTests>false</failIfNoTests>
+                  <reuseForks>true</reuseForks>
+                  <forkCount>1</forkCount>
                 </configuration>
               </plugin>
             </plugins>
           </build>
         </project>
         """.formatted(groupId, artifactId, testaraVersion, sliceDep);
+  }
+
+  private String toKebab(String value) {
+    return value.toLowerCase(Locale.ROOT)
+        .replaceAll("[^a-z0-9]+", "-")
+        .replaceAll("^-|-$", "");
   }
 
   private String generateProperties(String type, String basePkg, String engine) {

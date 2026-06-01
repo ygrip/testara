@@ -8,9 +8,9 @@ class MavenCommandBuilderTest {
   private final MavenCommandBuilder builder = new MavenCommandBuilder();
 
   @Test
-  void buildsDefaultTestCommand() {
+  void buildsDefaultVerifyCommand() {
     String cmd = builder.build("@smoke and @api");
-    assertEquals("mvn test -Dcucumber.filter.tags=\"@smoke and @api\"", cmd);
+    assertEquals("mvn verify -Dcucumber.filter.tags=\"@smoke and @api\"", cmd);
   }
 
   @Test
