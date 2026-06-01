@@ -45,14 +45,14 @@ public class ElasticSearchBaseSteps {
   private Object response;
 
   @RetryableMethod
-  @Given("^(\\[elastic-search\\]) connect to elastic search with name (\\w+)$")
+  @Given("{elasticsearch} connect to elastic search with name {word}")
   public void initElasticSearchConnection(String identifier, String serviceName) throws Throwable {
     serviceName = String.valueOf(TestFramework.context().converter().convert(serviceName));
     elasticSearchHelper.init(serviceName);
   }
 
   @RetryableMethod
-  @When("^(\\[elastic-search\\]) get list of indexes$")
+  @When("{elasticsearch} get list of indexes")
   public void getIndexes(String identifier) throws Throwable {
     assertThat("No elastic search connection is established", elasticSearchHelper.isConnected(), equalTo(true));
 
@@ -60,7 +60,7 @@ public class ElasticSearchBaseSteps {
   }
 
   @RetryableMethod
-  @When("^(\\[elastic-search\\]) count all document$")
+  @When("{elasticsearch} count all document")
   public void countAll(String identifier) throws Throwable {
     assertThat("No elastic search connection is established", elasticSearchHelper.isConnected(), equalTo(true));
 
@@ -68,19 +68,19 @@ public class ElasticSearchBaseSteps {
   }
 
   @RetryableMethod
-  @When("^(\\[elastic-search\\]) count matching document with query :$")
+  @When("{elasticsearch} count matching document with query :")
   public void countMatchingQuery(String identifier, String query) throws Throwable {
     countMatchingInIndexQuery(identifier, null, query);
   }
 
   @RetryableMethod
-  @When("^(\\[elastic-search\\]) count matching document from index (\\w+) with query :$")
+  @When("{elasticsearch} count matching document from index {word} with query :")
   public void countMatchingInIndexQuery(String identifier, String index, String query) throws Throwable {
     countMatchingInIndexQuery(identifier, index, null, query);
   }
 
   @RetryableMethod
-  @When("^(\\[elastic-search\\]) count matching document from index (\\w+) with routing (\\w+) with query :$")
+  @When("{elasticsearch} count matching document from index {word} with routing {word} with query :")
   public void countMatchingInIndexQuery(String identifier, String index, String routing, String query)
       throws Throwable {
     index = TestFramework.context().converter().convert(index);
@@ -94,24 +94,24 @@ public class ElasticSearchBaseSteps {
     response = elasticSearchHelper.count(query, indexes, routing, RequestOptions.DEFAULT);
   }
 
-  @When("^(\\[elastic-search\\]) insert to index \"([^\"]*)\" with data :$")
+  @When("{elasticsearch} insert to index {string} with data :")
   public void insertDataToIndex(String identifier, String indexName, DataTable table) throws Throwable {
     insertDataToIndexWithType(identifier, indexName, null, table);
   }
 
-  @When("^(\\[elastic-search\\]) insert to index \"([^\"]*)\" with type \"([^\"]*)\" and data :$")
+  @When("{elasticsearch} insert to index {string} with type {string} and data :")
   public void insertDataToIndexWithType(String identifier, String indexName, String type, DataTable table)
       throws Throwable {
     insertDataToIndex(identifier, indexName, type, null, table);
   }
 
-  @When("^(\\[elastic-search\\]) insert to index \"([^\"]*)\" with routing \"([^\"]*)\" and data :$")
+  @When("{elasticsearch} insert to index {string} with routing {string} and data :")
   public void insertDataToIndexWithRouting(String identifier, String indexName, String routing, DataTable table)
       throws Throwable {
     insertDataToIndex(identifier, indexName, null, routing, table);
   }
 
-  @When("^(\\[elastic-search\\]) insert to index \"([^\"]*)\" with type \"([^\"]*)\" with routing \"([^\"]*)\" and data :$")
+  @When("{elasticsearch} insert to index {string} with type {string} with routing {string} and data :")
   public void insertDataToIndex(String identifier, String indexName, String type, String routing, DataTable table)
       throws Throwable {
     assertThat("No elastic search connection is established", elasticSearchHelper.isConnected(), equalTo(true));
@@ -135,7 +135,7 @@ public class ElasticSearchBaseSteps {
     response = elasticSearchHelper.index(request, RequestOptions.DEFAULT);
   }
 
-  @When("^(\\[elastic-search\\]) update document from index \"([^\"]*)\" with type \"([^\"]*)\" with id \"([^\"]*)\" and data :$")
+  @When("{elasticsearch} update document from index {string} with type {string} with id {string} and data :")
   public void updateDataFromIndex(String identifier, String indexName, String type, String id, DataTable table)
       throws Throwable {
     updateDataFromIndex(identifier, indexName, type, id, null, table);
@@ -170,26 +170,26 @@ public class ElasticSearchBaseSteps {
   }
 
   @RetryableMethod
-  @When("^(\\[elastic-search\\]) get one document from index \"([^\"]*)\" with id \"([^\"]*)\"$")
+  @When("{elasticsearch} get one document from index {string} with id {string}")
   public void getOneDataById(String identifier, String indexName, String id) throws Throwable {
     getOneDataByIdAndType(identifier, indexName, null, id);
   }
 
   @RetryableMethod
-  @When("^(\\[elastic-search\\]) get one document from index \"([^\"]*)\" with type \"([^\"]*)\" and id \"([^\"]*)\"$")
+  @When("{elasticsearch} get one document from index {string} with type {string} and id {string}")
   public void getOneDataByIdAndType(String identifier, String indexName, String type, String id) throws Throwable {
     getOneDataById(identifier, indexName, type, null, id);
   }
 
   @RetryableMethod
-  @When("^(\\[elastic-search\\]) get one document from index \"([^\"]*)\" with routing \"([^\"]*)\" and id \"([^\"]*)\"$")
+  @When("{elasticsearch} get one document from index {string} with routing {string} and id {string}")
   public void getOneDataByIdAndRouting(String identifier, String indexName, String routing, String id)
       throws Throwable {
     getOneDataById(identifier, indexName, null, routing, id);
   }
 
   @RetryableMethod
-  @When("^(\\[elastic-search\\]) get one document from index \"([^\"]*)\" with type \"([^\"]*)\" with routing \"([^\"]*)\" and id \"([^\"]*)\"$")
+  @When("{elasticsearch} get one document from index {string} with type {string} with routing {string} and id {string}")
   public void getOneDataById(String identifier, String indexName, String type, String routing, String id)
       throws Throwable {
     assertThat("No elastic search connection is established", elasticSearchHelper.isConnected(), equalTo(true));
@@ -208,17 +208,17 @@ public class ElasticSearchBaseSteps {
     response = elasticSearchHelper.getOne(indexName, type, routing, id);
   }
 
-  @When("^(\\[elastic-search\\]) delete one document from index \"([^\"]*)\" with id \"([^\"]*)\"$")
+  @When("{elasticsearch} delete one document from index {string} with id {string}")
   public void deleteOneDataById(String identifier, String indexName, String id) throws Throwable {
     deleteOneDataByIdAndType(identifier, indexName, null, id);
   }
 
-  @When("^(\\[elastic-search\\]) delete one document from index \"([^\"]*)\" with type \"([^\"]*)\" and id \"([^\"]*)\"$")
+  @When("{elasticsearch} delete one document from index {string} with type {string} and id {string}")
   public void deleteOneDataByIdAndType(String identifier, String indexName, String type, String id) throws Throwable {
     deleteOneDataById(identifier, indexName, type, null, id);
   }
 
-  @When("^(\\[elastic-search\\]) delete one document from index \"([^\"]*)\" with routing \"([^\"]*)\" and id \"([^\"]*)\"$")
+  @When("{elasticsearch} delete one document from index {string} with routing {string} and id {string}")
   public void deleteOneDataByIdAndRouting(String identifier, String indexName, String routing, String id)
       throws Throwable {
     deleteOneDataById(identifier, indexName, null, routing, id);
@@ -245,13 +245,13 @@ public class ElasticSearchBaseSteps {
   }
 
   @RetryableMethod
-  @When("^(\\[elastic-search\\]) assign data \"([^\"]*)\" with query :$")
+  @When("{elasticsearch} assign data {string} with query :")
   public void searchDataFromElastic(String identifier, String key, DataTable table) throws Throwable {
     searchDataFromElastic(identifier, key, null, table);
   }
 
   @RetryableMethod
-  @When("^(\\[elastic-search\\]) assign data (\\w+) from index (\\w+) with query :$")
+  @When("{elasticsearch} assign data {word} from index {word} with query :")
   public void searchDataFromElastic(String identifier, String key, String index, DataTable table) throws Throwable {
     index = TestFramework.context().converter().convert(index);
     String[] indexes = CommonHelper.isBlank(index) ?
@@ -300,20 +300,20 @@ public class ElasticSearchBaseSteps {
   }
 
   @RetryableMethod
-  @When("^(\\[elastic-search\\]) assign data \"([^\"]*)\" from index (\\w+) with id \"([^\"]*)\"$")
+  @When("{elasticsearch} assign data {string} from index {word} with id {string}")
   public void assignDataFromGetOneDocument(String identifier, String key, String index, String id) throws Throwable {
     assignDataFromGetOneDocumentWithType(identifier, key, index, null, id);
   }
 
   @RetryableMethod
-  @When("^(\\[elastic-search\\]) assign data (\\w+) from index (\\w+) with type \"([^\"]*)\" and id \"([^\"]*)\"$")
+  @When("{elasticsearch} assign data {word} from index {word} with type {string} and id {string}")
   public void assignDataFromGetOneDocumentWithType(String identifier, String key, String index, String type, String id)
       throws Throwable {
     assignDataFromGetOneDocument(identifier, key, index, type, null, id);
   }
 
   @RetryableMethod
-  @When("^(\\[elastic-search\\]) assign data (\\w+) from index (\\w+) with routing \"([^\"]*)\" and id \"([^\"]*)\"$")
+  @When("{elasticsearch} assign data {word} from index {word} with routing {string} and id {string}")
   public void assignDataFromGetOneDocumentWithRouting(String identifier,
       String key,
       String index,
@@ -323,7 +323,7 @@ public class ElasticSearchBaseSteps {
   }
 
   @RetryableMethod
-  @When("^(\\[elastic-search\\]) assign data (\\w+) from index (\\w+) with type \"([^\"]*)\" with routing \"([^\"]*)\" and id \"([^\"]*)\"$")
+  @When("{elasticsearch} assign data {word} from index {word} with type {string} with routing {string} and id {string}")
   public void assignDataFromGetOneDocument(String identifier,
       String key,
       String index,
@@ -352,14 +352,14 @@ public class ElasticSearchBaseSteps {
   }
 
   @RetryableMethod
-  @Then("^(\\[elastic-search\\]) assign previous elastic search response to (\\w+)$")
+  @Then("{elasticsearch} assign previous elastic search response to {word}")
   public void assignElasticSearchResponseTo(String identifier, String key) throws Throwable {
     dataHolder.setResponse(key, response);
     response = null;
   }
 
   @RetryableMethod
-  @Then("^(\\[elastic-search\\]) index with name \"([^\"]*)\" (should|should not) be exists$")
+  @Then("{elasticsearch} index with name {string} {shouldOrShouldNot} be exists")
   public void insertDataToIndex(String identifier, String indexName, String shouldOrShouldNot) throws Throwable {
     assertThat("No elastic search connection is established", elasticSearchHelper.isConnected(), equalTo(true));
     indexName = TestFramework.context().converter().convert(indexName);

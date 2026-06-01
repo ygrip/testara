@@ -65,7 +65,7 @@ public class ProxySteps {
 
   // ── Driver setup with proxy ──────────────────────────────────────
 
-  @Given("^(\\w+) using (\\w+) in (desktop|mobile|android|ios) with (standalone|embedded|mitmproxy) proxy$")
+  @Given("{word} using {word} in {devices} with {standAloneOrEmbedded} proxy")
   public void actorNamedUsingDeviceWithProxy(String actorName, String application, String platform, String proxyType)
     throws Throwable {
     TestUI.withDefaultEngine()
@@ -74,14 +74,14 @@ public class ProxySteps {
 
   // ── Instance lifecycle ───────────────────────────────────────────
 
-  @When("^(.+) create proxy instance$")
+  @When("{actor} create proxy instance")
   public void createProxyInstance(String identifier) throws Throwable {
     MitmProxyCreateInstanceResponse response = proxy().createInstance();
     assertThat("Failed to create proxy instance", response, notNullValue());
     log.info("Created proxy instance: {} on port {}", response.getInstanceId(), response.getPort());
   }
 
-  @When("^(.+) create proxy instance with TTL (\\d+)s$")
+  @When("{actor} create proxy instance with TTL {int}s")
   public void createProxyInstanceWithTtl(String identifier, int ttl) throws Throwable {
     MitmProxyCreateInstanceResponse response = proxy().createInstance(ttl);
     assertThat("Failed to create proxy instance", response, notNullValue());
@@ -89,7 +89,7 @@ public class ProxySteps {
       response.getTtl());
   }
 
-  @When("^(.+) renew proxy instance$")
+  @When("{actor} renew proxy instance")
   public void renewProxyInstance(String identifier) throws Throwable {
     checkProxy();
     MitmProxyRenewResponse response = proxy().renewInstance();
@@ -97,7 +97,7 @@ public class ProxySteps {
     log.info("Renewed proxy instance (TTL={}s, expires={})", response.getTtl(), response.getExpiresAt());
   }
 
-  @When("^(.+) renew proxy instance with TTL (\\d+)s$")
+  @When("{actor} renew proxy instance with TTL {int}s")
   public void renewProxyInstanceWithTtl(String identifier, int ttl) throws Throwable {
     checkProxy();
     MitmProxyRenewResponse response = proxy().renewInstance(ttl);
@@ -105,7 +105,7 @@ public class ProxySteps {
     log.info("Renewed proxy instance (TTL={}s, expires={})", response.getTtl(), response.getExpiresAt());
   }
 
-  @When("^(.+) destroy proxy instance$")
+  @When("{actor} destroy proxy instance")
   public void destroyProxyInstance(String identifier) throws Throwable {
     checkProxy();
     MitmProxyInstanceDetail detail = proxy().getInstanceDetail();
@@ -114,7 +114,7 @@ public class ProxySteps {
     log.info("Destroyed proxy instance: {}", detail.getInstanceId());
   }
 
-  @When("^(.+) destroy proxy instance with cleanup$")
+  @When("{actor} destroy proxy instance with cleanup")
   public void destroyProxyInstanceWithCleanup(String identifier) throws Throwable {
     checkProxy();
     MitmProxyInstanceDetail detail = proxy().getInstanceDetail();
@@ -125,14 +125,14 @@ public class ProxySteps {
 
   // ── Caching ──────────────────────────────────────────────────────
 
-  @When("^(.+) disable proxy cache$")
+  @When("{actor} disable proxy cache")
   public void disableProxyCache(String identifier) throws Throwable {
     checkProxy();
     proxy().disableCaching();
     log.info("Disabled caching via proxy (cache-negotiation headers will be stripped)");
   }
 
-  @When("^(.+) disable proxy cache for URL containing \"([^\"]*)\"$")
+  @When("{actor} disable proxy cache for URL containing {string}")
   public void disableProxyCacheForUrl(String identifier, String urlContains) throws Throwable {
     checkProxy();
     proxy().disableCaching(urlContains);
@@ -142,7 +142,7 @@ public class ProxySteps {
   // ── Rule management — creation ───────────────────────────────────
 
   @SuppressWarnings("unchecked")
-  @When("^(.+) create proxy rule to mock response for URL containing \"([^\"]*)\" with status (\\d+) and body \"([^\"]*)\"$")
+  @When("{actor} create proxy rule to mock response for URL containing {string} with status {int} and body {string}")
   public void createMockResponseRule(String identifier, String urlContains, int statusCode, String body)
     throws Throwable {
     checkProxy();
@@ -155,7 +155,7 @@ public class ProxySteps {
   }
 
   @SuppressWarnings("unchecked")
-  @When("^(.+) create proxy rule to mock response for URL containing \"([^\"]*)\" with status (\\d+)$")
+  @When("{actor} create proxy rule to mock response for URL containing {string} with status {int}")
   public void createMockResponseRuleWithDocString(String identifier, String urlContains, int statusCode, String body)
     throws Throwable {
     checkProxy();
@@ -168,7 +168,7 @@ public class ProxySteps {
   }
 
   @SuppressWarnings("unchecked")
-  @When("^(.+) create proxy rule to block URL containing \"([^\"]*)\"$")
+  @When("{actor} create proxy rule to block URL containing {string}")
   public void createBlockRule(String identifier, String urlContains) throws Throwable {
     checkProxy();
     urlContains = executeCommand(urlContains);
@@ -179,7 +179,7 @@ public class ProxySteps {
   }
 
   @SuppressWarnings("unchecked")
-  @When("^(.+) create proxy rule to replace response body for URL containing \"([^\"]*)\" from \"([^\"]*)\" to \"([^\"]*)\"$")
+  @When("{actor} create proxy rule to replace response body for URL containing {string} from {string} to {string}")
   public void createReplaceResponseBodyRule(String identifier, String urlContains, String from, String to)
     throws Throwable {
     checkProxy();
@@ -193,7 +193,7 @@ public class ProxySteps {
   }
 
   @SuppressWarnings("unchecked")
-  @When("^(.+) create proxy rule to replace request body for URL containing \"([^\"]*)\" from \"([^\"]*)\" to \"([^\"]*)\"$")
+  @When("{actor} create proxy rule to replace request body for URL containing {string} from {string} to {string}")
   public void createReplaceRequestBodyRule(String identifier, String urlContains, String from, String to)
     throws Throwable {
     checkProxy();
@@ -207,7 +207,7 @@ public class ProxySteps {
   }
 
   @SuppressWarnings("unchecked")
-  @When("^(.+) create proxy rule to set request headers for URL containing \"([^\"]*)\"$")
+  @When("{actor} create proxy rule to set request headers for URL containing {string}")
   public void createSetRequestHeadersRule(String identifier, String urlContains, DataTable table) throws Throwable {
     checkProxy();
     urlContains = executeCommand(urlContains);
@@ -219,7 +219,7 @@ public class ProxySteps {
   }
 
   @SuppressWarnings("unchecked")
-  @When("^(.+) create proxy rule to set response headers for URL containing \"([^\"]*)\"$")
+  @When("{actor} create proxy rule to set response headers for URL containing {string}")
   public void createSetResponseHeadersRule(String identifier, String urlContains, DataTable table) throws Throwable {
     checkProxy();
     urlContains = executeCommand(urlContains);
@@ -231,7 +231,7 @@ public class ProxySteps {
   }
 
   @SuppressWarnings("unchecked")
-  @When("^(.+) create proxy rule to set query params for URL containing \"([^\"]*)\"$")
+  @When("{actor} create proxy rule to set query params for URL containing {string}")
   public void createSetQueryParamsRule(String identifier, String urlContains, DataTable table) throws Throwable {
     checkProxy();
     urlContains = executeCommand(urlContains);
@@ -251,7 +251,7 @@ public class ProxySteps {
    * <p>Resolves the file at {@code src/test/resources/github/intercept network response from user avatar.json},
    * deserializes it to {@link ProxyRuleCreation}, and sends the resulting rule to the proxy.</p>
    */
-  @When("^(.+) create proxy rule from \"([^\"]*)\"$")
+  @When("{actor} create proxy rule from {string}")
   public void createProxyRuleFromSpecification(String identifier, String ruleSpecificationPath) throws Throwable {
     checkProxy();
     ruleSpecificationPath = executeCommand(ruleSpecificationPath);
@@ -276,7 +276,7 @@ public class ProxySteps {
    *   | $.action.modifyResponse.statusCode | 404                          |
    * </pre>
    */
-  @When("^(.+) create proxy rule from \"([^\"]*)\" with$")
+  @When("{actor} create proxy rule from {string} with")
   public void createProxyRuleFromSpecificationWithOverrides(String identifier, String ruleSpecificationPath,
     DataTable table) throws Throwable {
     checkProxy();
@@ -299,7 +299,7 @@ public class ProxySteps {
    * <p>Example Gherkin:</p>
    * <pre>When user create proxy rule to replace image at URL containing "avatar.png" with file "github/images/replacement.png" as "image/png"</pre>
    */
-  @When("^(.+) create proxy rule to replace image at URL containing \"([^\"]*)\" with file \"([^\"]*)\" as \"([^\"]*)\"$")
+  @When("{actor} create proxy rule to replace image at URL containing {string} with file {string} as {string}")
   public void createReplaceImageRule(String identifier, String urlContains, String filePath, String contentType)
     throws Throwable {
     checkProxy();
@@ -316,7 +316,7 @@ public class ProxySteps {
 
   // ── Rule management — CRUD operations ────────────────────────────
 
-  @When("^(.+) delete proxy rule at index (\\d+)$")
+  @When("{actor} delete proxy rule at index {int}")
   public void deleteProxyRule(String identifier, int index) throws Throwable {
     checkProxy();
     MitmProxyMessageResponse response = proxy().deleteRule(index);
@@ -324,7 +324,7 @@ public class ProxySteps {
       response != null ? response.getMessage() : "no response");
   }
 
-  @When("^(.+) toggle proxy rule at index (\\d+)$")
+  @When("{actor} toggle proxy rule at index {int}")
   public void toggleProxyRule(String identifier, int index) throws Throwable {
     checkProxy();
     MitmProxyMessageResponse response = proxy().toggleRule(index);
@@ -332,7 +332,7 @@ public class ProxySteps {
       response != null ? response.getMessage() : "no response");
   }
 
-  @When("^(.+) clear all proxy rules$")
+  @When("{actor} clear all proxy rules")
   public void clearAllProxyRules(String identifier) throws Throwable {
     checkProxy();
     proxy().clearRules();
@@ -341,31 +341,31 @@ public class ProxySteps {
 
   // ── Assertions ───────────────────────────────────────────────────
 
-  @Then("^(.+) proxy should be started$")
+  @Then("{actor} proxy should be started")
   public void proxyShouldBeStarted(String identifier) throws Throwable {
     assertThat("Proxy should be started", proxy().isStarted(), equalTo(true));
   }
 
-  @Then("^(.+) proxy should not be started$")
+  @Then("{actor} proxy should not be started")
   public void proxyShouldNotBeStarted(String identifier) throws Throwable {
     assertThat("Proxy should not be started", proxy().isStarted(), equalTo(false));
   }
 
-  @Then("^(.+) proxy should have (\\d+) rules$")
+  @Then("{actor} proxy should have {int} rules")
   public void proxyShouldHaveRules(String identifier, int expectedCount) throws Throwable {
     checkProxy();
     List<MitmProxyRuleResponse> rules = proxy().listRules();
     assertThat("Proxy rule count mismatch", rules.size(), equalTo(expectedCount));
   }
 
-  @Then("^(.+) proxy health status should be \"([^\"]*)\"$")
+  @Then("{actor} proxy health status should be {string}")
   public void proxyHealthStatusShouldBe(String identifier, String expectedStatus) throws Throwable {
     MitmProxyHealthResponse health = proxy().healthCheck();
     assertThat("Proxy health response is null", health, notNullValue());
     assertThat("Proxy health status mismatch", health.getStatus(), equalToIgnoringCase(expectedStatus));
   }
 
-  @Then("^(.+) proxy instance remaining TTL should be greater than (\\d+)s$")
+  @Then("{actor} proxy instance remaining TTL should be greater than {int}s")
   public void proxyInstanceRemainingTtlShouldBeGreaterThan(String identifier, int seconds) throws Throwable {
     checkProxy();
     MitmProxyInstanceDetail detail = proxy().getInstanceDetail();
@@ -376,7 +376,7 @@ public class ProxySteps {
     );
   }
 
-  @Then("^(.+) proxy instance should have status \"([^\"]*)\"$")
+  @Then("{actor} proxy instance should have status {string}")
   public void proxyInstanceShouldHaveStatus(String identifier, String expectedStatus) throws Throwable {
     checkProxy();
     MitmProxyInstanceDetail detail = proxy().getInstanceDetail();
@@ -384,7 +384,7 @@ public class ProxySteps {
     assertThat("Instance status mismatch", detail.getStatus(), equalToIgnoringCase(expectedStatus));
   }
 
-  @Then("^(.+) proxy CA certificate should be available$")
+  @Then("{actor} proxy CA certificate should be available")
   public void proxyCaCertificateShouldBeAvailable(String identifier) throws Throwable {
     checkProxy();
     String pem = proxy().getCaCertificatePem();

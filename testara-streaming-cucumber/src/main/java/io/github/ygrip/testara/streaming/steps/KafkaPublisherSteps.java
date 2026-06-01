@@ -27,12 +27,12 @@ public class KafkaPublisherSteps {
   @Inject
   private KafkaPublisherHelper kafkaPublisher;
 
-  @Given("^(.+) start kafka producer for (\\w+)$")
+  @Given("{actor} start kafka producer for {word}")
   public void startKafkaProducer(String identifier, String serviceName) {
     kafkaPublisher.init(serviceName);
   }
 
-  @When("^(.+) send kafka message to topic \"([^\"]*)\" with data \"([^\"]*)\"$")
+  @When("{actor} send kafka message to topic {string} with data {string}")
   public void sendKafkaMessageToTopicWithData(String identifier, String topic, String message) throws Throwable {
     assertThat("No kafka connection", kafkaPublisher.isConnected(), equalTo(true));
     topic = TestFramework.context().converter().convert(topic);
@@ -41,7 +41,7 @@ public class KafkaPublisherSteps {
     kafkaPublisher.send(topic, message);
   }
 
-  @When("^(.+) send kafka message to topic \"([^\"]*)\" with key \"([^\"]*)\" and data \"([^\"]*)\"$")
+  @When("{actor} send kafka message to topic {string} with key {string} and data {string}")
   public void sendKafkaMessageToTopicWithData(String identifier, String topic, String key, String message)
       throws Throwable {
     assertThat("No kafka connection", kafkaPublisher.isConnected(), equalTo(true));
@@ -52,14 +52,14 @@ public class KafkaPublisherSteps {
     kafkaPublisher.send(topic, key, message);
   }
 
-  @When("^(.+) send batch message to kafka with data$")
+  @When("{actor} send batch message to kafka with data")
   public void batchSendKafkaMessageToTopicWithData(String identifier, DataTable table) throws Throwable {
     assertThat("No kafka connection", kafkaPublisher.isConnected(), equalTo(true));
     List<KafkaMessage> messages = new TransformerService().sourceData(table.cells()).toList(KafkaMessage.class);
     kafkaPublisher.batchSend(messages);
   }
 
-  @Then("^(.+) stop kafka producer$")
+  @Then("{actor} stop kafka producer")
   public void stopKafkaProducer(String identifier) {
     kafkaPublisher.close();
   }

@@ -46,19 +46,19 @@ import lombok.extern.log4j.Log4j2;
 @TestComponent(scope = RegistryScope.TEST)
 public class UIBaseSteps {
 
-  @Given("^(.+) using (\\w+) in (desktop|mobile|android|ios)$")
+  @Given("{actor} using {word} in {devices}")
   public void actorNamedUsingDevice(String identifier, String application, String platform) throws Throwable {
     TestUI.withDefaultEngine()
       .forDriver(application, platform);
   }
 
-  @When("^(.+) open \"([^\"]*)\" page$")
+  @When("{actor} open {string} page")
   public void actorOpenPage(String identifier, String pageName) throws Throwable {
     ActorManager.currentActor()
       .attemptsTo(Navigate.to(NamedPage.of(pageName)));
   }
 
-  @When("^(.+) enter value \"([^\"]*)\" on \"([^\"]*)\"$")
+  @When("{actor} enter value {string} on {string}")
   public void actorEnterValue(String identifier, String value, String element) throws Throwable {
     final String text = executeCommand(value);
     ActorManager.currentActor()
@@ -68,13 +68,13 @@ public class UIBaseSteps {
       );
   }
 
-  @When("^(.+) clear text from \"([^\"]*)\"$")
+  @When("{actor} clear text from {string}")
   public void clearText(String identifier, String element) throws Throwable {
     ActorManager.currentActor()
       .attemptsTo(Clear.field(element));
   }
 
-  @When("^(.+) clear text from \"([^\"]*)\" in page \"([^\"]*)\"$")
+  @When("{actor} clear text from {string} in page {string}")
   public void clearText(String identifier, String element, String page) throws Throwable {
     final var session = DriverSessionManager.inThisTestThread()
       .getCurrentDriver();
@@ -84,7 +84,7 @@ public class UIBaseSteps {
           .getPage(page))));
   }
 
-  @When("^(.+) type value \"([^\"]*)\" to \"([^\"]*)\"$")
+  @When("{actor} type value {string} to {string}")
   public void actorTypeValueTo(String identifier, String value, String element) throws Throwable {
     final String text = executeCommand(value);
     ActorManager.currentActor()
@@ -92,7 +92,7 @@ public class UIBaseSteps {
         .into(element));
   }
 
-  @When("^(.+) enter value \"([^\"]*)\" on \"([^\"]*)\" in the \"([^\"]*)\" page$")
+  @When("{actor} enter value {string} on {string} in the {string} page")
   public void actorEnterValueInThePage(String identifier, String value, String element, String pageName)
     throws Throwable {
     final var session = DriverSessionManager.inThisTestThread()
@@ -108,7 +108,7 @@ public class UIBaseSteps {
       );
   }
 
-  @When("^(.+) type value \"([^\"]*)\" to \"([^\"]*)\" in the \"([^\"]*)\" page$")
+  @When("{actor} type value {string} to {string} in the {string} page")
   public void actorTypeValueTo(String identifier, String value, String element, String pageName) throws Throwable {
     final var session = DriverSessionManager.inThisTestThread()
       .getCurrentDriver();
@@ -121,26 +121,26 @@ public class UIBaseSteps {
         .into(target));
   }
 
-  @When("^(.+) refresh page$")
+  @When("{actor} refresh page")
   public void refreshPage(String identifier) throws Throwable {
     ActorManager.currentActor()
       .attemptsTo(Navigate.refresh());
   }
 
-  @When("^(.+) reload page$")
+  @When("{actor} reload page")
   public void reloadPage(String identifier) throws Throwable {
     // this will also clear cookies
     ActorManager.currentActor()
       .attemptsTo(Navigate.reload());
   }
 
-  @When("^(.+) open new tab$")
+  @When("{actor} open new tab")
   public void actorOpenNewTab(String identifier) throws Throwable {
     ActorManager.currentActor()
       .attemptsTo(Tab.openNew());
   }
 
-  @When("^(.+) open page \"([^\"]*)\" in a new tab$")
+  @When("{actor} open page {string} in a new tab")
   public void actorOpenNewTab(String identifier, String pageName) throws Throwable {
     final var session = DriverSessionManager.inThisTestThread()
       .getCurrentDriver();
@@ -151,20 +151,20 @@ public class UIBaseSteps {
       .attemptsTo(Tab.openNew(url));
   }
 
-  @When("^(.+) switch to tab at index (\\d+)$")
+  @When("{actor} switch to tab at index {int}")
   public void actorOpenNewTab(String identifier, int index) throws Throwable {
     ActorManager.currentActor()
       .attemptsTo(Tab.switchTo(index));
   }
 
-  @When("^(.+) scroll to the \"([^\"]*)\"$")
+  @When("{actor} scroll to the {string}")
   public void actorScrollToTheElement(String identifier, String element) throws Throwable {
     ActorManager.currentActor()
       .attemptsTo(Scroll.to(element)
         .andAlignToTop());
   }
 
-  @When("^(.+) scroll to the \"([^\"]*)\" in the \"([^\"]*)\"$")
+  @When("{actor} scroll to the {string} in the {string}")
   public void actorScrollToTheElementOnPage(String identifier, String element, String page) throws Throwable {
     final var session = DriverSessionManager.inThisTestThread()
       .getCurrentDriver();
@@ -176,13 +176,13 @@ public class UIBaseSteps {
         .andAlignToTop());
   }
 
-  @When("^(.+) click the \"([^\"]*)\"$")
+  @When("{actor} click the {string}")
   public void actorClickOnTheElement(String identifier, String element) throws Throwable {
     ActorManager.currentActor()
       .attemptsTo(Click.on(element));
   }
 
-  @When("^(.+) click the \"([^\"]*)\" in the \"([^\"]*)\" page$")
+  @When("{actor} click the {string} in the {string} page")
   public void actorClickOnTheElementOnPage(String identifier, String element, String page) throws Throwable {
     final var session = DriverSessionManager.inThisTestThread()
       .getCurrentDriver();
@@ -193,13 +193,13 @@ public class UIBaseSteps {
       .attemptsTo(Click.on(target));
   }
 
-  @When("^(.+) focus to \"([^\"]*)\"$")
+  @When("{actor} focus to {string}")
   public void actorFocusToTheElement(String identifier, String element) throws Throwable {
     ActorManager.currentActor()
       .attemptsTo(Focus.on(element));
   }
 
-  @When("^(.+) focus to \"([^\"]*)\" in the \"([^\"]*)\" page$")
+  @When("{actor} focus to {string} in the {string} page")
   public void actorFocusTheElementOnPage(String identifier, String element, String page) throws Throwable {
     final var session = DriverSessionManager.inThisTestThread()
       .getCurrentDriver();
@@ -210,13 +210,13 @@ public class UIBaseSteps {
       .attemptsTo(Focus.on(target));
   }
 
-  @When("^(.+) blur from \"([^\"]*)\"$")
+  @When("{actor} blur from {string}")
   public void actorBlurToTheElement(String identifier, String element) throws Throwable {
     ActorManager.currentActor()
       .attemptsTo(Blur.from(element));
   }
 
-  @When("^(.+) blur from \"([^\"]*)\" in the \"([^\"]*)\" page$")
+  @When("{actor} blur from {string} in the {string} page")
   public void actorBlurTheElementOnPage(String identifier, String element, String page) throws Throwable {
     final var session = DriverSessionManager.inThisTestThread()
       .getCurrentDriver();
@@ -227,13 +227,13 @@ public class UIBaseSteps {
       .attemptsTo(Blur.from(target));
   }
 
-  @Then("^(.+) is in \"([^\"]*)\" page$")
+  @Then("{actor} is in {string} page")
   public void actorIsIn(String identifier, String pageName) throws Throwable {
     ActorManager.currentActor()
       .attemptsTo(SeeThat.page(NamedPage.of(pageName)));
   }
 
-  @Then("^(.+) should see \"([^\"]*)\" is (displayed|not displayed)$")
+  @Then("{actor} should see {string} is {displayedOrNotDisplayed}")
   public void actorShouldSee(String identifier, String element, String display) throws Throwable {
     display = display.trim()
       .toLowerCase();
@@ -246,7 +246,7 @@ public class UIBaseSteps {
     }
   }
 
-  @Then("^(.+) element \"([^\"]*)\" should contains text \"([^\"]*)\"$")
+  @Then("{actor} element {string} should contains text {string}")
   public void elementShouldContainsText(String identifier, String element, String contains) throws Throwable {
     contains = executeCommand(contains);
     ActorManager.currentActor()
@@ -254,14 +254,14 @@ public class UIBaseSteps {
         .on(element));
   }
 
-  @Then("^(.+) element \"([^\"]*)\" should have attribute \"([^\"]*)\"$")
+  @Then("{actor} element {string} should have attribute {string}")
   public void elementShouldContainsAttribute(String identifier, String element, String attribute) throws Throwable {
     ActorManager.currentActor()
       .attemptsTo(SeeThat.attribute(attribute)
         .on(element));
   }
 
-  @When("^(.+) select visible text \"([^\"]*)\" from drop down \"([^\"]*)\"$")
+  @When("{actor} select visible text {string} from drop down {string}")
   public void actorSelectVisibleTextFromDropDown(String identifier, String visibleText, String element)
     throws Throwable {
     visibleText = executeCommand(visibleText);
@@ -273,7 +273,7 @@ public class UIBaseSteps {
       );
   }
 
-  @When("^(.+) select value \"([^\"]*)\" from drop down \"([^\"]*)\"$")
+  @When("{actor} select value {string} from drop down {string}")
   public void actorSelectValueFromDropDown(String identifier, String value, String element) throws Throwable {
     value = executeCommand(value);
     ActorManager.currentActor()
@@ -284,7 +284,7 @@ public class UIBaseSteps {
       );
   }
 
-  @When("^(.+) select index \"([^\"]*)\" from drop down \"([^\"]*)\"$")
+  @When("{actor} select index {string} from drop down {string}")
   public void actorSelectIndexFromDropDown(String identifier, String index, String element) throws Throwable {
     index = executeCommand(index);
     assert index != null;
@@ -297,7 +297,7 @@ public class UIBaseSteps {
       );
   }
 
-  @Then("^(.+) should see \"([^\"]*)\" is (clickable|not clickable)$")
+  @Then("{actor} should see {string} is {clickableOrNotClickable}")
   public void elementIsClickAble(String identifier, String element, String clickable) throws Throwable {
     clickable = clickable.trim()
       .toLowerCase();
@@ -310,13 +310,13 @@ public class UIBaseSteps {
     }
   }
 
-  @When("^(.+) do \"([^\"]*)\" in \"([^\"]*)\" page$")
+  @When("{actor} do {string} in {string} page")
   public void actorDoActionOnPageWithName(String identifier, String action, String pageName) throws Throwable {
     ActorManager.currentActor()
       .executeTask(action, pageName);
   }
 
-  @When("^(.+) do \"([^\"]*)\" in \"([^\"]*)\" page with parameter$")
+  @When("{actor} do {string} in {string} page with parameter")
   public void actorDoActionOnPageWithName(String identifier, String action, String pageName, DataTable table)
     throws Throwable {
     Map<String, Object> additionalParameter = new TransformerService().sourceData(table.cells())
@@ -326,13 +326,13 @@ public class UIBaseSteps {
       .executeTask(action, pageName, additionalParameter);
   }
 
-  @When("^(.+) do \"([^\"]*)\"$")
+  @When("{actor} do {string}")
   public void actorDoActionOnCurrentPage(String identifier, String action) throws Throwable {
     ActorManager.currentActor()
       .executeTask(action);
   }
 
-  @When("^(.+) do \"([^\"]*)\" with parameter$")
+  @When("{actor} do {string} with parameter")
   public void actorDoActionOnCurrentPage(String identifier, String action, DataTable table) throws Throwable {
     Map<String, Object> additionalParameter = new TransformerService().sourceData(table.cells())
       .to(new TypeReference<>() {
@@ -341,7 +341,7 @@ public class UIBaseSteps {
       .executeTask(action, additionalParameter);
   }
 
-  @When("^(.+) wait until \"([^\"]*)\" is (enabled|visible|disabled|not visible|clickable|present|not present|not clickable|selected)$")
+  @When("{actor} wait until {string} is {elementState}")
   public void waitUntilElementIs(String identifier, String element, String condition) throws Throwable {
     try {
       switch (condition) {
@@ -429,7 +429,7 @@ public class UIBaseSteps {
     }
   }
 
-  @When("^(.+) click the \"([^\"]*)\" if the \"([^\"]*)\" is (enabled|visible|disabled|not visible|clickable|present|not present|not clickable|selected)$")
+  @When("{actor} click the {string} if the {string} is {elementState}")
   public void clickIf(String identifier, String targetElement, String elementToCheck, String condition)
     throws Throwable {
     if (doesElementHasCondition(elementToCheck, condition)) {
@@ -437,7 +437,7 @@ public class UIBaseSteps {
     }
   }
 
-  @When("^(.+) type \"([^\"]*)\" into \"([^\"]*)\" if the \"([^\"]*)\" is (enabled|visible|disabled|not visible|clickable|present|not present|not clickable|selected)$")
+  @When("{actor} type {string} into {string} if the {string} is {elementState}")
   public void clickIf(String identifier, String input, String targetElement, String elementToCheck, String condition)
     throws Throwable {
     if (doesElementHasCondition(elementToCheck, condition)) {
@@ -445,7 +445,7 @@ public class UIBaseSteps {
     }
   }
 
-  @Then("^(.+) should see current url (contains|contains ignore case|equal|equal ignore case|matches|starts with|starts with ignore case|ends with|ends with ignore case) with value \"([^\"]*)\"$")
+  @Then("{actor} should see current url {stringValidation} with value {string}")
   public void browserUrlValidation(String identifier, String validation, String expectedUrl) throws Exception {
     expectedUrl = executeCommand(expectedUrl);
     final var session = DriverSessionManager.inThisTestThread()
@@ -513,7 +513,7 @@ public class UIBaseSteps {
     }
   }
 
-  @Then("^(.+) hover on the \"([^\"]*)\"$")
+  @Then("{actor} hover on the {string}")
   public void hoverElement(String identifier, String element) throws Throwable {
     ActorManager.currentActor()
       .attemptsTo(Hover.on(element));

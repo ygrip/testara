@@ -6,6 +6,21 @@ import java.util.concurrent.TimeUnit;
 
 public class BaseDefinitions {
 
+  /**
+   * Matches any non-empty actor string — typically "user", "the user", "[api]", etc.
+   * Used as the leading actor token in Cucumber Expressions.
+   */
+  @ParameterType(".+")
+  public String actor(String value) {
+    return value;
+  }
+
+  /** HTTP method for API steps. */
+  @ParameterType("GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS|TRACE|CONNECT")
+  public String httpMethod(String value) {
+    return value;
+  }
+
   @ParameterType("milliseconds|seconds|minutes|hours")
   public TimeUnit timeUnit(String state) {
     return TimeUnit.valueOf(state.trim().toUpperCase());

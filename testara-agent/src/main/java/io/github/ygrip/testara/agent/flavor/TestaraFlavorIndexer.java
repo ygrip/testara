@@ -79,30 +79,99 @@ public class TestaraFlavorIndexer {
     return entries;
   }
 
+  /** Matches {typeName} tokens in Cucumber Expressions. */
+  private static final Pattern CE_PARAM = Pattern.compile("\\{([^}]+)}");
+
+  /** Detects Cucumber Expression format: contains {type} and no regex anchors. */
+  private static boolean isCucumberExpression(String expr) {
+    return CE_PARAM.matcher(expr).find() && !expr.contains("(.+)") && !expr.contains("(\\w");
+  }
+
   private List<FlavorEntry> parseStepFile(Path file) throws IOException {
     String source = Files.readString(file, StandardCharsets.UTF_8);
     String className = extractClassName(source);
     String module = detectModule(file);
     String slice = detectSlice(file, className);
 
-    if (slice == null) return List.of(); // skip non-flavor step files
+    if (slice == null) return List.of();
 
     List<FlavorEntry> entries = new ArrayList<>();
     Matcher m = STEP_ANNOTATION.matcher(source);
     while (m.find()) {
       String keyword = m.group(1);
-      // Unescape Java string escapes so \\w → \w and \" → "
       String rawExpr = unescapeAnnotation(m.group(2));
-
       if (rawExpr.length() < 5) continue;
 
       String expression = stripAnchors(rawExpr);
-      String example = toExample(expression, slice);
-      String capability = toCapability(expression);
+      String example;
+      List<String> paramTypes;
 
-      entries.add(new FlavorEntry(slice, keyword, expression, example, capability, module, className));
+      if (isCucumberExpression(expression)) {
+        // Cucumber Expression: extract {type} names and build example from them
+        paramTypes = extractParamTypes(expression);
+        example = cucumberExprToExample(expression, slice);
+      } else {
+        // Legacy regex expression
+        paramTypes = List.of();
+        example = toExample(expression, slice);
+      }
+      String capability = toCapability(expression);
+      entries.add(new FlavorEntry(slice, keyword, expression, example, capability, module, className, paramTypes));
     }
     return entries;
+  }
+
+  /** Extracts the list of {typeName} tokens from a Cucumber Expression in order. */
+  private List<String> extractParamTypes(String expression) {
+    List<String> types = new ArrayList<>();
+    Matcher m = CE_PARAM.matcher(expression);
+    while (m.find()) types.add(m.group(1));
+    return List.copyOf(types);
+  }
+
+  /** Converts a Cucumber Expression to a human-readable example by substituting {type} with concrete values. */
+  private String cucumberExprToExample(String expression, String slice) {
+    String id = switch (slice) {
+      case "api"     -> "[api]";
+      case "ui"      -> "user";
+      case "sql"     -> "[sql]";
+      case "mongo"   -> "[mongo]";
+      case "kafka"   -> "[kafka]";
+      case "elastic" -> "[elastic-search]";
+      default        -> "actor";
+    };
+
+    return CE_PARAM.matcher(expression).replaceAll(mr -> {
+      return switch (mr.group(1)) {
+        case "actor"                    -> id;
+        case "string"                   -> "\"value\"";
+        case "word"                     -> "value";
+        case "int"                      -> "200";
+        case "long"                     -> "5000";
+        case "bool"                     -> "true";
+        case "timeUnit"                 -> "seconds";
+        case "devices"                  -> "desktop";
+        case "displayedOrNotDisplayed"  -> "displayed";
+        case "clickableOrNotClickable"  -> "clickable";
+        case "elementState"             -> "visible";
+        case "shouldOrShouldNot"        -> "should";
+        case "setOrDefine"              -> "set";
+        case "setTo"                    -> "to";
+        case "greaterOrLess"            -> "greater";
+        case "thanOrEqual"              -> "than";
+        case "ascendingOrDescending"    -> "ascending";
+        case "previousOrNext"           -> "next";
+        case "requestOrResponse"        -> "response";
+        case "standAloneOrEmbedded"     -> "standalone";
+        case "stringValidation"         -> "contains";
+        case "httpMethod"               -> "GET";
+        case "sql"                      -> "[sql]";
+        case "mongo"                    -> "[mongo]";
+        case "elasticsearch"            -> "[elastic-search]";
+        case "file"                     -> "[file]";
+        default                         -> "{" + mr.group(1) + "}";
+      };
+    });
   }
 
   // ── Slice detection ──────────────────────────────────────────────────────

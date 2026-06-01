@@ -30,33 +30,33 @@ public class SqlBaseSteps {
   private List<Map<String, Object>> result;
 
   @RetryableMethod
-  @Given("^(\\[sql\\]) connect to database with name (\\w+)$")
+  @Given("{sql} connect to database with name {word}")
   public void initSqlDatabase(String identifier, String databaseName) throws Throwable {
     databaseName = CommandExecutor.executeCommand(databaseName);
     sqlHelper.init(databaseName);
   }
 
   @RetryableMethod
-  @Given("^(\\[sql\\]) prepare query with value \"([^\"]*)\"$")
+  @Given("{sql} prepare query with value {string}")
   public void setSqlQuery(String identifier, String value) throws Throwable {
     query = CommandExecutor.executeCommand(value);
   }
 
   @RetryableMethod
-  @Given("^(\\[sql\\]) prepare query with value :$")
+  @Given("{sql} prepare query with value :")
   public void setMultilineSqlQuery(String identifier, String value) throws Throwable {
     query = CommandExecutor.executeCommand(value);
   }
 
   @RetryableMethod
-  @When("^(\\[sql\\]) execute database query$")
+  @When("{sql} execute database query")
   public void executeSqlQuery(String identifier) throws Throwable {
     MatcherAssert.assertThat("No sql query is specified", CommonHelper.isBlank(query), CoreMatchers.equalTo(false));
     result = sqlHelper.query(query);
   }
 
   @RetryableMethod
-  @Then("^(\\[sql\\]) assign previous database response to (\\w+)$")
+  @Then("{sql} assign previous database response to {word}")
   public void assignSqlDbResponseTo(String identifier, String key) throws Throwable {
     dataHolder.setResponse(key, result);
     result = null;

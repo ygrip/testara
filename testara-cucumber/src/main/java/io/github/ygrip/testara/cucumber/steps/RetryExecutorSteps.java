@@ -19,9 +19,8 @@ public class RetryExecutorSteps {
   @Inject
   private MethodInvocationCollector collector;
 
-  @When("^(.+) wait for (\\d+) (milliseconds|seconds|minutes|hours)$")
-  public void whenWaitFor(String identifier, Long wait, String timeUnitStr) {
-    TimeUnit timeUnit = TimeUnit.valueOf(timeUnitStr.trim().toUpperCase());
+  @When("{actor} wait for {long} {timeUnit}")
+  public void whenWaitFor(String identifier, long wait, TimeUnit timeUnit) {
     Awaitility.await()
         .pollInSameThread()
         .timeout(wait + 1, timeUnit)
@@ -30,32 +29,30 @@ public class RetryExecutorSteps {
         .untilAsserted(() -> assertThat(true, equalTo(true)));
   }
 
-  @When("^(.+) start conditional retry$")
+  @When("{actor} start conditional retry")
   public void startConditionalRetry(String identifier) {
     collector.startCollecting();
   }
 
-  @When("^(.+) execute conditional retry$")
+  @When("{actor} execute conditional retry")
   public void executeConditionalRetry(String identifier) throws Throwable {
     boolean success = collector.executeAll();
     assertThat("Conditional retry failed", success, equalTo(true));
   }
 
-  @When("^(.+) execute conditional retry with interval of (\\d+) (milliseconds|seconds|minutes|hours) at most (\\d+) (milliseconds|seconds|minutes|hours)$")
+  @When("{actor} execute conditional retry with interval of {long} {timeUnit} at most {long} {timeUnit}")
   public void executeConditionalRetry(String identifier,
-      Long interval,
-      String intervalUnitStr,
-      Long timeout,
-      String timeoutUnitStr) throws Throwable {
-    TimeUnit intervalUnit = TimeUnit.valueOf(intervalUnitStr.trim().toUpperCase());
-    TimeUnit timeoutUnit = TimeUnit.valueOf(timeoutUnitStr.trim().toUpperCase());
+      long interval,
+      TimeUnit intervalUnit,
+      long timeout,
+      TimeUnit timeoutUnit) throws Throwable {
     boolean success = collector.executeAll(Duration.of(timeout, DurationParser.toTemporalUnit(timeoutUnit)),
         Duration.of(interval, DurationParser.toTemporalUnit(intervalUnit)));
     assertThat(String.format("Conditional retry failed after %s",
         Duration.of(interval, DurationParser.toTemporalUnit(intervalUnit))), success, equalTo(true));
   }
 
-  @When("^(.+) execute conditional retry at most (\\d+) attempts$")
+  @When("{actor} execute conditional retry at most {int} attempts")
   public void executeConditionalRetry(String identifier, Integer attempts) throws Throwable {
     collector.executeAtMost(attempts);
   }

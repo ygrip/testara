@@ -76,19 +76,19 @@ public class ApiBaseSteps {
   private LoadTestSummary loadTestSummary;
 
   @RetryableMethod
-  @Given("^(.+) using service with alias (\\w+)$")
+  @Given("{actor} using service with alias {word}")
   public void initService(String identifier, String serviceName) throws Throwable {
     TestApi.rest(serviceName);
   }
 
   @RetryableMethod
-  @Given("^(.+) prepare headers with data$")
+  @Given("{actor} prepare headers with data")
   public void prepareHeaders(String identifier, DataTable headers) throws Throwable {
     TestApi.rest().addHeaders(new TransformerService().sourceData(headers.cells()).toMap());
   }
 
   @RetryableMethod
-  @Given("^(.+) prepare cookies with data$")
+  @Given("{actor} prepare cookies with data")
   public void prepareCookies(String identifier, DataTable headers) throws Throwable {
     List<CookieModel> cookies = new TransformerService().sourceData(headers.cells()).toList(CookieModel.class);
     for (CookieModel cookie : cookies) {
@@ -97,7 +97,7 @@ public class ApiBaseSteps {
   }
 
   @RetryableMethod
-  @Given("^(.+) set cookies from previous response header$")
+  @Given("{actor} set cookies from previous response header")
   public void setCookiesFromResponseHeader(String identifier) {
     CommonResponseModel previous = TestApi.response().getData();
     assertThat("No previous response data is found", previous != null, equalTo(true));
@@ -147,7 +147,7 @@ public class ApiBaseSteps {
   }
 
   @RetryableMethod
-  @Given("^(.+) use previous response cookies$")
+  @Given("{actor} use previous response cookies")
   public void prepareCookies(String identifier) throws Throwable {
     CommonResponseModel previous = TestApi.response().getData();
     assertThat("No previous response data is found", previous != null, equalTo(true));
@@ -156,7 +156,7 @@ public class ApiBaseSteps {
   }
 
   @RetryableMethod
-  @Given("^(.+) use previous response cookies with name \"([^\"]*)\"$")
+  @Given("{actor} use previous response cookies with name {string}")
   public void prepareCookies(String identifier, String cookieName) throws Throwable {
     CommonResponseModel previous = TestApi.response().getData();
     assertThat("No previous response data is found", previous != null, equalTo(true));
@@ -167,7 +167,7 @@ public class ApiBaseSteps {
   }
 
   @RetryableMethod
-  @Given("^(.+) use previous response cookie with name \"([^\"]*)\"$")
+  @Given("{actor} use previous response cookie with name {string}")
   public void prepareCookie(String identifier, String cookieName) throws Throwable {
     CommonResponseModel previous = TestApi.response().getData();
     assertThat("No previous response data is found", previous != null, equalTo(true));
@@ -176,31 +176,31 @@ public class ApiBaseSteps {
   }
 
   @RetryableMethod
-  @Given("^(.+) prepare header \"([^\"]*)\" with value \"([^\"]*)\"$")
+  @Given("{actor} prepare header {string} with value {string}")
   public void addHeaderSteps(String identifier, String key, String value) throws Throwable {
     TestApi.rest().addHeader(key, value);
   }
 
   @RetryableMethod
-  @Given("^(.+) prepare pathParam for (\\w+) with value \"([^\"]*)\"$")
+  @Given("{actor} prepare pathParam for {word} with value {string}")
   public void setPathParamSteps(String identifier, String key, String value) throws Throwable {
     TestApi.rest().setPathParam(key, value);
   }
 
   @RetryableMethod
-  @Given("^(.+) prepare formParams with data$")
+  @Given("{actor} prepare formParams with data")
   public void prepareFormParamWithData(String identifier, DataTable formParams) throws Throwable {
     TestApi.rest().addFormParams(new TransformerService().sourceData(formParams.cells()).toMap());
   }
 
   @RetryableMethod
-  @Given("^(.+) prepare multiPart data for (\\w+) with value \"([^\"]*)\"$")
+  @Given("{actor} prepare multiPart data for {word} with value {string}")
   public void prepareMultiPartWithData(String identifier, String key, String value) throws Throwable {
     TestApi.rest().setMultiPartData(key, value);
   }
 
   @RetryableMethod
-  @Given("^(.+) prepare multiPart data with value :$")
+  @Given("{actor} prepare multiPart data with value :")
   public void prepareMultiPartWithData(String identifier, DataTable table) throws Throwable {
     List<MultiPartData> multiPartSpecBuilders =
         new TransformerService().sourceData(table.cells()).to(new TypeReference<>() {
@@ -272,38 +272,38 @@ public class ApiBaseSteps {
   }
 
   @RetryableMethod
-  @Given("^(.+) prepare queryParams with data$")
+  @Given("{actor} prepare queryParams with data")
   public void prepareQueryParams(String identifier, DataTable queryParams) throws Throwable {
     TestApi.rest().addQueryParams(new TransformerService().sourceData(queryParams.cells()).toMap());
   }
 
   @RetryableMethod
-  @Given("^(.+) prepare body request with value \"([^\"]*)\"$")
+  @Given("{actor} prepare body request with value {string}")
   public void setBodyRequestSteps(String identifier, String value) throws Throwable {
     TestApi.rest().setBody(value);
   }
 
   @RetryableMethod
-  @Given("^(.+) prepare queryParam \"([^\"]*)\" with value \"([^\"]*)\"$")
+  @Given("{actor} prepare queryParam {string} with value {string}")
   public void addQueryParamSteps(String identifier, String key, String value) throws Throwable {
     TestApi.rest().addQueryParam(key, value);
   }
 
   @RetryableMethod
-  @When("^(.+) process request to \"([^\"]*)\"$")
+  @When("{actor} process request to {string}")
   public void whenTryMakeApiCall(String identifier, String requestSpecificationPath) throws Throwable {
     TestApi.rest().process(requestSpecificationPath);
   }
 
   @RetryableMethod
-  @When("^(.+) try (GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS|TRACE|CONNECT) request to \"([^\"]*)\"$")
+  @When("{actor} try {httpMethod} request to {string}")
   public void whenHitEndPointWithoutParameter(String identifier, String httpMethodStr, String url) throws Throwable {
     Method httpMethod = Method.valueOf(httpMethodStr);
     TestApi.rest().process(httpMethod, TestFramework.context().converter().convert(url));
   }
 
   @RetryableMethod
-  @When("^(.+) try (GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS|TRACE|CONNECT) request to \"([^\"]*)\" with parameter$")
+  @When("{actor} try {httpMethod} request to {string} with parameter")
   public void whenHitEndPointWithParameter(String identifier, String httpMethodStr, String url, DataTable parameter)
       throws Throwable {
     Method httpMethod = Method.valueOf(httpMethodStr);
@@ -313,7 +313,7 @@ public class ApiBaseSteps {
   }
 
   @RetryableMethod
-  @When("^(.+) try (GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS|TRACE|CONNECT) request to \"([^\"]*)\" with parameter and download file on location \"([^\"]*)\"$")
+  @When("{actor} try {httpMethod} request to {string} with parameter and download file on location {string}")
   public void whenHitEndPointWithParameterAndDownloadFile(String identifier,
       String httpMethodStr,
       String url,
@@ -334,7 +334,7 @@ public class ApiBaseSteps {
   }
 
   @RetryableMethod
-  @When("^(.+) try (GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS|TRACE|CONNECT) request to \"([^\"]*)\" and download file on location \"([^\"]*)\"$")
+  @When("{actor} try {httpMethod} request to {string} and download file on location {string}")
   public void whenHitEndPointAndDownloadFile(String identifier, String httpMethodStr, String url, String path)
       throws Throwable {
     Method httpMethod = Method.valueOf(httpMethodStr);
@@ -349,7 +349,7 @@ public class ApiBaseSteps {
   }
 
   @RetryableMethod
-  @Then("^(.+) assign previous response data to (\\w+)$")
+  @Then("{actor} assign previous response data to {word}")
   public void assignResponseData(String identifier, String key) throws Throwable {
     CommonResponseModel previous = TestApi.response().getData();
     assertThat("latest response is empty", previous, notNullValue());
@@ -357,7 +357,7 @@ public class ApiBaseSteps {
   }
 
   @RetryableMethod
-  @Then("^(.+) assign previous response cookies to (\\w+)$")
+  @Then("{actor} assign previous response cookies to {word}")
   public void assignResponseCookies(String identifier, String key) throws Throwable {
     CommonResponseModel previous = TestApi.response().getData();
     assertThat("latest response is empty", previous, notNullValue());
@@ -365,7 +365,7 @@ public class ApiBaseSteps {
   }
 
   @RetryableMethod
-  @Then("^(.+) assign previous response headers to (\\w+)$")
+  @Then("{actor} assign previous response headers to {word}")
   public void assignResponseHeaders(String identifier, String key) throws Throwable {
     CommonResponseModel previous = TestApi.response().getData();
     assertThat("latest response is empty", previous, notNullValue());
@@ -373,7 +373,7 @@ public class ApiBaseSteps {
   }
 
   @RetryableMethod
-  @Then("^(.+) response statusCode should be (\\d+)$")
+  @Then("{actor} response statusCode should be {int}")
   public void statusCodeShouldBe(String identifier, Integer statusCode) {
     assertThat(String.format("response status code is not %s", statusCode),
         TestApi.response().getStatusCode(),
@@ -381,7 +381,7 @@ public class ApiBaseSteps {
   }
 
   @RetryableMethod
-  @Then("^(.+) response success should be (\\w+)$")
+  @Then("{actor} response success should be {word}")
   public void successShouldBe(String identifier, Boolean isSuccess) {
     assertThat(String.format("response success is not %s", isSuccess),
         TestApi.response().isSuccess(),
@@ -389,7 +389,7 @@ public class ApiBaseSteps {
   }
 
   @RetryableMethod
-  @Then("^(.+) response errorCode should be \"([^\"]*)\"$")
+  @Then("{actor} response errorCode should be {string}")
   public void errorCodeShouldBe(String identifier, String errorCode) {
     errorCode = TestFramework.context().converter().convert(errorCode);
     assertThat(String.format("response errorCode is not %s", errorCode),
@@ -398,7 +398,7 @@ public class ApiBaseSteps {
   }
 
   @RetryableMethod
-  @Then("^(.+) response errorMessage should be \"([^\"]*)\"$")
+  @Then("{actor} response errorMessage should be {string}")
   public void errorMessageShouldBe(String identifier, String errorMessage) {
     errorMessage = TestFramework.context().converter().convert(errorMessage);
     assertThat(String.format("response errorMessage code is not %s", errorMessage),
@@ -407,20 +407,20 @@ public class ApiBaseSteps {
   }
 
   @RetryableMethod
-  @Then("^(.+) response statusCode should be (\\d+) and success should be (true|false)$")
+  @Then("{actor} response statusCode should be {int} and success should be {bool}")
   public void statusCodeAndSuccessShouldeBe(String identifier, Integer statusCode, Boolean isSuccess) {
     statusCodeShouldBe(identifier, statusCode);
     successShouldBe(identifier, isSuccess);
   }
 
   @RetryableMethod
-  @Then("^(.+) response errorCode should be \"([^\"]*)\" and errorMessage should be \"([^\"]*)\"$")
+  @Then("{actor} response errorCode should be {string} and errorMessage should be {string}")
   public void errorCodeAndErrorMessageShouldBe(String identifier, String errorCode, String errorMessage) {
     errorCodeShouldBe(identifier, errorCode);
     errorMessageShouldBe(identifier, errorMessage);
   }
 
-  @Then("^(.+) measured response time should be less than (\\d+) milliseconds$")
+  @Then("{actor} measured response time should be less than {long} milliseconds")
   public void measuredResponseTimeShouldBeLessThanMillis(String identifier, long expectedMaxTime) throws Throwable {
     CommonResponseModel lastResponse = TestApi.response().getData();
     assertThat("No measured response time found.", lastResponse, is(Matchers.notNullValue()));
@@ -431,7 +431,7 @@ public class ApiBaseSteps {
         equalTo(true));
   }
 
-  @Then("^(.+) measured response time should be less than equal (\\d+) milliseconds$")
+  @Then("{actor} measured response time should be less than equal {long} milliseconds")
   public void measuredResponseTimeShouldBeLessThanEqualMillis(String identifier, long expectedMaxTime)
       throws Throwable {
     CommonResponseModel lastResponse = TestApi.response().getData();
@@ -443,7 +443,7 @@ public class ApiBaseSteps {
         equalTo(true));
   }
 
-  @Then("^(.+) measured response time should be between (\\d+) and (\\d+) milliseconds$")
+  @Then("{actor} measured response time should be between {long} and {long} milliseconds")
   public void measuredResponseTimeShouldBeBetweenMillis(String identifier, long minTime, long maxTime)
       throws Throwable {
     CommonResponseModel lastResponse = TestApi.response().getData();
@@ -461,7 +461,7 @@ public class ApiBaseSteps {
   /**
    * Initialize a new load test builder
    */
-  @Given("^(.+) prepare load test$")
+  @Given("{actor} prepare load test")
   public void prepareLoadTest(String identifier) {
     this.loadTestBuilder = TestApi.loadTest().reset();
     this.loadTestSummary = null;
@@ -470,7 +470,7 @@ public class ApiBaseSteps {
   /**
    * Initialize a new load test builder with service configuration
    */
-  @Given("^(.+) prepare load test using service (\\w+)$")
+  @Given("{actor} prepare load test using service {word}")
   public void prepareLoadTestWithService(String identifier, String serviceName) {
     this.loadTestBuilder = TestApi.loadTest(serviceName).reset();
     this.loadTestSummary = null;
@@ -479,7 +479,7 @@ public class ApiBaseSteps {
   /**
    * Initialize a lightweight load test (memory efficient)
    */
-  @Given("^(.+) prepare lightweight load test$")
+  @Given("{actor} prepare lightweight load test")
   public void prepareLightweightLoadTest(String identifier) {
     this.loadTestBuilder = TestApi.loadTestLightweight().reset();
     this.loadTestSummary = null;
@@ -488,7 +488,7 @@ public class ApiBaseSteps {
   /**
    * Initialize a lightweight load test with service configuration
    */
-  @Given("^(.+) prepare lightweight load test using service (\\w+)$")
+  @Given("{actor} prepare lightweight load test using service {word}")
   public void prepareLightweightLoadTestWithService(String identifier, String serviceName) {
     this.loadTestBuilder = TestApi.loadTestLightweight(serviceName).reset();
     this.loadTestSummary = null;
@@ -499,7 +499,7 @@ public class ApiBaseSteps {
   /**
    * Set the number of concurrent threads
    */
-  @Given("^(.+) set load test concurrency to (\\d+)$")
+  @Given("{actor} set load test concurrency to {int}")
   public void setLoadTestConcurrency(String identifier, int concurrency) {
     assertLoadTestInitialized();
     loadTestBuilder.withConcurrency(concurrency);
@@ -508,7 +508,7 @@ public class ApiBaseSteps {
   /**
    * Set the total number of requests
    */
-  @Given("^(.+) set load test total requests to (\\d+)$")
+  @Given("{actor} set load test total requests to {int}")
   public void setLoadTestTotalRequests(String identifier, int totalRequests) {
     assertLoadTestInitialized();
     loadTestBuilder.withTotalRequests(totalRequests);
@@ -517,7 +517,7 @@ public class ApiBaseSteps {
   /**
    * Set concurrency and total requests together
    */
-  @Given("^(.+) set load test with (\\d+) concurrent users and (\\d+) total requests$")
+  @Given("{actor} set load test with {int} concurrent users and {int} total requests")
   public void setLoadTestConcurrencyAndRequests(String identifier, int concurrency, int totalRequests) {
     assertLoadTestInitialized();
     loadTestBuilder.withConcurrency(concurrency).withTotalRequests(totalRequests);
@@ -526,7 +526,7 @@ public class ApiBaseSteps {
   /**
    * Set ramp-up duration in seconds
    */
-  @Given("^(.+) set load test ramp-up to (\\d+) seconds$")
+  @Given("{actor} set load test ramp-up to {int} seconds")
   public void setLoadTestRampUp(String identifier, int seconds) {
     assertLoadTestInitialized();
     loadTestBuilder.withRampUp(Duration.ofSeconds(seconds));
@@ -535,7 +535,7 @@ public class ApiBaseSteps {
   /**
    * Set request timeout in seconds
    */
-  @Given("^(.+) set load test timeout to (\\d+) seconds$")
+  @Given("{actor} set load test timeout to {int} seconds")
   public void setLoadTestTimeout(String identifier, int seconds) {
     assertLoadTestInitialized();
     loadTestBuilder.withTimeout(Duration.ofSeconds(seconds));
@@ -544,7 +544,7 @@ public class ApiBaseSteps {
   /**
    * Enable or disable following redirects
    */
-  @Given("^(.+) set load test follow redirects to (\\w+)$")
+  @Given("{actor} set load test follow redirects to {word}")
   public void setLoadTestFollowRedirects(String identifier, boolean followRedirects) {
     assertLoadTestInitialized();
     loadTestBuilder.followRedirects(followRedirects);
@@ -553,7 +553,7 @@ public class ApiBaseSteps {
   /**
    * Enable lightweight mode for memory efficiency
    */
-  @Given("^(.+) enable load test lightweight mode$")
+  @Given("{actor} enable load test lightweight mode")
   public void enableLoadTestLightweightMode(String identifier) {
     assertLoadTestInitialized();
     loadTestBuilder.withLightweightMode(true);
@@ -562,7 +562,7 @@ public class ApiBaseSteps {
   /**
    * Set maximum response body size to store (bytes)
    */
-  @Given("^(.+) set load test max response body size to (\\d+) bytes$")
+  @Given("{actor} set load test max response body size to {int} bytes")
   public void setLoadTestMaxResponseBodySize(String identifier, int maxBytes) {
     assertLoadTestInitialized();
     loadTestBuilder.withMaxResponseBodySize(maxBytes);
@@ -573,7 +573,7 @@ public class ApiBaseSteps {
   /**
    * Set the HTTP method for load test
    */
-  @Given("^(.+) set load test method to (GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS|TRACE|CONNECT)$")
+  @Given("{actor} set load test method to {httpMethod}")
   public void setLoadTestMethod(String identifier, String methodStr) {
     Method method = Method.valueOf(methodStr);
     assertLoadTestInitialized();
@@ -583,7 +583,7 @@ public class ApiBaseSteps {
   /**
    * Set the URL for load test
    */
-  @Given("^(.+) set load test URL to \"([^\"]*)\"$")
+  @Given("{actor} set load test URL to {string}")
   public void setLoadTestUrl(String identifier, String url) {
     assertLoadTestInitialized();
     String resolvedUrl = TestFramework.context().converter().convert(url);
@@ -593,7 +593,7 @@ public class ApiBaseSteps {
   /**
    * Set the content type for load test
    */
-  @Given("^(.+) set load test content type to (\\w+)$")
+  @Given("{actor} set load test content type to {word}")
   public void setLoadTestContentType(String identifier, String contentType) {
     assertLoadTestInitialized();
     ContentType type = ContentType.fromContentType(contentType);
@@ -603,7 +603,7 @@ public class ApiBaseSteps {
   /**
    * Set the request body for load test
    */
-  @Given("^(.+) set load test body to \"([^\"]*)\"$")
+  @Given("{actor} set load test body to {string}")
   public void setLoadTestBody(String identifier, String body) {
     assertLoadTestInitialized();
     Object resolvedBody = TestFramework.context().converter().convert(body);
@@ -613,7 +613,7 @@ public class ApiBaseSteps {
   /**
    * Set the request body for load test (multiline)
    */
-  @Given("^(.+) set load test body to :$")
+  @Given("{actor} set load test body to :")
   public void setLoadTestBodyMultiline(String identifier, String body) {
     assertLoadTestInitialized();
     Object resolvedBody = TestFramework.context().converter().convert(body);
@@ -623,7 +623,7 @@ public class ApiBaseSteps {
   /**
    * Add headers to load test from DataTable
    */
-  @Given("^(.+) set load test headers with data$")
+  @Given("{actor} set load test headers with data")
   public void setLoadTestHeaders(String identifier, DataTable headers) {
     assertLoadTestInitialized();
     Map<String, Object> headerMap = new TransformerService().sourceData(headers.cells()).toMap();
@@ -633,7 +633,7 @@ public class ApiBaseSteps {
   /**
    * Add a single header to load test
    */
-  @Given("^(.+) set load test header \"([^\"]*)\" to \"([^\"]*)\"$")
+  @Given("{actor} set load test header {string} to {string}")
   public void setLoadTestHeader(String identifier, String key, String value) {
     assertLoadTestInitialized();
     String resolvedValue = TestFramework.context().converter().convert(value);
@@ -643,7 +643,7 @@ public class ApiBaseSteps {
   /**
    * Add query parameters to load test from DataTable
    */
-  @Given("^(.+) set load test query params with data$")
+  @Given("{actor} set load test query params with data")
   public void setLoadTestQueryParams(String identifier, DataTable params) {
     assertLoadTestInitialized();
     Map<String, Object> paramMap = new TransformerService().sourceData(params.cells()).toMap();
@@ -653,7 +653,7 @@ public class ApiBaseSteps {
   /**
    * Add a single query parameter to load test
    */
-  @Given("^(.+) set load test query param \"([^\"]*)\" to \"([^\"]*)\"$")
+  @Given("{actor} set load test query param {string} to {string}")
   public void setLoadTestQueryParam(String identifier, String key, String value) {
     assertLoadTestInitialized();
     Object resolvedValue = TestFramework.context().converter().convert(value);
@@ -663,7 +663,7 @@ public class ApiBaseSteps {
   /**
    * Add path parameters to load test from DataTable
    */
-  @Given("^(.+) set load test path params with data$")
+  @Given("{actor} set load test path params with data")
   public void setLoadTestPathParams(String identifier, DataTable params) {
     assertLoadTestInitialized();
     Map<String, Object> paramMap = new TransformerService().sourceData(params.cells()).toMap();
@@ -673,7 +673,7 @@ public class ApiBaseSteps {
   /**
    * Add a single path parameter to load test
    */
-  @Given("^(.+) set load test path param \"([^\"]*)\" to \"([^\"]*)\"$")
+  @Given("{actor} set load test path param {string} to {string}")
   public void setLoadTestPathParam(String identifier, String key, String value) {
     assertLoadTestInitialized();
     Object resolvedValue = TestFramework.context().converter().convert(value);
@@ -683,7 +683,7 @@ public class ApiBaseSteps {
   /**
    * Add form parameters to load test from DataTable
    */
-  @Given("^(.+) set load test form params with data$")
+  @Given("{actor} set load test form params with data")
   public void setLoadTestFormParams(String identifier, DataTable params) {
     assertLoadTestInitialized();
     Map<String, Object> paramMap = new TransformerService().sourceData(params.cells()).toMap();
@@ -695,7 +695,7 @@ public class ApiBaseSteps {
   /**
    * Configure dynamic unique ID per request (adds X-Request-ID header)
    */
-  @Given("^(.+) set load test with unique request ID per request$")
+  @Given("{actor} set load test with unique request ID per request")
   public void setLoadTestUniqueRequestId(String identifier) {
     assertLoadTestInitialized();
     loadTestBuilder.forEachRequest(index -> DynamicRequest.create()
@@ -705,7 +705,7 @@ public class ApiBaseSteps {
   /**
    * Configure dynamic pagination per request
    */
-  @Given("^(.+) set load test with pagination starting from page (\\d+) with size (\\d+)$")
+  @Given("{actor} set load test with pagination starting from page {int} with size {int}")
   public void setLoadTestWithPagination(String identifier, int startPage, int pageSize) {
     assertLoadTestInitialized();
     loadTestBuilder.forEachRequest(index -> DynamicRequest.create()
@@ -715,7 +715,7 @@ public class ApiBaseSteps {
   /**
    * Configure dynamic query param 'id' per request with modulo rotation
    */
-  @Given("^(.+) set load test with dynamic ID rotating through (\\d+) values$")
+  @Given("{actor} set load test with dynamic ID rotating through {int} values")
   public void setLoadTestWithDynamicIdRotation(String identifier, int rotationCount) {
     assertLoadTestInitialized();
     loadTestBuilder.forEachRequest(index -> DynamicRequest.create()
@@ -725,7 +725,7 @@ public class ApiBaseSteps {
   /**
    * Configure dynamic body with index-based variation
    */
-  @Given("^(.+) set load test with dynamic body field \"([^\"]*)\"$")
+  @Given("{actor} set load test with dynamic body field {string}")
   public void setLoadTestWithDynamicBody(String identifier, String fieldName) {
     assertLoadTestInitialized();
     loadTestBuilder.forEachRequest(index -> DynamicRequest.create()
@@ -735,7 +735,7 @@ public class ApiBaseSteps {
   /**
    * Configure dynamic header with index-based variation
    */
-  @Given("^(.+) set load test with dynamic header \"([^\"]*)\"$")
+  @Given("{actor} set load test with dynamic header {string}")
   public void setLoadTestWithDynamicHeader(String identifier, String headerName) {
     assertLoadTestInitialized();
     loadTestBuilder.forEachRequest(index -> DynamicRequest.create()
@@ -745,7 +745,7 @@ public class ApiBaseSteps {
   /**
    * Configure dynamic query param with index-based variation
    */
-  @Given("^(.+) set load test with dynamic query param \"([^\"]*)\"$")
+  @Given("{actor} set load test with dynamic query param {string}")
   public void setLoadTestWithDynamicQueryParam(String identifier, String paramName) {
     assertLoadTestInitialized();
     loadTestBuilder.forEachRequest(index -> DynamicRequest.create()
@@ -757,7 +757,7 @@ public class ApiBaseSteps {
   /**
    * Execute the load test
    */
-  @When("^(.+) execute load test$")
+  @When("{actor} execute load test")
   public void executeLoadTest(String identifier) throws Exception {
     assertLoadTestInitialized();
     this.loadTestSummary = loadTestBuilder.executeAndSummarize();
@@ -768,7 +768,7 @@ public class ApiBaseSteps {
   /**
    * Execute load test with rate limiting
    */
-  @When("^(.+) execute load test with (\\d+\\.?\\d*) requests per second for (\\d+) seconds$")
+  @When("{actor} execute load test with (\\d+\\.?\\d*) requests per second for {int} seconds")
   public void executeLoadTestWithRate(String identifier, double rps, int durationSeconds) throws Exception {
     assertLoadTestInitialized();
     this.loadTestSummary = loadTestBuilder.executeWithRate(rps, Duration.ofSeconds(durationSeconds));
@@ -780,7 +780,7 @@ public class ApiBaseSteps {
   /**
    * Store load test summary to data holder
    */
-  @Then("^(.+) assign load test summary to (\\w+)$")
+  @Then("{actor} assign load test summary to {word}")
   public void assignLoadTestSummary(String identifier, String key) {
     assertLoadTestCompleted();
     dataHolder.setResponse(key, loadTestSummary);
@@ -791,7 +791,7 @@ public class ApiBaseSteps {
   /**
    * Assert total requests count
    */
-  @Then("^(.+) load test total requests should be (\\d+)$")
+  @Then("{actor} load test total requests should be {int}")
   public void loadTestTotalRequestsShouldBe(String identifier, int expected) {
     assertLoadTestCompleted();
     assertThat("Total requests mismatch",
@@ -801,7 +801,7 @@ public class ApiBaseSteps {
   /**
    * Assert successful requests count
    */
-  @Then("^(.+) load test successful requests should be (\\d+)$")
+  @Then("{actor} load test successful requests should be {int}")
   public void loadTestSuccessfulRequestsShouldBe(String identifier, int expected) {
     assertLoadTestCompleted();
     assertThat("Successful requests mismatch",
@@ -811,7 +811,7 @@ public class ApiBaseSteps {
   /**
    * Assert failed requests count
    */
-  @Then("^(.+) load test failed requests should be (\\d+)$")
+  @Then("{actor} load test failed requests should be {int}")
   public void loadTestFailedRequestsShouldBe(String identifier, int expected) {
     assertLoadTestCompleted();
     assertThat("Failed requests mismatch",
@@ -821,7 +821,7 @@ public class ApiBaseSteps {
   /**
    * Assert success rate is at least a certain percentage
    */
-  @Then("^(.+) load test success rate should be at least (\\d+\\.?\\d*) percent$")
+  @Then("{actor} load test success rate should be at least (\\d+\\.?\\d*) percent")
   public void loadTestSuccessRateShouldBeAtLeast(String identifier, double minSuccessRate) {
     assertLoadTestCompleted();
     assertThat(String.format("Success rate %.2f%% is below minimum %.2f%%",
@@ -832,7 +832,7 @@ public class ApiBaseSteps {
   /**
    * Assert success rate equals specific value
    */
-  @Then("^(.+) load test success rate should be (\\d+\\.?\\d*) percent$")
+  @Then("{actor} load test success rate should be (\\d+\\.?\\d*) percent")
   public void loadTestSuccessRateShouldBe(String identifier, double expectedRate) {
     assertLoadTestCompleted();
     assertThat(String.format("Success rate %.2f%% does not match expected %.2f%%",
@@ -843,7 +843,7 @@ public class ApiBaseSteps {
   /**
    * Assert throughput is at least a certain value
    */
-  @Then("^(.+) load test throughput should be at least (\\d+\\.?\\d*) requests per second$")
+  @Then("{actor} load test throughput should be at least (\\d+\\.?\\d*) requests per second")
   public void loadTestThroughputShouldBeAtLeast(String identifier, double minThroughput) {
     assertLoadTestCompleted();
     assertThat(String.format("Throughput %.2f req/s is below minimum %.2f req/s",
@@ -854,7 +854,7 @@ public class ApiBaseSteps {
   /**
    * Assert average response time is at most a certain value
    */
-  @Then("^(.+) load test average response time should be at most (\\d+) milliseconds$")
+  @Then("{actor} load test average response time should be at most {long} milliseconds")
   public void loadTestAvgResponseTimeShouldBeAtMost(String identifier, long maxMillis) {
     assertLoadTestCompleted();
     long actualAvg = loadTestSummary.getAverageResponseTime().toMillis();
@@ -865,7 +865,7 @@ public class ApiBaseSteps {
   /**
    * Assert P50 response time is at most a certain value
    */
-  @Then("^(.+) load test P50 response time should be at most (\\d+) milliseconds$")
+  @Then("{actor} load test P50 response time should be at most {long} milliseconds")
   public void loadTestP50ResponseTimeShouldBeAtMost(String identifier, long maxMillis) {
     assertLoadTestCompleted();
     long actualP50 = loadTestSummary.getP50ResponseTime().toMillis();
@@ -876,7 +876,7 @@ public class ApiBaseSteps {
   /**
    * Assert P90 response time is at most a certain value
    */
-  @Then("^(.+) load test P90 response time should be at most (\\d+) milliseconds$")
+  @Then("{actor} load test P90 response time should be at most {long} milliseconds")
   public void loadTestP90ResponseTimeShouldBeAtMost(String identifier, long maxMillis) {
     assertLoadTestCompleted();
     long actualP90 = loadTestSummary.getP90ResponseTime().toMillis();
@@ -887,7 +887,7 @@ public class ApiBaseSteps {
   /**
    * Assert P95 response time is at most a certain value
    */
-  @Then("^(.+) load test P95 response time should be at most (\\d+) milliseconds$")
+  @Then("{actor} load test P95 response time should be at most {long} milliseconds")
   public void loadTestP95ResponseTimeShouldBeAtMost(String identifier, long maxMillis) {
     assertLoadTestCompleted();
     long actualP95 = loadTestSummary.getP95ResponseTime().toMillis();
@@ -898,7 +898,7 @@ public class ApiBaseSteps {
   /**
    * Assert P99 response time is at most a certain value
    */
-  @Then("^(.+) load test P99 response time should be at most (\\d+) milliseconds$")
+  @Then("{actor} load test P99 response time should be at most {long} milliseconds")
   public void loadTestP99ResponseTimeShouldBeAtMost(String identifier, long maxMillis) {
     assertLoadTestCompleted();
     long actualP99 = loadTestSummary.getP99ResponseTime().toMillis();
@@ -909,7 +909,7 @@ public class ApiBaseSteps {
   /**
    * Assert max response time is at most a certain value
    */
-  @Then("^(.+) load test max response time should be at most (\\d+) milliseconds$")
+  @Then("{actor} load test max response time should be at most {long} milliseconds")
   public void loadTestMaxResponseTimeShouldBeAtMost(String identifier, long maxMillis) {
     assertLoadTestCompleted();
     long actualMax = loadTestSummary.getMaxResponseTime().toMillis();
@@ -920,7 +920,7 @@ public class ApiBaseSteps {
   /**
    * Assert specific HTTP status code count
    */
-  @Then("^(.+) load test should have (\\d+) responses with status code (\\d+)$")
+  @Then("{actor} load test should have {long} responses with status code {long}")
   public void loadTestStatusCodeCount(String identifier, long expectedCount, int statusCode) {
     assertLoadTestCompleted();
     Long actualCount = loadTestSummary.getStatusCodeDistribution().get(statusCode);
@@ -932,7 +932,7 @@ public class ApiBaseSteps {
   /**
    * Assert all responses have specific status code
    */
-  @Then("^(.+) load test all responses should have status code (\\d+)$")
+  @Then("{actor} load test all responses should have status code {long}")
   public void loadTestAllResponsesStatusCode(String identifier, int statusCode) {
     assertLoadTestCompleted();
     Long actualCount = loadTestSummary.getStatusCodeDistribution().get(statusCode);
@@ -945,7 +945,7 @@ public class ApiBaseSteps {
   /**
    * Assert no errors occurred
    */
-  @Then("^(.+) load test should have no errors$")
+  @Then("{actor} load test should have no errors")
   public void loadTestShouldHaveNoErrors(String identifier) {
     assertLoadTestCompleted();
     assertThat("Load test had failed requests",
@@ -957,7 +957,7 @@ public class ApiBaseSteps {
   /**
    * Log load test summary
    */
-  @Then("^(.+) print load test summary$")
+  @Then("{actor} print load test summary")
   public void printLoadTestSummary(String identifier) {
     assertLoadTestCompleted();
     log.info(loadTestSummary.toFormattedString());

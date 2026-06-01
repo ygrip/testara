@@ -34,20 +34,20 @@ public class KafkaConsumerSteps {
   private DataHolder dataHolder;
 
   @RetryableMethod
-  @Given("^(.+) start kafka consumer for (\\w+)$")
+  @Given("{actor} start kafka consumer for {word}")
   public void startKafkaConsumer(String identifier, String serviceName) {
     kafkaConsumer.init(serviceName);
   }
 
   @RetryableMethod
-  @Given("^(.+) listen kafka from topic (\\w+)$")
+  @Given("{actor} listen kafka from topic {word}")
   public void listenKafkaTopic(String identifier, String topic) {
     topic = TestFramework.context().converter().convert(topic);
     kafkaConsumer.subscribeTopic(topic);
   }
 
   @RetryableMethod
-  @When("^(.+) assign count of total records from topic \"([^\"]*)\" to (\\w+)$")
+  @When("{actor} assign count of total records from topic {string} to {word}")
   public void getTotalRecordsFromTopic(String identifier, String topic, String responseKey) throws Throwable {
     assertThat("No kafka connection", kafkaConsumer.isConnected(), equalTo(true));
     topic = TestFramework.context().converter().convert(topic);
@@ -55,7 +55,7 @@ public class KafkaConsumerSteps {
   }
 
   @RetryableMethod
-  @When("^(.+) assign (\\d+) latest records from topic \"([^\"]*)\" to (\\w+)$")
+  @When("{actor} assign {int} latest records from topic {string} to {word}")
   public void getNRecordsFromTopic(String identifier, Integer number, String topic, String responseKey)
       throws Throwable {
     assertThat("No kafka connection", kafkaConsumer.isConnected(), equalTo(true));
@@ -66,7 +66,7 @@ public class KafkaConsumerSteps {
   }
 
   @RetryableMethod
-  @When("^(.+) assign (\\d+) latest records from topic \"([^\"]*)\" to (\\w+) and filter by$")
+  @When("{actor} assign {int} latest records from topic {string} to {word} and filter by")
   public void getNRecordsFromTopicWithFilter(String identifier,
       Integer number,
       String topic,
@@ -94,7 +94,7 @@ public class KafkaConsumerSteps {
   }
 
   @RetryableMethod
-  @Then("^(.+) stop kafka consumer$")
+  @Then("{actor} stop kafka consumer")
   public void stopKafkaConsumer(String identifier) {
     kafkaConsumer.close();
   }

@@ -29,21 +29,21 @@ public class MongoBaseSteps {
   private Object dbResponse;
 
   @RetryableMethod
-  @Given("^(\\[mongo\\]) connect to database with name (\\w+)$")
+  @Given("{mongo} connect to database with name {word}")
   public void initMongoDatabase(String identifier, String databaseName) throws Throwable {
     databaseName = CommandExecutor.executeCommand(databaseName);
     mongoHelper.init(databaseName);
   }
 
   @RetryableMethod
-  @Given("^(\\[mongo\\]) select collection with name (\\w+)$")
+  @Given("{mongo} select collection with name {word}")
   public void selectMongoCollection(String identifier, String collectionName) throws Throwable {
     collectionName = CommandExecutor.executeCommand(collectionName);
     mongoHelper.selectCollection(collectionName);
   }
 
   @RetryableMethod
-  @When("^(\\[mongo\\]) select data with query :$")
+  @When("{mongo} select data with query :")
   public void executeMongoDbQuery(String identifier, DataTable table) throws Throwable {
     Map<String, Object> data =
         new TransformerService().sourceData(table.cells()).to(new TypeReference<Map<String, Object>>() {
@@ -56,7 +56,7 @@ public class MongoBaseSteps {
     dbResponse = mongoHelper.rawQuery(query, sort, project, limit, skip);
   }
 
-  @When("^(\\[mongo\\]) delete data with query :$")
+  @When("{mongo} delete data with query :")
   public void executeMongoDeleteData(String identifier, DataTable table) throws Throwable {
     Map<String, Object> data =
         new TransformerService().sourceData(table.cells()).to(new TypeReference<Map<String, Object>>() {
@@ -69,7 +69,7 @@ public class MongoBaseSteps {
   }
 
   @RetryableMethod
-  @When("^(\\[mongo\\]) count data with query :$")
+  @When("{mongo} count data with query :")
   public void countMongoQueryResult(String identifier, DataTable table) throws Throwable {
     Map<String, Object> data =
         new TransformerService().sourceData(table.cells()).to(new TypeReference<Map<String, Object>>() {
@@ -80,14 +80,14 @@ public class MongoBaseSteps {
   }
 
   @RetryableMethod
-  @When("^(\\[mongo\\]) aggregate mongo data with query :$")
+  @When("{mongo} aggregate mongo data with query :")
   public void countMongoQueryResult(String identifier, String query) throws Throwable {
     query = CommandExecutor.executeCommand(query);
 
     dbResponse = mongoHelper.aggregate(query);
   }
 
-  @When("^(\\[mongo\\]) update mongo data with query :$")
+  @When("{mongo} update mongo data with query :")
   public void updateMongoQueryResult(String identifier, DataTable table) throws Throwable {
     Map<String, Object> data =
         new TransformerService().sourceData(table.cells()).to(new TypeReference<Map<String, Object>>() {
@@ -100,20 +100,20 @@ public class MongoBaseSteps {
   }
 
   @RetryableMethod
-  @When("^(\\[mongo\\]) get mongo indexes from current collection$")
+  @When("{mongo} get mongo indexes from current collection")
   public void getMongoIdexes(String identifier) throws Throwable {
     dbResponse = mongoHelper.getIndexes();
   }
 
   @RetryableMethod
-  @Then("^(\\[mongo\\]) assign previous database response to (\\w+)$")
+  @Then("{mongo} assign previous database response to {word}")
   public void assignMongoDbResponseTo(String identifier, String key) throws Throwable {
     dataHolder.setResponse(key, dbResponse);
     dbResponse = null;
   }
 
   @RetryableMethod
-  @When("^(\\[mongo\\]) select distinct field with query :$")
+  @When("{mongo} select distinct field with query :")
   public void executeDistinctQuery(String identifier, DataTable table) throws Throwable {
     Map<String, Object> data =
         new TransformerService().sourceData(table.cells()).to(new TypeReference<Map<String, Object>>() {

@@ -59,7 +59,14 @@ public class AgentKnowledgeGenerator {
         .writeValue(outputDir.resolve("flavor-catalog.json").toFile(), flavorCatalog);
     LOG.info("Flavor catalog: " + flavorCatalog.size() + " entries");
 
-    // 2. UI interaction/observation examples
+    // 2. Parameter type registry — from BaseDefinitions.java
+    LOG.info("Generating parameter type registry from BaseDefinitions");
+    Map<String, String> typeRegistry = extractParameterTypes(repoRoot);
+    mapper.writerWithDefaultPrettyPrinter()
+        .writeValue(outputDir.resolve("parameter-types.json").toFile(), typeRegistry);
+    LOG.info("Parameter types: " + typeRegistry.size() + " entries");
+
+    // 3. UI interaction/observation examples
     LOG.info("Generating UI interaction examples");
     List<String> interactions = new ArrayList<>();
     for (String relPath : UI_SOURCE_PATHS) {
@@ -75,6 +82,45 @@ public class AgentKnowledgeGenerator {
     mapper.writerWithDefaultPrettyPrinter()
         .writeValue(outputDir.resolve("ui-interactions.json").toFile(), deduped);
     LOG.info("UI interactions: " + deduped.size() + " examples");
+  }
+
+  // ── Parameter type registry ───────────────────────────────────────────────
+
+  private static final Pattern PARAM_TYPE_ANN = Pattern.compile(
+      "@ParameterType\\(\"((?:[^\"]|\\\\.)*)\"\\)\\s*(?:public\\s+\\w[\\w<>]*\\s+(\\w+))");
+
+  /**
+   * Scans BaseDefinitions.java and any other @ParameterType definitions across
+   * cucumber modules to build a typeName → regex pattern registry.
+   */
+  static Map<String, String> extractParameterTypes(Path repoRoot) throws IOException {
+    Map<String, String> registry = new LinkedHashMap<>();
+    // Primary source: testara-cucumber BaseDefinitions
+    List<Path> sources = new ArrayList<>();
+    for (String module : List.of("testara-cucumber", "testara-api-cucumber",
+        "testara-ui-cucumber", "testara-database-cucumber")) {
+      Path modDir = repoRoot.resolve(module + "/src/main/java");
+      if (Files.isDirectory(modDir)) {
+        try (Stream<Path> walk = Files.walk(modDir)) {
+          walk.filter(p -> p.toString().endsWith(".java"))
+              .forEach(sources::add);
+        }
+      }
+    }
+    for (Path src : sources) {
+      try {
+        String source = Files.readString(src, StandardCharsets.UTF_8);
+        Matcher m = PARAM_TYPE_ANN.matcher(source);
+        while (m.find()) {
+          String pattern = m.group(1);
+          String methodName = m.group(2);
+          if (methodName != null && !registry.containsKey(methodName)) {
+            registry.put(methodName, pattern);
+          }
+        }
+      } catch (IOException ignored) {}
+    }
+    return registry;
   }
 
   // ── Interaction/observation scanner ──────────────────────────────────────

@@ -23,33 +23,33 @@ import static org.hamcrest.Matchers.matchesPattern;
 public class GenericValidationSteps {
 
   @RetryableMethod
-  @Then("^(.+) see that$")
+  @Then("{actor} see that")
   public void seeThat(String identifier, DataTable table) {
     List<DataValidation> validations = new TransformerService().sourceData(table.cells()).toList(DataValidation.class);
     ValidatorHelper.validates(validations);
   }
 
   @RetryableMethod
-  @Then("^(.+) see that \"([^\"]*)\"$")
+  @Then("{actor} see that {string}")
   public void seeThat(String identifier, String validationPath) {
     ValidatorHelper.validate(validationPath);
   }
 
   @RetryableMethod
-  @Then("^(.+) do these validations$")
+  @Then("{actor} do these validations")
   public void doTheseValidation(String identifier, DataTable table) {
     List<DataValidation> validations = new TransformerService().sourceData(table.cells()).toList(DataValidation.class);
     ValidatorHelper.validates(validations);
   }
 
   @RetryableMethod
-  @Then("^(.+) validate that \"([^\"]*)\"$")
+  @Then("{actor} validate that {string}")
   public void doValidateThat(String identifier, String validationPath) {
     ValidatorHelper.validate(validationPath);
   }
 
   @RetryableMethod
-  @Then("^(.+) response data \"([^\"]*)\" (should|should not) be empty$")
+  @Then("{actor} response data {string} {shouldOrShouldNot} be empty")
   public void responseDataShouldNotBeEmpty(String identifier, String responseData, String beOrNotBe) {
     boolean actual =
         beOrNotBe.equalsIgnoreCase("should") == isBlank(TestFramework.context().converter().convert(responseData));
@@ -57,7 +57,7 @@ public class GenericValidationSteps {
   }
 
   @RetryableMethod
-  @Then("^(.+) data \"([^\"]*)\" (should|should not) equal with data \"([^\"]*)\"$")
+  @Then("{actor} data {string} {shouldOrShouldNot} equal with data {string}")
   public void dataShouldEqualTo(String identifier, String dataA, String shouldOrShouldNot, String dataB) {
     Object actual = TestFramework.context().converter().convert(dataA);
     Object expected = TestFramework.context().converter().convert(dataB);
@@ -68,7 +68,7 @@ public class GenericValidationSteps {
   }
 
   @RetryableMethod
-  @Then("^(.+) data \"([^\"]*)\" (should|should not) match pattern \"([^\"]*)\"$")
+  @Then("{actor} data {string} {shouldOrShouldNot} match pattern {string}")
   public void dataShouldMatchWithPattern(String identifier, String data, String shouldOrShouldNot, String regex) {
     String actual = MapperHelper.toString(TestFramework.context().converter().convert(data));
     assertThat(String.format("%s %s satisfy pattern %s", actual, shouldOrShouldNot, regex),
@@ -77,7 +77,7 @@ public class GenericValidationSteps {
   }
 
   @RetryableMethod
-  @Then("^(.+) all data in \"([^\"]*)\" (should|should not) equal with data \"([^\"]*)\"$")
+  @Then("{actor} all data in {string} {shouldOrShouldNot} equal with data {string}")
   public void allElementShouldEqualTo(String identifier, String dataA, String shouldOrShouldNot, String dataB)
       throws AssertionError {
     Object actual = TestFramework.context().converter().convert(dataA);
@@ -92,7 +92,7 @@ public class GenericValidationSteps {
   }
 
   @RetryableMethod
-  @Then("^(.+) data \"([^\"]*)\" (.+) be (greater|less) (than|than equal) data \"([^\"]*)\"$")
+  @Then("{actor} data {string} (.+) be {greaterOrLess} {thanOrEqual} data {string}")
   public void compareTwoData(String identifier,
       String dataA,
       String shouldOrShouldNot,
@@ -122,7 +122,7 @@ public class GenericValidationSteps {
   }
 
   @RetryableMethod
-  @Then("^(.+) data \"([^\"]*)\" (should|should not) be ordered by (ascending|descending)$")
+  @Then("{actor} data {string} {shouldOrShouldNot} be ordered by {ascendingOrDescending}")
   public void dataShouldBeOrderedIn(String identifier, String data, String shouldOrShouldNot, String mode)
       throws AssertionError {
     Object actual = TestFramework.context().converter().convert(data);
@@ -136,7 +136,7 @@ public class GenericValidationSteps {
   }
 
   @RetryableMethod
-  @Then("^(.+) data \"([^\"]*)\" (should|should not) contains \"([^\"]*)\"$")
+  @Then("{actor} data {string} {shouldOrShouldNot} contains {string}")
   public void dataShouldContains(String identifier, String targetData, String shouldOrShouldNot, String dataInside)
       throws AssertionError {
     Object actual = TestFramework.context().converter().convert(targetData);

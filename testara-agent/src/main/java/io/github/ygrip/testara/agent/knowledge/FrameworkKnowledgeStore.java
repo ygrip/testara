@@ -7,6 +7,7 @@ import io.github.ygrip.testara.agent.flavor.FlavorEntry;
 import java.io.InputStream;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.logging.Logger;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -28,11 +29,13 @@ public final class FrameworkKnowledgeStore {
   private final List<FlavorEntry> flavorCatalog;
   private final List<String> uiInteractionExamples;
   private final List<Pattern> uiStepPatterns;
+  private final Map<String, String> parameterTypes;  // typeName → regex pattern
 
   private FrameworkKnowledgeStore() {
     this.flavorCatalog = loadFlavorCatalog();
     this.uiInteractionExamples = loadUiInteractions();
     this.uiStepPatterns = buildUiStepPatterns(flavorCatalog);
+    this.parameterTypes = loadParameterTypes();
   }
 
   public static FrameworkKnowledgeStore instance() { return INSTANCE; }
@@ -53,6 +56,16 @@ public final class FrameworkKnowledgeStore {
   /** Formatted usage examples for interaction/observation classes — used by TestaraUiSkill. */
   public List<String> uiInteractionExamples() { return uiInteractionExamples; }
 
+  /**
+   * Cucumber Expression parameter type registry: typeName → regex pattern.
+   * E.g. "devices" → "desktop|mobile|android|ios".
+   * Agents use this to know valid values for each {type} parameter in a step.
+   */
+  public Map<String, String> parameterTypes() { return parameterTypes; }
+
+  /** Returns the regex pattern for the given Cucumber Expression type name, or null if unknown. */
+  public String patternFor(String typeName) { return parameterTypes.get(typeName); }
+
   /** True if the flavor catalog was successfully loaded (non-empty). */
   public boolean isLoaded() { return !flavorCatalog.isEmpty(); }
 
@@ -66,6 +79,17 @@ public final class FrameworkKnowledgeStore {
   private List<String> loadUiInteractions() {
     return loadJson("agent-context/ui-interactions.json",
         new TypeReference<List<String>>() {});
+  }
+
+  private Map<String, String> loadParameterTypes() {
+    try (InputStream is = FrameworkKnowledgeStore.class.getClassLoader()
+        .getResourceAsStream("agent-context/parameter-types.json")) {
+      if (is == null) return Collections.emptyMap();
+      return new ObjectMapper().readValue(is, new TypeReference<Map<String, String>>() {});
+    } catch (Exception e) {
+      LOG.warning("Cannot load parameter types: " + e.getMessage());
+      return Collections.emptyMap();
+    }
   }
 
   private <T> List<T> loadJson(String resource, TypeReference<List<T>> type) {

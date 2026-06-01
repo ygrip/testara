@@ -36,7 +36,7 @@ import static org.hamcrest.MatcherAssert.assertThat;
 @TestComponent(scope = RegistryScope.TEST)
 public class FileOperationSteps {
 
-  @When("^(\\[file\\]) create excel file with name \"([^\"]*)\" and data$")
+  @When("{file} create excel file with name {string} and data")
   public void createExcelFileWithName(String identifier, String fileName, DataTable table) throws Throwable {
     List<Map<String, Object>> results =
         MapperHelper.toObject(new TransformerService().sourceData(table.cells()).toList(Map.class),
@@ -52,7 +52,7 @@ public class FileOperationSteps {
     assertThat("Fail to create file with name " + fileName, CommonHelper.isBlank(createdFilePath), equalTo(false));
   }
 
-  @When("^(\\[file\\]) create excel file with name \"([^\"]*)\" and without header and data$")
+  @When("{file} create excel file with name {string} and without header and data")
   public void createExcelFileWithoutHeaderWithName(String identifier, String fileName, DataTable table)
       throws Throwable {
     List<List<Object>> results = MapperHelper.toObject(new TransformerService().sourceData(table.cells()).toCells(),
@@ -68,7 +68,7 @@ public class FileOperationSteps {
     assertThat("Fail to create file with name " + fileName, CommonHelper.isBlank(createdFilePath), equalTo(false));
   }
 
-  @When("^(\\[file\\]) create csv file with name \"([^\"]*)\" and delimiter (\\w+) and data$")
+  @When("{file} create csv file with name {string} and delimiter {word} and data")
   public void createCsvFileWithHeaderWithName(String identifier, String fileName, String delimiter, DataTable table)
       throws Throwable {
     delimiter = !delimiter.equals(",") && !delimiter.equals(";") ? "," : delimiter;
@@ -89,7 +89,7 @@ public class FileOperationSteps {
     assertThat("Fail to create file with name " + fileName, CommonHelper.isBlank(createdFilePath), equalTo(false));
   }
 
-  @When("^(\\[file\\]) create csv file with name \"([^\"]*)\" and delimiter (\\w+) without header and data$")
+  @When("{file} create csv file with name {string} and delimiter {word} without header and data")
   public void createCsvFileWithoutHeaderWithName(String identifier, String fileName, String delimiter, DataTable table)
       throws Throwable {
     delimiter = !delimiter.equals(",") && !delimiter.equals(";") ? "," : delimiter;
@@ -110,7 +110,7 @@ public class FileOperationSteps {
     assertThat("Fail to create file with name " + fileName, CommonHelper.isBlank(createdFilePath), equalTo(false));
   }
 
-  @When("^(\\[file\\]) create json file with name \"([^\"]*)\" and data$")
+  @When("{file} create json file with name {string} and data")
   public void createJsonFileWithName(String identifier, String fileName, DataTable table) throws Throwable {
     List<Map<String, Object>> results =
         MapperHelper.toObject(new TransformerService().sourceData(table.cells()).toList(Map.class),
@@ -126,14 +126,14 @@ public class FileOperationSteps {
     assertThat("Fail to create file with name " + fileName, CommonHelper.isBlank(createdFilePath), equalTo(false));
   }
 
-  @When("^(\\[file\\]) delete file with name \"([^\"]*)\"$")
+  @When("{file} delete file with name {string}")
   public void deleteFile(String identifier, String fileName) throws Throwable {
     fileName = TestFramework.context().converter().convert(fileName);
     boolean deleted = FileHelper.deleteFile(System.getProperty("user.dir") + "/" + fileName);
     assertThat("Fail to delete file with name " + fileName, deleted, equalTo(true));
   }
 
-  @When("^(\\[file\\]) update excel file with name \"([^\"]*)\" with new data$")
+  @When("{file} update excel file with name {string} with new data")
   public void updateExcelFile(String identifier, String fileName, DataTable table) throws Throwable {
     List<UpdateExcelData> results = new TransformerService().sourceData(table.cells()).toList(UpdateExcelData.class);
     boolean updated =
@@ -141,21 +141,21 @@ public class FileOperationSteps {
     assertThat("Fail to update excel file with name " + fileName, updated, equalTo(true));
   }
 
-  @Then("^(\\[file\\]) file \"([^\"]*)\" should exist$")
+  @Then("{file} file {string} should exist")
   public void fileExists(String identifier, String fileName) throws Throwable {
     fileName = TestFramework.context().converter().convert(fileName);
     File file = new File(System.getProperty("user.dir") + "/" + fileName);
     assertThat("File " + fileName + " does not exist", file.exists(), equalTo(true));
   }
 
-  @Then("^(\\[file\\]) file \"([^\"]*)\" should not exist$")
+  @Then("{file} file {string} should not exist")
   public void fileNotExists(String identifier, String fileName) throws Throwable {
     fileName = TestFramework.context().converter().convert(fileName);
     File file = new File(System.getProperty("user.dir") + "/" + fileName);
     assertThat("File " + fileName + " should not exist", file.exists(), equalTo(false));
   }
 
-  @Then("^(\\[file\\]) file \"([^\"]*)\" should have size (\\d+) bytes$")
+  @Then("{file} file {string} should have size {long} bytes")
   public void fileSizeValidation(String identifier, String fileName, long expectedSize) throws Throwable {
     fileName = TestFramework.context().converter().convert(fileName);
     File file = new File(System.getProperty("user.dir") + "/" + fileName);
@@ -163,7 +163,7 @@ public class FileOperationSteps {
     assertThat("File " + fileName + " size is not as expected", file.length(), equalTo(expectedSize));
   }
 
-  @Then("^(\\[file\\]) file \"([^\"]*)\" content should be equal to file \"([^\"]*)\"$")
+  @Then("{file} file {string} content should be equal to file {string}")
   public void fileContentComparison(String identifier, String file1, String file2) throws Throwable {
     file1 = TestFramework.context().converter().convert(file1);
     file2 = TestFramework.context().converter().convert(file2);
@@ -180,7 +180,7 @@ public class FileOperationSteps {
     assertThat("File contents are not equal", content1, equalTo(content2));
   }
 
-  @Then("^(\\[file\\]) file \"([^\"]*)\" should contain text \"([^\"]*)\"$")
+  @Then("{file} file {string} should contain text {string}")
   public void fileContainsText(String identifier, String fileName, String expectedText) throws Throwable {
     fileName = TestFramework.context().converter().convert(fileName);
     expectedText = TestFramework.context().converter().convert(expectedText);
@@ -192,7 +192,7 @@ public class FileOperationSteps {
     assertThat("File " + fileName + " does not contain expected text", content.contains(expectedText), equalTo(true));
   }
 
-  @Then("^(\\[file\\]) file \"([^\"]*)\" should have extension \"([^\"]*)\"$")
+  @Then("{file} file {string} should have extension {string}")
   public void fileExtensionValidation(String identifier, String fileName, String expectedExtension) throws Throwable {
     fileName = TestFramework.context().converter().convert(fileName);
     expectedExtension = TestFramework.context().converter().convert(expectedExtension);
@@ -206,7 +206,7 @@ public class FileOperationSteps {
     assertThat("File extension is not as expected", actualExtension, equalTo(expectedExtension));
   }
 
-  @When("^(\\[file\\]) create directory with name \"([^\"]*)\"$")
+  @When("{file} create directory with name {string}")
   public void createDirectory(String identifier, String dirName) throws Throwable {
     dirName = TestFramework.context().converter().convert(dirName);
     Path dirPath = Paths.get(System.getProperty("user.dir") + "/" + dirName);
@@ -220,7 +220,7 @@ public class FileOperationSteps {
     assertThat("Directory " + dirName + " was not created", Files.exists(dirPath), equalTo(true));
   }
 
-  @When("^(\\[file\\]) delete directory with name \"([^\"]*)\"$")
+  @When("{file} delete directory with name {string}")
   public void deleteDirectory(String identifier, String dirName) throws Throwable {
     dirName = TestFramework.context().converter().convert(dirName);
     Path dirPath = Paths.get(System.getProperty("user.dir") + "/" + dirName);
@@ -239,7 +239,7 @@ public class FileOperationSteps {
     assertThat("Directory " + dirName + " still exists", Files.exists(dirPath), equalTo(false));
   }
 
-  @Then("^(\\[file\\]) directory \"([^\"]*)\" should exist$")
+  @Then("{file} directory {string} should exist")
   public void directoryExists(String identifier, String dirName) throws Throwable {
     dirName = TestFramework.context().converter().convert(dirName);
     Path dirPath = Paths.get(System.getProperty("user.dir") + "/" + dirName);
@@ -247,7 +247,7 @@ public class FileOperationSteps {
     assertThat("Path " + dirName + " is not a directory", Files.isDirectory(dirPath), equalTo(true));
   }
 
-  @Then("^(\\[file\\]) directory \"([^\"]*)\" should contain (\\d+) files$")
+  @Then("{file} directory {string} should contain {int} files")
   public void directoryFileCount(String identifier, String dirName, int expectedCount) throws Throwable {
     dirName = TestFramework.context().converter().convert(dirName);
     Path dirPath = Paths.get(System.getProperty("user.dir") + "/" + dirName);
@@ -261,7 +261,7 @@ public class FileOperationSteps {
         equalTo(expectedCount));
   }
 
-  @When("^(\\[file\\]) copy file from \"([^\"]*)\" to \"([^\"]*)\"$")
+  @When("{file} copy file from {string} to {string}")
   public void copyFile(String identifier, String sourcePath, String destinationPath) throws Throwable {
     sourcePath = TestFramework.context().converter().convert(sourcePath);
     destinationPath = TestFramework.context().converter().convert(destinationPath);
@@ -282,7 +282,7 @@ public class FileOperationSteps {
     assertThat("File was not copied to " + destinationPath, Files.exists(destination), equalTo(true));
   }
 
-  @When("^(\\[file\\]) move file from \"([^\"]*)\" to \"([^\"]*)\"$")
+  @When("{file} move file from {string} to {string}")
   public void moveFile(String identifier, String sourcePath, String destinationPath) throws Throwable {
     sourcePath = TestFramework.context().converter().convert(sourcePath);
     destinationPath = TestFramework.context().converter().convert(destinationPath);

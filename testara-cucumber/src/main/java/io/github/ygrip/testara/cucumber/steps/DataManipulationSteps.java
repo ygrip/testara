@@ -18,19 +18,19 @@ public class DataManipulationSteps {
   private DataHolder dataHolder;
 
   @RetryableMethod
-  @Given("^(.+) (set|define) (\\w+) (to|=) \"([^\"]*)\"$")
+  @Given("{actor} {setOrDefine} {word} {setTo} {string}")
   public void defineRequestData(String identifier, String set, String key, String sign, String value) throws Throwable {
     dataHolder.setRequest(key, value);
   }
 
   @RetryableMethod
-  @Given("^(.+) (set|define) (\\w+) (to|=)$")
+  @Given("{actor} {setOrDefine} {word} {setTo}")
   public void defineRequestDataFromMultiline(String identifier, String set, String key, String value) throws Throwable {
     dataHolder.setRequest(key, value);
   }
 
   @RetryableMethod
-  @Given("^(.+) (set|define) (\\w+) with$")
+  @Given("{actor} {setOrDefine} {word} with")
   public void defineRequestDataFromDatatable(String identifier, String set, String key, DataTable value) throws Throwable {
     dataHolder.setRequest(key, new TransformerService().sourceData(value.cells()));
   }
@@ -49,19 +49,19 @@ public class DataManipulationSteps {
   }
 
   @RetryableMethod
-  @Given("^(.+) prepare request data (\\w+) with value \"([^\"]*)\"$")
+  @Given("{actor} prepare request data {word} with value {string}")
   public void prepareRequestDataStep(String identifier, String key, String value) throws Throwable {
     dataHolder.setRequest(key, value);
   }
 
   @RetryableMethod
-  @Given("^(.+) prepare request data (\\w+) with value :$")
+  @Given("{actor} prepare request data {word} with value :")
   public void prepareRequestDataWithMultilineText(String identifier, String key, String value) throws Throwable {
     dataHolder.setRequest(key, value);
   }
 
   @RetryableMethod
-  @Given("^(.+) prepare request data (\\w+) with value$")
+  @Given("{actor} prepare request data {word} with value")
   public void prepareRequestDataStep(String identifier, String key, DataTable value) throws Throwable {
     dataHolder.setRequest(key, new TransformerService().sourceData(value.cells()));
   }
@@ -79,7 +79,7 @@ public class DataManipulationSteps {
     dataHolder.setRequest(key, new TransformerService().fromTemplate(template));
   }
 
-  @Then("^(.+) reset (request|response|all) data \"([^\"]*)\"$")
+  @Then("{actor} reset {requestOrResponse} data {string}")
   public void resetData(String identifier, String type, String field) throws Throwable {
     switch (type) {
       case "request":
@@ -93,7 +93,7 @@ public class DataManipulationSteps {
     }
   }
 
-  @Then("^(.+) reset (request|response|all) data$")
+  @Then("{actor} reset {requestOrResponse} data")
   public void resetData(String identifier, String type) throws Throwable {
     switch (type) {
       case "request":
@@ -112,13 +112,13 @@ public class DataManipulationSteps {
   }
 
   @RetryableMethod
-  @Then("^(.+) assign response data (\\w+) with value \"([^\"]*)\"$")
+  @Then("{actor} assign response data {word} with value {string}")
   public void assignDataToResponse(String identifier, String key, String value) throws Throwable {
     dataHolder.setResponse(key, TestFramework.context().converter().convert(value));
   }
 
   @RetryableMethod
-  @Then("^(.+) assign response data (\\w+) with value :$")
+  @Then("{actor} assign response data {word} with value :")
   public void assignDataToResponseFromMultiline(String identifier, String key, String value) throws Throwable {
     dataHolder.setResponse(key, TestFramework.context().converter().convert(value));
   }
