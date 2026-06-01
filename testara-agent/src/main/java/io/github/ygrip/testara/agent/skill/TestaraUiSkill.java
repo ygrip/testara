@@ -8,6 +8,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
@@ -37,12 +39,13 @@ public class TestaraUiSkill implements AgentSkill<TestaraUiSkill.Input, String> 
     boolean write = "true".equals(context.options().get("write"));
 
     return switch (mode) {
-      case "page"    -> generatePage(input.pageName(), input.engine(), basePkg, context.projectRoot(), write, concise);
-      case "action"  -> generateAction(input.pageName(), input.actionName(), basePkg, context.projectRoot(), write, concise);
-      case "config"  -> generateUiConfig(input.engine(), basePkg, concise);
+      case "page"         -> generatePage(input.pageName(), input.engine(), basePkg, context.projectRoot(), write, concise);
+      case "action"       -> generateAction(input.pageName(), input.actionName(), basePkg, context.projectRoot(), write, concise);
+      case "config"       -> generateUiConfig(input.engine(), basePkg, concise);
+      case "interactions" -> renderInteractionCatalog(concise);
       case "validate-page", "validate" -> validatePage(input.pageName(), basePkg, context.projectRoot(),
           input.htmlSnapshot(), concise);
-      default        -> explainUi(concise);
+      default             -> explainUi(concise);
     };
   }
 
@@ -268,13 +271,20 @@ public class TestaraUiSkill implements AgentSkill<TestaraUiSkill.Input, String> 
         return "Error: " + e.getMessage();
       }
     }
+    String interactionHint = FrameworkKnowledgeStore.instance().uiInteractionExamples().isEmpty()
+        ? "next_tool: call testara_ui mode=interactions to get the full list of valid interaction/wait/assertion/observation classes before writing the method body."
+        : "interaction-catalog: " + FrameworkKnowledgeStore.instance().uiInteractionExamples().size()
+            + " classes indexed — call testara_ui mode=interactions for the full catalog if needed.";
+
     if (concise) {
       return "file_path: " + relativePath + "\n"
           + "feature_step:\n" + featureStep + "\n"
+          + interactionHint + "\n"
           + "```java\n" + source.strip() + "\n```\n";
     }
     return "## UserAction: " + aClass + "\n\n**Path:** `" + relativePath + "`\n\n```java\n" + source + "```\n\n**Feature step:**\n```gherkin\n" + featureStep + "\n```\n"
-        + "\n> Write the source block to `" + relativePath + "`.";
+        + "\n> " + interactionHint + "\n"
+        + "> Write the source block to `" + relativePath + "`.";
   }
 
   private boolean appendPropertyIfMissing(Path root, String relPath, String propertyLine) throws IOException {
@@ -378,6 +388,79 @@ public class TestaraUiSkill implements AgentSkill<TestaraUiSkill.Input, String> 
   private boolean containsAttribute(String html, String attr, String value) {
     return Pattern.compile("\\b" + Pattern.quote(attr) + "=['\"]" + Pattern.quote(value) + "['\"]")
         .matcher(html).find();
+  }
+
+  private String renderInteractionCatalog(boolean concise) {
+    List<String> all = FrameworkKnowledgeStore.instance().uiInteractionExamples();
+    if (all.isEmpty()) {
+      return "ui-interaction-catalog: not available (run a full build to generate)\n"
+          + "hint: call testara_ui mode=explain for a hardcoded reference.";
+    }
+
+    // Group by class prefix (first token before '.')
+    Map<String, List<String>> byClass = new java.util.LinkedHashMap<>();
+    for (String entry : all) {
+      String cls = entry.contains(".") ? entry.substring(0, entry.indexOf('.')) : entry;
+      byClass.computeIfAbsent(cls, k -> new java.util.ArrayList<>()).add(entry);
+    }
+
+    // Categorise
+    Set<String> interactions = Set.of("Click","Enter","Clear","Scroll","ForceClick","Hover",
+        "DoubleClick","Drag","Blur","Hold","Submit","Tab","Focus","SelectOption");
+    Set<String> waits    = Set.of("WaitUntil");
+    Set<String> asserts  = Set.of("SeeThat","StateElement","HasAttribute","TheCss","TheAttribute");
+    Set<String> obs      = Set.of("ThisPage","Capture","ExecuteScript","ChildElement","ChildElements","Navigate");
+
+    if (concise) {
+      StringBuilder sb = new StringBuilder("ui-interaction-catalog: " + all.size() + " entries\n\n");
+      appendGroup(sb, "## Interactions (attemptsTo)", byClass, interactions);
+      appendGroup(sb, "## Wait", byClass, waits);
+      appendGroup(sb, "## Assertions (attemptsTo or observe)", byClass, asserts);
+      appendGroup(sb, "## Observations / Navigation", byClass, obs);
+      // Anything not categorised
+      Set<String> categorised = new java.util.HashSet<>();
+      categorised.addAll(interactions); categorised.addAll(waits);
+      categorised.addAll(asserts); categorised.addAll(obs);
+      Map<String, List<String>> rest = new java.util.LinkedHashMap<>(byClass);
+      rest.keySet().removeAll(categorised);
+      if (!rest.isEmpty()) appendGroup(sb, "## Other", rest, rest.keySet());
+      sb.append("\nimports: io.github.ygrip.testara.ui.interaction.* and io.github.ygrip.testara.ui.observation.*\n");
+      sb.append("usage: place inside attemptsTo(...) in a UserAction method, or use actor.observe(observation).\n");
+      return sb.toString();
+    }
+
+    StringBuilder sb = new StringBuilder("# Testara UI Interaction Catalog\n\n");
+    sb.append("Source: auto-indexed from `testara-ui` source at agent build time. Always current.\n\n");
+    appendGroupMd(sb, "## Interactions — use inside `attemptsTo(...)`", byClass, interactions);
+    appendGroupMd(sb, "## Wait — use inside `attemptsTo(...)`", byClass, waits);
+    appendGroupMd(sb, "## Assertions — use inside `attemptsTo(...)` or `actor.observe(...)`", byClass, asserts);
+    appendGroupMd(sb, "## Observations / Navigation", byClass, obs);
+    Set<String> categorised = new java.util.HashSet<>();
+    categorised.addAll(interactions); categorised.addAll(waits);
+    categorised.addAll(asserts); categorised.addAll(obs);
+    Map<String, List<String>> rest = new java.util.LinkedHashMap<>(byClass);
+    rest.keySet().removeAll(categorised);
+    if (!rest.isEmpty()) appendGroupMd(sb, "## Other", rest, rest.keySet());
+    sb.append("\n**Imports:** `io.github.ygrip.testara.ui.interaction.*` and `io.github.ygrip.testara.ui.observation.*`\n");
+    return sb.toString();
+  }
+
+  private void appendGroup(StringBuilder sb, String header, Map<String, List<String>> byClass, java.util.Collection<String> keys) {
+    List<String> found = new java.util.ArrayList<>();
+    for (String k : keys) if (byClass.containsKey(k)) found.addAll(byClass.get(k));
+    if (found.isEmpty()) return;
+    sb.append(header).append("\n");
+    found.forEach(e -> sb.append("  ").append(e).append("\n"));
+    sb.append("\n");
+  }
+
+  private void appendGroupMd(StringBuilder sb, String header, Map<String, List<String>> byClass, java.util.Collection<String> keys) {
+    List<String> found = new java.util.ArrayList<>();
+    for (String k : keys) if (byClass.containsKey(k)) found.addAll(byClass.get(k));
+    if (found.isEmpty()) return;
+    sb.append(header).append("\n\n```java\n");
+    found.forEach(e -> sb.append(e).append("\n"));
+    sb.append("```\n\n");
   }
 
   private static String buildInteractionList() {

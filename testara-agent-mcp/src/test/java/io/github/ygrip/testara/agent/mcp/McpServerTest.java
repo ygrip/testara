@@ -23,8 +23,8 @@ class McpServerTest {
     String json = response.toString();
     assertTrue(json.contains("\"testara_ui\""));
     assertTrue(json.contains("\"testara_debug\""));
-    assertTrue(json.contains("explain | page | action | config"));
-    assertTrue(json.contains("mode=action is enabled"));
+    assertTrue(json.contains("explain | page | action | config | interactions"));
+    assertTrue(json.contains("mode=interactions"));
     assertTrue(json.contains("\"format\""));
     assertTrue(json.contains("\"write\""));
   }

@@ -198,8 +198,8 @@ public class McpServer {
         optionalStr("flow", "Request spec flow name"),
         optionalStr("method", "HTTP method: GET, POST, PUT, PATCH, DELETE"),
         optionalStr("endpoint", "Endpoint URL or path")));
-    tools.add(tool("testara_ui",         "Generate Testara UI artifacts — Page class, UserAction class, or engine config. Returns structured artifact with file_path and source for one-call file creation.",
-        optionalStr("mode", "explain | page | action | config | validate-page. mode=action is enabled in MCP; use write=false for preview/source and write=true only when local writes are enabled."),
+    tools.add(tool("testara_ui",         "Generate Testara UI artifacts — Page class, UserAction class, engine config, or interaction catalog. Returns structured artifact with file_path and source for one-call file creation.",
+        optionalStr("mode", "explain | page | action | config | interactions | validate-page. Use mode=interactions to get the full catalog of valid Click/Enter/SeeThat/WaitUntil/Navigate/observation classes before writing UserAction methods."),
         optionalStr("pageName", "Page name (e.g. login)"),
         optionalStr("actionName", "Action description (e.g. login with credential)"),
         optionalStr("engine", "UI engine: selenium | playwright | appium"),
