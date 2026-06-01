@@ -71,3 +71,6 @@ docs/agent/
 .java-version
 .claude/
 .codex/
+META-INF/
+log4j2-parallel-execution.xml.sample
+io/
