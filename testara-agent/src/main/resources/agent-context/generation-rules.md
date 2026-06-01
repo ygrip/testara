@@ -10,6 +10,7 @@ properties -> command conversion -> config binding -> base steps -> request spec
 - Keep reusable Java in `src/main/java/{basePackage}`; keep runners/glue in `src/test/java/{basePackage}`.
 - `test-init` is a clean bootstrap by default: do not generate placeholder pages, actions, StepDefinitions, sample features, sample request specs, or sample service aliases unless `includeExamples=true` is explicitly requested.
 - `test-init` must ask for `groupId` and `artifactId` unless the user explicitly chooses auto-generated coordinates.
+- `test-init` with `type=ui` or `type=fullstack`: NEVER pass `engine=selenium` by default. Omit the engine param so the skill returns a needs_input prompt — then present the options (selenium/playwright/appium) to the user and wait for their answer before calling again.
 - `test-init` writes only to the intended workspace. When using MCP, pass `projectRoot` explicitly if the server root is not the target project — this applies to `testara_init`, `testara_run`, and `testara_context`.
 - Compile scope for Testara modules imported by `src/main/java`; test scope for `testara-*-cucumber`, `testara-junit5`, and JUnit runner deps.
 - Do not add `cucumber-junit-platform-engine` to generated POMs. Testara provides `testara-cucumber` engine; adding the standard engine causes conflicts.

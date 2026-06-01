@@ -105,13 +105,14 @@ public class TestInitSkill implements AgentSkill<TestInitSkill.Input, String> {
   private String enginePrompt(String type) {
     return """
         needs_input: testara_init_engine
-        question: Ask the user which browser automation engine to use for this %s project.
+        STOP: Do NOT proceed or pick a default. You MUST ask the user this question before calling testara_init again.
+        question: Which browser automation engine would you like to use for this %s project?
         options:
-          selenium (default): mature, wide browser/grid support, requires WebDriver binaries
-          playwright: faster startup, auto-manages browsers, headless-first
-          appium: mobile automation (Android/iOS)
-        instruction: Do NOT default silently. Ask the user to confirm or choose an engine.
-        next_step: call testara_init again with the chosen engine (engine=selenium|playwright|appium).
+          1. selenium  — mature, wide browser/Grid support, requires WebDriver binaries (default)
+          2. playwright — faster startup, auto-manages browsers, built-in wait strategies
+          3. appium    — mobile automation (Android/iOS)
+        instruction: Present these options to the user and wait for their explicit answer.
+        next_step: call testara_init again with engine set to the user's choice (engine=selenium|playwright|appium).
         """.formatted(type);
   }
 
