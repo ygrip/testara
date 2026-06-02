@@ -2,6 +2,7 @@ package io.github.ygrip.testara.ui.page;
 
 import java.time.Duration;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicReference;
@@ -93,6 +94,10 @@ public final class Element<E> {
     return new ElementContext(locator);
   }
 
+  public static ElementContext named(String elementName) {
+    return new ElementContext(Locator.reference(elementName));
+  }
+
   public static <E> Element<E> instance(PageFinder<?, E, ?> finder, PageContext<?> pageContext, E instance) {
     return new Element<>(finder, pageContext, instance);
   }
@@ -119,17 +124,33 @@ public final class Element<E> {
 
   @SuppressWarnings({"unchecked", "rawtypes"})
   public <T> T location() {
-    if (locator == null || (locator.getValue() == null)) {
+    if (locator == null || locator.getValue() == null) {
       return null;
     }
-    String elementName = locator.getValue();
+
+    T result = null;
     finder.setSuppressLog(true);
-    T result;
-    if (ObjectUtils.isNotEmpty(pageContext)) {
-      result = (T) ((PageFinder) finder).getLocator(pageContext, elementName);
-    } else {
-      result = (T) finder.getLocator(elementName);
+
+    if (locator.isCatalogReference()) {
+      if (ObjectUtils.isNotEmpty(pageContext)) {
+        result = (T) ((PageFinder) finder).getLocator(pageContext, locator.getValue(), locator.getParameters());
+      } else {
+        result = (T) finder.getLocator(locator.getValue(), locator.getParameters());
+      }
+      finder.setSuppressLog(false);
+      return result;
     }
+
+    boolean shouldTryCatalogLookup = !locator.hasParameters() && ObjectUtils.isNotEmpty(locator.getValue());
+    if (shouldTryCatalogLookup) {
+      String elementName = locator.getValue();
+      if (ObjectUtils.isNotEmpty(pageContext)) {
+        result = (T) ((PageFinder) finder).getLocator(pageContext, elementName);
+      } else {
+        result = (T) finder.getLocator(elementName);
+      }
+    }
+
     if (result == null) {
       result = (T) ((PageFinder) finder).getLocator(locator);
     }
@@ -326,7 +347,7 @@ public final class Element<E> {
 
 
   public static class ElementContext {
-    private final Locator locator;
+    private Locator locator;
     private Kind kind;
     private int childIndex;
     private PageFinder<?, ?, ?> finder;
@@ -376,6 +397,21 @@ public final class Element<E> {
 
     public ElementContext by(PageFinder<?, ?, ?> finder) {
       this.finder = finder;
+      return this;
+    }
+
+    public ElementContext with(String name, Object value) {
+      this.locator = this.locator.with(name, value);
+      return this;
+    }
+
+    public ElementContext with(Map<String, ?> params) {
+      this.locator = this.locator.with(params);
+      return this;
+    }
+
+    public ElementContext format(Object... values) {
+      this.locator = this.locator.format(values);
       return this;
     }
 
