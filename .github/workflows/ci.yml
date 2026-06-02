@@ -20,8 +20,25 @@ jobs:
           distribution: 'temurin'
           cache: maven
 
-      - name: Build and test
-        run: mvn clean verify -B --no-transfer-progress
+      - name: Build (generates agent catalog)
+        run: mvn install -DskipTests -B --no-transfer-progress
+
+      - name: Verify catalog was generated
+        run: |
+          CATALOG=testara-agent/target/classes/agent-context/flavor-catalog.json
+          if [ ! -f "$CATALOG" ]; then
+            echo "ERROR: flavor-catalog.json not found — catalog generation failed"
+            exit 1
+          fi
+          COUNT=$(python3 -c "import json; print(len(json.load(open('$CATALOG'))))")
+          echo "Catalog entries: $COUNT"
+          if [ "$COUNT" -lt 100 ]; then
+            echo "ERROR: catalog suspiciously small ($COUNT entries)"
+            exit 1
+          fi
+
+      - name: Test
+        run: mvn test -B --no-transfer-progress
 
       - name: Upload test reports
         if: failure()
