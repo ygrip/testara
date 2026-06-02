@@ -121,12 +121,30 @@ public abstract class PageFinder<P extends PageContext<?>, E, B> {
     return getLocator(getCurrentPage(), element);
   }
 
+  public B getLocator(String element, Map<String, ?> parameters) {
+    return getLocator(getCurrentPage(), element, parameters);
+  }
+
   public abstract B getLocator(P page, String element);
+
+  public abstract B getLocator(P page, String element, Map<String, ?> parameters);
 
   /**
    * Resolve a {@link Locator} to the engine-specific locator (e.g. By).
    */
   public abstract B getLocator(Locator locator);
+
+  public Optional<ParameterizedElementMatch> resolveParameterizedElement(String phrase) {
+    return resolveParameterizedElement(getCurrentPage(), phrase);
+  }
+
+  public Optional<ParameterizedElementMatch> resolveParameterizedElement(P page, String phrase) {
+    if (page == null || phrase == null || phrase.isBlank()) {
+      return Optional.empty();
+    }
+    ElementCatalog catalog = buildPageCatalog(page);
+    return catalog.matchParameterizedPhrase(phrase, page);
+  }
 
   /**
    * <p>getElement.</p>

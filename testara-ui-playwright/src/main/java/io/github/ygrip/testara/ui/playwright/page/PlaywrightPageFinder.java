@@ -142,6 +142,41 @@ public class PlaywrightPageFinder extends PageFinder<PlaywrightPage, com.microso
   }
 
   @Override
+  public String getLocator(PlaywrightPage page, String element, Map<String, ?> parameters) {
+    if (page == null || element == null || element.isBlank()) {
+      return null;
+    }
+
+    String result = null;
+    try {
+      ElementCatalog catalog = buildPageCatalog(page);
+      Map.Entry<JavaType, Object> item = catalog.findBy(Locator.class)
+        .orBy(com.microsoft.playwright.Locator.class)
+        .withQuery(element)
+        .withParameters(parameters)
+        .getResult(page);
+
+      if (ObjectUtils.isNotEmpty(item)) {
+        final var key = item.getKey();
+        var value = item.getValue();
+        if (ObjectUtils.isNotEmpty(value)) {
+          if (key.isTypeOrSubTypeOf(Locator.class)) {
+            result = PlaywrightLocatorConverter.toSelector((Locator) value);
+          } else if (key.isTypeOrSubTypeOf(com.microsoft.playwright.Locator.class)) {
+            result = value.toString();
+          }
+        }
+      }
+    } catch (Exception e) {
+      if (!isSuppressLog()) {
+        log.warn("Locator lookup failed for '{}': {} (page={})", element, e.getMessage(),
+          page.getClass().getSimpleName(), e);
+      }
+    }
+    return result;
+  }
+
+  @Override
   public String getLocator(Locator locator) {
     if (locator == null) {
       return null;

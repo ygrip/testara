@@ -94,6 +94,44 @@ public class SeleniumPageFinder extends PageFinder<SeleniumPage, WebElement, By>
   }
 
   @Override
+  public By getLocator(SeleniumPage page, String element, Map<String, ?> parameters) {
+    if (page == null || element == null || element.isBlank()) {
+      return null;
+    }
+
+    By result = null;
+    try {
+      ElementCatalog catalog = buildPageCatalog(page);
+      Map.Entry<JavaType, Object> item = catalog.findBy(Locator.class)
+        .orBy(By.class)
+        .orBy(WebElement.class)
+        .withQuery(element)
+        .withParameters(parameters)
+        .getResult(page);
+
+      if (ObjectUtils.isNotEmpty(item)) {
+        final var key = item.getKey();
+        var value = item.getValue();
+        if (ObjectUtils.isNotEmpty(value)) {
+          if (key.isTypeOrSubTypeOf(Locator.class)) {
+            result = ByLocator.toBy((Locator) value);
+          } else if (key.isTypeOrSubTypeOf(By.class)) {
+            result = (By) value;
+          } else if (key.isTypeOrSubTypeOf(WebElement.class)) {
+            result = toLocator((WebElement) value);
+          }
+        }
+      }
+    } catch (Exception e) {
+      if (!isSuppressLog()) {
+        log.warn("Locator lookup failed for '{}': {} (page={})", element, e.getMessage(),
+          page.getClass().getSimpleName(), e);
+      }
+    }
+    return result;
+  }
+
+  @Override
   public By getLocator(Locator locator) {
     if (locator == null) {
       return null;
