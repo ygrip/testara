@@ -38,7 +38,7 @@ jobs:
           fi
 
       - name: Test
-        run: mvn test -B --no-transfer-progress
+        run: mvn verify -B --no-transfer-progress
 
       - name: Upload test reports
         if: failure()
