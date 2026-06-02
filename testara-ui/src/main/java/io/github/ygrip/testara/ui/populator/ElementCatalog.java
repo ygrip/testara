@@ -17,6 +17,7 @@ import org.apache.commons.lang3.ObjectUtils;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JavaType;
 import io.github.ygrip.testara.core.mapper.MapperHelper;
+import io.github.ygrip.testara.ui.model.Locator;
 
 import lombok.Getter;
 
@@ -158,7 +159,12 @@ public class ElementCatalog {
    */
   @SuppressWarnings("unchecked")
   private <T> T findElement(JavaType type, String query, Object instance) {
-    if (type == null || query == null) {
+    return findElement(type, ElementQuery.of(query), instance);
+  }
+
+  @SuppressWarnings("unchecked")
+  private <T> T findElement(JavaType type, ElementQuery query, Object instance) {
+    if (type == null || query == null || query.name() == null) {
       return null;
     }
     List<JavaType> targetTypes = catalogs.keySet()
@@ -169,21 +175,17 @@ public class ElementCatalog {
     for (JavaType key : targetTypes) {
       Map<String, Element<?>> catalog = catalogs.getOrDefault(key, new HashMap<>());
       if (!catalog.isEmpty()) {
-        Element<?> element = catalog.getOrDefault(query, null);
+        Element<?> element = catalog.getOrDefault(query.name(), null);
         if (ObjectUtils.isEmpty(element)) {
           Optional<Map.Entry<String, Element<?>>> candidate = catalog.entrySet()
             .stream()
-            .filter(value -> value.getValue()
-              .isMatch(query))
+            .filter(entry -> entry.getValue().isMatch(query.name()))
             .findAny();
-          result.set((T) candidate.map(stringElementEntry -> resolveElement(
-              key,
-              stringElementEntry.getValue(),
-              instance
-            ))
-            .orElse(null));
+          if (candidate.isPresent()) {
+            result.set(resolveElement(key, candidate.get().getValue(), instance, query.parameters()));
+          }
         } else {
-          result.set(resolveElement(key, element, instance));
+          result.set(resolveElement(key, element, instance, query.parameters()));
         }
       }
 
@@ -197,11 +199,23 @@ public class ElementCatalog {
 
   @SuppressWarnings("unchecked")
   private <T> T resolveElement(JavaType type, Element<?> element, Object instance) {
+    return resolveElement(type, element, instance, Map.of());
+  }
+
+  @SuppressWarnings("unchecked")
+  private <T> T resolveElement(JavaType type, Element<?> element, Object instance, Map<String, ?> parameters) {
+    Object resolved;
     if (element.isLazy()) {
-      return (T) element.getLazyElement(instance);
+      resolved = element.getLazyElement(instance);
     } else {
-      return (T) element.getElement();
+      resolved = element.getElement();
     }
+
+    if (resolved instanceof Locator locator && parameters != null && !parameters.isEmpty()) {
+      return (T) locator.with(parameters);
+    }
+
+    return (T) resolved;
   }
 
   /**
@@ -251,10 +265,22 @@ public class ElementCatalog {
    *
    * @param instance     page instance
    * @param keysSnapshot copy of keys to iterate (not the mutable list)
-   * @param query        element query
+   * @param query        element query string
    * @return entry or null
    */
   protected Map.Entry<JavaType, Object> getResult(Object instance, List<JavaType> keysSnapshot, String query) {
+    return getResult(instance, keysSnapshot, ElementQuery.of(query));
+  }
+
+  /**
+   * Thread-safe: iterates over a snapshot of keys so concurrent findBy() on same catalog cannot cause CME.
+   *
+   * @param instance     page instance
+   * @param keysSnapshot copy of keys to iterate (not the mutable list)
+   * @param query        element query with optional parameters
+   * @return entry or null
+   */
+  protected Map.Entry<JavaType, Object> getResult(Object instance, List<JavaType> keysSnapshot, ElementQuery query) {
     if (keysSnapshot == null || keysSnapshot.isEmpty() || query == null) {
       return null;
     }
@@ -347,6 +373,7 @@ public class ElementCatalog {
   public class Finder {
     List<JavaType> keys;
     String query;
+    Map<String, Object> parameters = new HashMap<>();
 
     public Finder(Class<?> key) {
       keys = new ArrayList<>();
@@ -409,12 +436,25 @@ public class ElementCatalog {
       return this;
     }
 
+    public Finder withParameter(String name, Object value) {
+      this.parameters.put(name, value);
+      return this;
+    }
+
+    public Finder withParameters(Map<String, ?> params) {
+      if (params != null) {
+        this.parameters.putAll(params);
+      }
+      return this;
+    }
+
     public Map.Entry<JavaType, Object> getResult(Object instance) {
       if (this.query == null || this.getKeys().isEmpty()) {
         return null;
       }
       List<JavaType> keysSnapshot = new ArrayList<>(this.keys);
-      return ElementCatalog.this.getResult(instance, keysSnapshot, this.query);
+      ElementQuery elementQuery = ElementQuery.of(this.query, this.parameters);
+      return ElementCatalog.this.getResult(instance, keysSnapshot, elementQuery);
     }
   }
 }
