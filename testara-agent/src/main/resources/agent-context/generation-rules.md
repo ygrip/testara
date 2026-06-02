@@ -345,27 +345,32 @@ The no-parameter variant (`user do "X" in "Y" page`) resolves differently and si
 Never group different pages into nested static UserAction classes. Generate separate top-level files such as `CheckoutInfoActions.java` and `CheckoutOverviewActions.java`.
 For truly shared/global actions, use a top-level class with `@Action(value = "open cart", allowAnonymousCall = true)` so it can be resolved without binding to one current page.
 
-## RULE 4: Page URL in properties — three modes, each with different behavior
+## RULE 4: Page URL in properties — url in @Page is optional
 
-### Mode A: url="" (empty) — for the initial landing page
-  @Page(name = "login", url = "", ...)
+The `url` attribute of `@Page` defaults to `""` and may be omitted entirely.
+Never hardcode a URL in the annotation — always put it in application.properties.
+
+### Standard page (omit url — cleanest form):
+  @Page(name = "login", platforms = {DeviceType.DEFAULT, DeviceType.DESKTOP})
   web.page.desktop.login.url=https://www.saucedemo.com/
-  application.properties: app.web.login-url=https://www.saucedemo.com/
   → "user open 'login' page" navigates to the URL from application.properties.
 
-### Mode B: url="" (empty) — for pages reached via UserAction navigation
-  @Page(name = "inventory", url = "", ...)
+### Explicit empty string — equivalent, accepted but not required:
+  @Page(name = "login", url = "", platforms = {DeviceType.DEFAULT, DeviceType.DESKTOP})
+
+### Page reached via UserAction navigation — still omit url in annotation:
+  @Page(name = "inventory", platforms = {DeviceType.DEFAULT, DeviceType.DESKTOP})
   web.page.desktop.inventory.url=https://www.saucedemo.com/inventory.html   ← FULL URL required
   → "user is in 'inventory' page" checks the current URL against this value.
   IMPORTANT: Use a FULL absolute URL for page-transition detection. Relative paths
   (e.g. "/inventory.html") FAIL silently — the framework cannot match them against
   the browser's full URL and "Page X is not current page" errors result.
 
-### Mode C: Never hardcode URLs in @Page(url=...) annotation
+### Never hardcode URLs in the annotation:
   WRONG: @Page(name = "login", url = "https://site.com/login", ...)
-  RIGHT: @Page(name = "login", url = "", ...) + web.page.desktop.login.url=... in application.properties
+  RIGHT: @Page(name = "login", ...) + web.page.desktop.login.url=... in application.properties
 
-Summary: Always use url="" in @Page. Always put the FULL absolute URL in application.properties.
+Summary: Omit url from @Page (it defaults to ""). Put the FULL absolute URL in application.properties.
 web.page.desktop.login.url=https://www.saucedemo.com/
 
 ## RULE 5: service config before features

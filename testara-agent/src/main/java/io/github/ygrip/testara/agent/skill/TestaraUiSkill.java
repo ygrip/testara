@@ -106,7 +106,7 @@ public class TestaraUiSkill implements AgentSkill<TestaraUiSkill.Input, String> 
 
         ## Page class
         ```java
-        @Page(name = "login", url = "", platforms = {DeviceType.DEFAULT, DeviceType.DESKTOP})
+        @Page(name = "login", platforms = {DeviceType.DEFAULT, DeviceType.DESKTOP})
         public class LoginPage extends SeleniumPage {
           private static final Locator USERNAME_FIELD = Locator.id("user-name");
           private static final Locator PASSWORD_FIELD = Locator.id("password");
