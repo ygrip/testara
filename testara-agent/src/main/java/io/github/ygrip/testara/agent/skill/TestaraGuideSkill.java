@@ -78,8 +78,8 @@ public class TestaraGuideSkill implements AgentSkill<String, String> {
 
   private List<FlavorEntry> representativeSteps(String slice, List<FlavorEntry> entries, int limit) {
     List<String> priority = switch (slice) {
-      case "ui" -> List.of("using", "open", "is in", "type value {string} to {string} in the",
-          "enter value", "click the {string} in the", "should see", "element", "wait", "do");
+      case "ui" -> List.of("using {word} in {devices}", "open", "is in", "type value {string} to {string} in the",
+          "enter value", "click the {string} in the", "should see {string} is {displayedOrNotDisplayed}", "element", "wait", "do");
       case "api" -> List.of("using service", "prepare", "process request", "statusCode", "response success", "assign previous");
       case "sql", "mongo", "elastic" -> List.of("connect", "prepare", "select", "execute", "assign previous");
       case "kafka" -> List.of("start kafka", "send kafka", "consume", "stop kafka");

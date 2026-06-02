@@ -212,7 +212,7 @@ public class TestaraContextSkill implements AgentSkill<Void, String> {
   }
 
   private List<FlavorEntry> representativeSteps(List<FlavorEntry> steps, int limit) {
-    List<String> priority = List.of("using", "open", "is in", "type value {string} to {string} in the", "click the {string} in the",
+    List<String> priority = List.of("using {word} in {devices}", "open", "is in", "type value {string} to {string} in the", "click the {string} in the",
         "should see", "process request", "statusCode", "connect", "start kafka", "assign previous");
     List<FlavorEntry> prioritized = priority.stream()
         .map(p -> steps.stream()

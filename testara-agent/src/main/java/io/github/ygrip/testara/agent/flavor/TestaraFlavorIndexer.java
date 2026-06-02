@@ -40,6 +40,9 @@ public class TestaraFlavorIndexer {
     for (Path root : scanned) {
       entries.addAll(scanDir(root));
     }
+    entries.sort(Comparator.comparing(FlavorEntry::slice)
+        .thenComparing(FlavorEntry::keyword)
+        .thenComparing(FlavorEntry::expression));
     return List.copyOf(entries);
   }
 
