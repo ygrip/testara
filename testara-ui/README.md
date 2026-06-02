@@ -303,6 +303,67 @@ element.one()
 element.all()
 ```
 
+## Dynamic Catalog Element Lookup
+
+Page elements may define parameterized locators using `{placeholder}` syntax:
+
+```java
+@Page(name = "product", url = "/products", platforms = {DeviceType.DEFAULT, DeviceType.DESKTOP})
+public class ProductPage extends SeleniumPage {
+
+    public static final Locator PRODUCT_CARD =
+        Locator.css(".card[data-name='{productName}']");
+
+    public static final Locator PRODUCT_ACTION =
+        Locator.xpath("//div[text()='{productName}']//button[text()='{action}']");
+}
+```
+
+The field name becomes a readable catalog alias (`PRODUCT_CARD` → `product card`).
+
+### Shortcut Phrase — One Trailing Parameter
+
+For locators with exactly one placeholder, generic UI steps support a shortcut phrase where the trailing word(s) become the parameter value:
+
+```gherkin
+When user click the "product card Samsung S24"
+Then user should see "product card Samsung S24" is displayed
+```
+
+Resolves internally to:
+
+```java
+Element.named("product card")
+    .with("productName", "Samsung S24")
+    .build()
+```
+
+### DataTable — Multiple Parameters
+
+For locators with more than one placeholder, use the explicit DataTable syntax:
+
+```gherkin
+When user click the "product action" with parameter
+  | productName | Samsung S24 |
+  | action      | Add to Cart |
+```
+
+### Property Resolution in Parameters
+
+Parameter values support `properties(key)` and other command expressions:
+
+```gherkin
+When user click the "product card" with parameter
+  | productName | properties(test.product.name) |
+```
+
+### Rules
+
+- Never put raw CSS/XPath/Appium selectors in feature files
+- Shortcut phrase only works when the locator has exactly one `{placeholder}`
+- Use DataTable syntax whenever there are multiple parameters or ambiguity is possible
+- Page URL must be in `web.page.desktop.{name}.url` property, not in `@Page(url=...)`
+
 ## User Actions
 
 User actions encapsulate reusable page-specific tasks:

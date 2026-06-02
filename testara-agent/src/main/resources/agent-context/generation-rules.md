@@ -176,6 +176,7 @@ All UI built-in steps follow the pattern `{actor} {step}` where `{actor}` is typ
 | `{actor} do "{action}"` | `When user do "login with credentials"` |
 | `{actor} do "{action}" in "{page}" page with parameter` | `When user do "login with credentials" in "login" page with parameter` |
 | `{actor} click the "{element}"` | `When user click the "button login"` |
+| `{actor} click the "{element}" with parameter` | `When user click the "product action" with parameter` + DataTable |
 | `{actor} type value "{value}" to "{element}"` | `When user type value "standard_user" to "username field"` |
 | `{actor} enter value "{value}" on "{element}"` | `When user enter value "secret_sauce" on "password field"` |
 | `{actor} should see "{element}" is displayed` | `Then user should see "error message" is displayed` |
@@ -184,6 +185,38 @@ All UI built-in steps follow the pattern `{actor} {step}` where `{actor}` is typ
 | `{actor} see that` (validation table) | `Then user see that` + `\| actual \| validation \| expectation \|` |
 
 Valid browsers: `chrome`, `firefox`, `safari`, `edge`. Valid platforms: `desktop`, `mobile`, `android`, `ios`. Do NOT use `web`.
+
+## Dynamic Catalog Element Lookup — UI generation rules
+
+Page `Locator` fields support `{placeholder}` templates for dynamic elements:
+
+```java
+public static final Locator PRODUCT_CARD = Locator.css(".card[data-name='{productName}']");
+public static final Locator PRODUCT_ACTION = Locator.xpath("//div[text()='{productName}']//button[text()='{action}']");
+```
+
+Field name becomes the catalog alias: `PRODUCT_CARD` → `product card`.
+
+**Single placeholder — use shortcut phrase:**
+```gherkin
+When user click the "product card Samsung S24"
+Then user should see "product card Samsung S24" is displayed
+```
+
+**Multiple placeholders — use DataTable step (no `| key | value |` header for this step):**
+```gherkin
+When user click the "product action" with parameter
+  | productName | Samsung S24 |
+  | action      | Add to Cart |
+```
+
+**Rules for agents:**
+- Use `Locator.css/xpath/id` with `{placeholder}` for dynamic elements — never concatenate selectors in Java
+- Use shortcut phrase steps for single-parameter elements; use DataTable steps for multiple parameters
+- Never put raw CSS/XPath/Appium selectors in `.feature` files
+- Derive the catalog alias from the field name (`PRODUCT_CARD` → `product card`); don't invent aliases
+- Property values in DataTable parameters use `properties(key)` syntax as usual
+- The `with parameter` DataTable rows are `| paramName | paramValue |` — no header row
 
 ## UserAction class — imports and interactions
 
