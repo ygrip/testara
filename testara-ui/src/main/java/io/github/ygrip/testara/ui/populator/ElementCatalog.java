@@ -3,11 +3,13 @@ package io.github.ygrip.testara.ui.populator;
 import java.lang.reflect.Field;
 import java.util.AbstractMap;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
@@ -18,6 +20,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JavaType;
 import io.github.ygrip.testara.core.mapper.MapperHelper;
 import io.github.ygrip.testara.ui.model.Locator;
+import io.github.ygrip.testara.ui.page.ParameterizedElementMatch;
 
 import lombok.Getter;
 
@@ -298,6 +301,65 @@ public class ElementCatalog {
   }
 
   /**
+   * Matches a phrase like "product card Samsung S24" against single-parameter catalog elements.
+   * Returns the element name and extracted parameter value when exactly one alias prefix matches.
+   * Longest alias wins when multiple candidates could match.
+   */
+  public Optional<ParameterizedElementMatch> matchParameterizedPhrase(String phrase, Object pageInstance) {
+    if (phrase == null || phrase.isBlank()) {
+      return Optional.empty();
+    }
+
+    String normalizedPhrase = normalize(phrase);
+    List<Map.Entry<String, String>> candidates = new ArrayList<>(); // alias -> parameterName
+
+    for (Map<String, Element<?>> catalog : catalogs.values()) {
+      for (Element<?> element : catalog.values()) {
+        Object target = element.getElementOrLazyElement(pageInstance);
+        if (!(target instanceof Locator locator)) {
+          continue;
+        }
+        Set<String> params = locator.parameterNames();
+        if (params.size() != 1) {
+          continue;
+        }
+        String paramName = params.iterator().next();
+        for (String alias : element.allAliasesIncludingIdentifier()) {
+          candidates.add(new AbstractMap.SimpleEntry<>(alias, paramName));
+        }
+      }
+    }
+
+    candidates.sort(Comparator.comparingInt((Map.Entry<String, String> e) -> e.getKey().length()).reversed());
+
+    for (Map.Entry<String, String> candidate : candidates) {
+      String alias = candidate.getKey();
+      String normalizedAlias = normalize(alias);
+      if (!normalizedPhrase.startsWith(normalizedAlias + " ")) {
+        continue;
+      }
+      String trailingValue = phrase.substring(normalizedAlias.length()).trim();
+      if (trailingValue.isBlank()) {
+        continue;
+      }
+      return Optional.of(new ParameterizedElementMatch(alias, Map.of(candidate.getValue(), trailingValue)));
+    }
+
+    return Optional.empty();
+  }
+
+  private String normalize(String value) {
+    if (value == null) {
+      return "";
+    }
+    return value.trim()
+      .replace("_", " ")
+      .replace("-", " ")
+      .replaceAll("\\s+", " ")
+      .toLowerCase();
+  }
+
+  /**
    * @deprecated use {@link #getResult(Object, List, String)} for thread-safe lookup
    */
   protected Map.Entry<JavaType, Object> getResult(Object instance) {
@@ -366,6 +428,20 @@ public class ElementCatalog {
       } catch (IllegalAccessException e) {
         return null;
       }
+    }
+
+    public Object getElementOrLazyElement(Object instance) {
+      if (isLazy()) {
+        return getLazyElement(instance);
+      }
+      return getElement();
+    }
+
+    public List<String> allAliasesIncludingIdentifier() {
+      List<String> result = new ArrayList<>();
+      result.add(identifier);
+      result.addAll(aliases);
+      return result;
     }
   }
 
