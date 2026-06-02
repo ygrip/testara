@@ -3,7 +3,9 @@ package io.github.ygrip.testara.ui.steps;
 import static io.github.ygrip.testara.command.CommandExecutor.executeCommand;
 
 import java.time.Duration;
+import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Optional;
 
 import org.hamcrest.MatcherAssert;
 import org.hamcrest.Matchers;
@@ -14,6 +16,9 @@ import io.github.ygrip.testara.core.registry.RegistryScope;
 import io.github.ygrip.testara.core.transformer.TransformerService;
 import io.github.ygrip.testara.ui.context.TestUI;
 import io.github.ygrip.testara.ui.driver.DriverSessionManager;
+import io.github.ygrip.testara.ui.error.ElementNotFoundException;
+import io.github.ygrip.testara.ui.error.PageFailureException;
+import io.github.ygrip.testara.ui.error.SessionMismatchException;
 import io.github.ygrip.testara.ui.executor.ActorManager;
 import io.github.ygrip.testara.ui.interaction.Blur;
 import io.github.ygrip.testara.ui.interaction.Clear;
@@ -76,12 +81,41 @@ public class UIBaseSteps {
 
   @When("{actor} clear text from {string} in page {string}")
   public void clearText(String identifier, String element, String page) throws Throwable {
+    ActorManager.currentActor()
+      .attemptsTo(Clear.field(toElementContext(element, page)));
+  }
+
+  private Element.ElementContext target(String element) {
+    return ElementPhraseResolver.resolve(element)
+      .orElseGet(() -> Element.of(element));
+  }
+
+  private Element.ElementContext toElementContext(String element, String page) {
     final var session = DriverSessionManager.inThisTestThread()
       .getCurrentDriver();
-    ActorManager.currentActor()
-      .attemptsTo(Clear.field(Element.of(element)
-        .on(session.finder()
-          .getPage(page))));
+    Optional.ofNullable(session)
+      .orElseThrow(() -> new PageFailureException("No available session found"));
+
+    try {
+      final var pageContext = session.finder().getPage(page);
+      return ElementPhraseResolver.resolve(element, pageContext)
+        .orElseGet(() -> Element.of(element).on(pageContext));
+    } catch (Exception e) {
+      throw new ElementNotFoundException("Element %s is not found".formatted(element), e.getCause());
+    }
+  }
+
+  private Map<String, Object> resolveParameterValues(Map<String, Object> raw) {
+    Map<String, Object> result = new LinkedHashMap<>();
+    for (Map.Entry<String, Object> entry : raw.entrySet()) {
+      Object value = entry.getValue();
+      if (value instanceof String text) {
+        result.put(entry.getKey(), executeCommand(text));
+      } else {
+        result.put(entry.getKey(), value);
+      }
+    }
+    return result;
   }
 
   @When("{actor} type value {string} to {string}")
@@ -95,12 +129,8 @@ public class UIBaseSteps {
   @When("{actor} enter value {string} on {string} in the {string} page")
   public void actorEnterValueInThePage(String identifier, String value, String element, String pageName)
     throws Throwable {
-    final var session = DriverSessionManager.inThisTestThread()
-      .getCurrentDriver();
     final String text = executeCommand(value);
-    final var target = Element.of(element)
-      .on(session.finder()
-        .getPage(pageName));
+    final var target = toElementContext(element, pageName);
     ActorManager.currentActor()
       .attemptsTo(
         Enter.text(text)
@@ -110,12 +140,8 @@ public class UIBaseSteps {
 
   @When("{actor} type value {string} to {string} in the {string} page")
   public void actorTypeValueTo(String identifier, String value, String element, String pageName) throws Throwable {
-    final var session = DriverSessionManager.inThisTestThread()
-      .getCurrentDriver();
     final String text = executeCommand(value);
-    final var target = Element.of(element)
-      .on(session.finder()
-        .getPage(pageName));
+    final var target = toElementContext(element, pageName);
     ActorManager.currentActor()
       .attemptsTo(Enter.text(text)
         .into(target));
@@ -160,17 +186,13 @@ public class UIBaseSteps {
   @When("{actor} scroll to the {string}")
   public void actorScrollToTheElement(String identifier, String element) throws Throwable {
     ActorManager.currentActor()
-      .attemptsTo(Scroll.to(element)
+      .attemptsTo(Scroll.to(target(element))
         .andAlignToTop());
   }
 
   @When("{actor} scroll to the {string} in the {string}")
   public void actorScrollToTheElementOnPage(String identifier, String element, String page) throws Throwable {
-    final var session = DriverSessionManager.inThisTestThread()
-      .getCurrentDriver();
-    final var target = Element.of(element)
-      .on(session.finder()
-        .getPage(page));
+    final var target = toElementContext(element, page);
     ActorManager.currentActor()
       .attemptsTo(Scroll.to(target)
         .andAlignToTop());
@@ -179,16 +201,22 @@ public class UIBaseSteps {
   @When("{actor} click the {string}")
   public void actorClickOnTheElement(String identifier, String element) throws Throwable {
     ActorManager.currentActor()
-      .attemptsTo(Click.on(element));
+      .attemptsTo(Click.on(target(element)));
+  }
+
+  @When("{actor} click the {string} with parameter")
+  public void actorClickElementWithParameter(String identifier, String element, DataTable table) throws Throwable {
+    Map<String, Object> parameters = new TransformerService().sourceData(table.cells())
+      .to(new TypeReference<>() {
+      });
+    ActorManager.currentActor()
+      .attemptsTo(Click.on(Element.named(element)
+        .with(resolveParameterValues(parameters))));
   }
 
   @When("{actor} click the {string} in the {string} page")
   public void actorClickOnTheElementOnPage(String identifier, String element, String page) throws Throwable {
-    final var session = DriverSessionManager.inThisTestThread()
-      .getCurrentDriver();
-    final var target = Element.of(element)
-      .on(session.finder()
-        .getPage(page));
+    final var target = toElementContext(element, page);
     ActorManager.currentActor()
       .attemptsTo(Click.on(target));
   }
@@ -196,16 +224,12 @@ public class UIBaseSteps {
   @When("{actor} focus to {string}")
   public void actorFocusToTheElement(String identifier, String element) throws Throwable {
     ActorManager.currentActor()
-      .attemptsTo(Focus.on(element));
+      .attemptsTo(Focus.on(target(element)));
   }
 
   @When("{actor} focus to {string} in the {string} page")
   public void actorFocusTheElementOnPage(String identifier, String element, String page) throws Throwable {
-    final var session = DriverSessionManager.inThisTestThread()
-      .getCurrentDriver();
-    final var target = Element.of(element)
-      .on(session.finder()
-        .getPage(page));
+    final var target = toElementContext(element, page);
     ActorManager.currentActor()
       .attemptsTo(Focus.on(target));
   }
@@ -213,16 +237,12 @@ public class UIBaseSteps {
   @When("{actor} blur from {string}")
   public void actorBlurToTheElement(String identifier, String element) throws Throwable {
     ActorManager.currentActor()
-      .attemptsTo(Blur.from(element));
+      .attemptsTo(Blur.from(target(element)));
   }
 
   @When("{actor} blur from {string} in the {string} page")
   public void actorBlurTheElementOnPage(String identifier, String element, String page) throws Throwable {
-    final var session = DriverSessionManager.inThisTestThread()
-      .getCurrentDriver();
-    final var target = Element.of(element)
-      .on(session.finder()
-        .getPage(page));
+    final var target = toElementContext(element, page);
     ActorManager.currentActor()
       .attemptsTo(Blur.from(target));
   }
@@ -237,12 +257,13 @@ public class UIBaseSteps {
   public void actorShouldSee(String identifier, String element, String display) throws Throwable {
     display = display.trim()
       .toLowerCase();
+    final var elementContext = target(element);
     if (display.equals("displayed")) {
       ActorManager.currentActor()
-        .attemptsTo(SeeThat.visible(element));
+        .attemptsTo(SeeThat.visible(elementContext));
     } else {
       ActorManager.currentActor()
-        .attemptsTo(SeeThat.hidden(element));
+        .attemptsTo(SeeThat.hidden(elementContext));
     }
   }
 
@@ -516,6 +537,6 @@ public class UIBaseSteps {
   @Then("{actor} hover on the {string}")
   public void hoverElement(String identifier, String element) throws Throwable {
     ActorManager.currentActor()
-      .attemptsTo(Hover.on(element));
+      .attemptsTo(Hover.on(target(element)));
   }
 }
