@@ -259,7 +259,7 @@ public class ActionResolver {
 
   private static Object[] parseParameters(List<String> input, Class<?>[] expectedType,
     Map<String, Object> additionalParameter) throws FailToParseParametersException {
-    int expectedSize = CommonHelper.isBlank(additionalParameter) ? input.size() : input.size() + 1;
+    final var expectedSize = determineParameterSize(input, additionalParameter);
     Object[] result = new Object[expectedSize];
     if (expectedType.length != expectedSize) {
       throw new FailToParseParametersException(String.format(
@@ -277,5 +277,15 @@ public class ActionResolver {
       result[expectedSize - 1] = additionalParameter;
     }
     return result;
+  }
+
+  private static int determineParameterSize(List<String> input, Map<String, Object> additionalParameter) {
+    var size = Optional.ofNullable(input)
+      .map(List::size)
+      .orElse(0);
+    if (additionalParameter != null) {
+      size++;
+    }
+    return size;
   }
 }

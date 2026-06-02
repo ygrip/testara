@@ -109,6 +109,7 @@ public abstract class PageContext<D extends DriverSession<?>> {
   public String pageUrl() {
     return Optional.ofNullable(metadata)
       .map(Page::url)
+      .filter(StringUtils::isNotBlank)
       .map(converter::convert)
       .filter(ObjectUtils::isNotEmpty)
       .map(Object::toString)

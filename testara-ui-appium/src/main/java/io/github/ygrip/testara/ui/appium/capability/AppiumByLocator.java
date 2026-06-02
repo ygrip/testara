@@ -20,7 +20,7 @@ public final class AppiumByLocator {
       throw new IllegalArgumentException("locator cannot be null");
     }
     Selector s = locator.getStrategy();
-    String v = locator.getValue();
+    String v = locator.resolvedValue();
     return switch (s) {
       case ID -> AppiumBy.id(v);
       case CSS -> AppiumBy.cssSelector(v);

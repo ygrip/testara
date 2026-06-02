@@ -19,7 +19,7 @@ public class TestaraDriverInfo {
   private String deviceDownloadLocation;
   private DeviceType platform;
   private boolean useProxy;
-  private boolean remoteDriver = false;
+  private boolean remoteDriver;
   private AvailableProxy proxyType;
   private Class<? extends AbstractDriver<?, ?>> classReference;
 }

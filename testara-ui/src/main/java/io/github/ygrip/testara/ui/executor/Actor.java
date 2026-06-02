@@ -144,7 +144,7 @@ public final class Actor {
   }
 
   public void executeTask(String task, String pageName) {
-    executeTask(task, pageName, new HashMap<>());
+    executeTask(task, pageName, null);
   }
 
   public void executeTask(String task) {

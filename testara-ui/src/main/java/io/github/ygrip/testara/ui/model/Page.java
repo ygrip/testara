@@ -18,7 +18,7 @@ import jakarta.validation.constraints.NotNull;
 public @interface Page {
   @NotNull String name();
 
-  String url();
+  String url() default "";
 
   @NotNull DeviceType[] platforms() default {DeviceType.DEFAULT};
 }

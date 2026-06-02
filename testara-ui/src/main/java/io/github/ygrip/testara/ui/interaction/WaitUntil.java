@@ -1,6 +1,7 @@
 package io.github.ygrip.testara.ui.interaction;
 
 import java.time.Duration;
+import java.util.Optional;
 
 import io.github.ygrip.testara.ui.executor.Actor;
 import io.github.ygrip.testara.ui.model.Locator;
@@ -23,7 +24,7 @@ public final class WaitUntil implements Interaction {
   private WaitUntil(Kind kind, Element locator, Duration timeout) {
     this.kind = kind;
     this.locator = locator;
-    this.timeout = timeout;
+    this.timeout = Optional.ofNullable(timeout).orElse(Duration.ofSeconds(10));
   }
 
   public static WaitUntil visible(String locator) {

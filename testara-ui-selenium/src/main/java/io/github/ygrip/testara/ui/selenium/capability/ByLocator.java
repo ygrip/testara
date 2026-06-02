@@ -13,7 +13,7 @@ public final class ByLocator {
       throw new IllegalArgumentException("locator cannot be null");
     }
     Selector s = locator.getStrategy();
-    String v = locator.getValue();
+    String v = locator.resolvedValue();
     return switch (s) {
       case ID -> By.id(v);
       case CSS -> By.cssSelector(v);
