@@ -340,12 +340,13 @@ Element.named("product card")
 
 ### DataTable — Multiple Parameters
 
-For locators with more than one placeholder, use the explicit DataTable syntax:
+For locators with more than one placeholder, use the explicit DataTable syntax. The `| key | value |` header is required — `TransformerService` uses it to identify the vertical key-value pattern:
 
 ```gherkin
 When user click the "product action" with parameter
-  | productName | Samsung S24 |
-  | action      | Add to Cart |
+  | key         | value        |
+  | productName | Samsung S24  |
+  | action      | Add to Cart  |
 ```
 
 ### Property Resolution in Parameters
@@ -354,6 +355,7 @@ Parameter values support `properties(key)` and other command expressions:
 
 ```gherkin
 When user click the "product card" with parameter
+  | key         | value                         |
   | productName | properties(test.product.name) |
 ```
 

@@ -203,11 +203,12 @@ When user click the "product card Samsung S24"
 Then user should see "product card Samsung S24" is displayed
 ```
 
-**Multiple placeholders — use DataTable step (no `| key | value |` header for this step):**
+**Multiple placeholders — use DataTable step with `| key | value |` header (required by TransformerService):**
 ```gherkin
 When user click the "product action" with parameter
-  | productName | Samsung S24 |
-  | action      | Add to Cart |
+  | key         | value        |
+  | productName | Samsung S24  |
+  | action      | Add to Cart  |
 ```
 
 **Rules for agents:**
@@ -216,7 +217,7 @@ When user click the "product action" with parameter
 - Never put raw CSS/XPath/Appium selectors in `.feature` files
 - Derive the catalog alias from the field name (`PRODUCT_CARD` → `product card`); don't invent aliases
 - Property values in DataTable parameters use `properties(key)` syntax as usual
-- The `with parameter` DataTable rows are `| paramName | paramValue |` — no header row
+- The `with parameter` DataTable uses `| key | value |` header (Pattern 1) — same as all other parameter steps in the system
 
 ## UserAction class — imports and interactions
 
