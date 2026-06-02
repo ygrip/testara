@@ -1,5 +1,10 @@
 package io.github.ygrip.testara.ui.model;
 
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.Set;
+
 import org.apache.commons.lang3.StringUtils;
 
 /**
@@ -8,10 +13,32 @@ import org.apache.commons.lang3.StringUtils;
 public final class Locator {
   private final Selector strategy;
   private final String value;
+  private final Map<String, Object> parameters;
+  private final boolean template;
+  private final boolean catalogReference;
 
   private Locator(Selector strategy, String value) {
     this.strategy = strategy;
     this.value = value;
+    this.parameters = Collections.emptyMap();
+    this.template = LocatorTemplate.hasTemplate(value);
+    this.catalogReference = false;
+  }
+
+  private Locator(Selector strategy, String value, Map<String, Object> parameters) {
+    this.strategy = strategy;
+    this.value = value;
+    this.parameters = Map.copyOf(parameters);
+    this.template = LocatorTemplate.hasTemplate(value);
+    this.catalogReference = false;
+  }
+
+  private Locator(Selector strategy, String value, Map<String, Object> parameters, boolean catalogReference) {
+    this.strategy = strategy;
+    this.value = value;
+    this.parameters = Map.copyOf(parameters);
+    this.template = LocatorTemplate.hasTemplate(value);
+    this.catalogReference = catalogReference;
   }
 
   public Selector getStrategy() {
@@ -60,6 +87,47 @@ public final class Locator {
   /** By strategy and value. */
   public static Locator of(Selector strategy, String value) {
     return new Locator(strategy, value);
+  }
+
+  public Locator with(String name, Object value) {
+    Map<String, Object> next = new LinkedHashMap<>(this.parameters);
+    next.put(name, value);
+    return new Locator(this.strategy, this.value, next, this.catalogReference);
+  }
+
+  public Locator with(Map<String, ?> values) {
+    Map<String, Object> next = new LinkedHashMap<>(this.parameters);
+    next.putAll(values);
+    return new Locator(this.strategy, this.value, next, this.catalogReference);
+  }
+
+  public Locator format(Object... values) {
+    return new Locator(this.strategy, String.format(this.value, values), this.parameters);
+  }
+
+  public String resolvedValue() {
+    return LocatorTemplate.render(this.value, this.strategy, this.parameters);
+  }
+
+  public boolean hasParameters() {
+    return this.template;
+  }
+
+  public boolean isCatalogReference() {
+    return catalogReference;
+  }
+
+  public Set<String> parameterNames() {
+    return LocatorTemplate.parameterNames(this.value);
+  }
+
+  public Map<String, Object> getParameters() {
+    return parameters;
+  }
+
+  /** Catalog element reference by name — not a CSS/XPath selector. */
+  public static Locator reference(String name) {
+    return new Locator(null, name, Collections.emptyMap(), true);
   }
 
   /**
