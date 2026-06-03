@@ -69,10 +69,10 @@ class TestaraUiSkillTest {
     assertTrue(output.contains("src/main/java/io/github/ygrip/automation/action/LoginActions.java"));
     assertTrue(output.contains("import io.github.ygrip.automation.page.LoginPage;"));
     assertTrue(output.contains("@OnPage(value = {LoginPage.class})"));
-    assertTrue(output.contains("@Action(\"login with credentials\")"));
+    assertTrue(output.contains("@Action(\"login with valid credentials\")"));
     assertTrue(output.contains("public class LoginActions extends UserAction"));
     assertFalse(output.contains("public static class"));
-    assertTrue(output.contains("When user do \"login with credentials\" in \"login\" page with parameter"));
+    assertTrue(output.contains("When user do \"login with valid credentials\" in \"login\" page with parameter"));
     assertTrue(output.contains("|key|value|"));
     assertTrue(output.contains("| username"));
     assertTrue(output.contains("properties(test.user.username)"));

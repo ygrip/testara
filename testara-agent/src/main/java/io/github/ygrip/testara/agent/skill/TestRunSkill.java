@@ -4,13 +4,13 @@ import io.github.ygrip.testara.agent.index.FeatureIndex;
 import io.github.ygrip.testara.agent.index.TestaraProjectProfile;
 import io.github.ygrip.testara.agent.skill.run.*;
 
-import java.io.BufferedReader;
 import java.util.concurrent.TimeUnit;
 import java.io.IOException;
-import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -45,8 +45,8 @@ public class TestRunSkill implements AgentSkill<String, String> {
   public String execute(String input, AgentContext context) {
     TestaraProjectProfile profile = context.profile();
     Map<String, String> opts = context.options();
-    boolean dryRun    = !"false".equals(opts.getOrDefault("dryRun", "true"));
-    boolean execute   = "true".equals(opts.getOrDefault("execute", "false"));
+    boolean dryRun    = "true".equals(opts.getOrDefault("dryRun", "false"));
+    boolean execute   = !"false".equals(opts.getOrDefault("execute", "true"));
     boolean rerunFail = "true".equals(opts.getOrDefault("rerunFailed", "false"));
     String module     = opts.getOrDefault("module", null);
 
@@ -86,8 +86,8 @@ public class TestRunSkill implements AgentSkill<String, String> {
 
     if (dryRun || !execute) return plan.toMarkdown();
 
-    // Execution guard: respect TESTARA_AGENT_RUN_ENABLED
-    boolean runEnabled = "true".equalsIgnoreCase(System.getenv("TESTARA_AGENT_RUN_ENABLED"));
+    // Execution guard: enabled by default. Set TESTARA_AGENT_RUN_ENABLED=false to block execution.
+    boolean runEnabled = !"false".equalsIgnoreCase(System.getenv("TESTARA_AGENT_RUN_ENABLED"));
     if (!runEnabled) {
       return plan.toMarkdown() + "\n> **Execution blocked.** Set TESTARA_AGENT_RUN_ENABLED=true to allow test execution.\n";
     }
@@ -115,27 +115,26 @@ public class TestRunSkill implements AgentSkill<String, String> {
 
   private String executeAndReport(String command, String tagExpr, Path projectRoot) {
     long start = System.currentTimeMillis();
-    List<String> output = new ArrayList<>();
     int exitCode;
     // Choose mvnw or mvn
     java.nio.file.Path mvnw = projectRoot.resolve("mvnw");
     String mvnExec = java.nio.file.Files.exists(mvnw) ? mvnw.toAbsolutePath().toString() : "mvn";
     String safeCommand = command.replace("mvn ", mvnExec + " ");
+    Path logFile = runLogFile(projectRoot);
     try {
+      Files.createDirectories(logFile.getParent());
       String[] cmd = {"sh", "-c", safeCommand};
       ProcessBuilder pb = new ProcessBuilder(cmd)
           .directory(projectRoot.toFile())
-          .redirectErrorStream(true);
+          .redirectErrorStream(true)
+          .redirectOutput(logFile.toFile());
       Process process = pb.start();
-      try (BufferedReader br = new BufferedReader(
-          new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
-        String line;
-        while ((line = br.readLine()) != null) output.add(line);
-      }
       boolean finished = process.waitFor(15, TimeUnit.MINUTES);
       if (!finished) {
         process.destroyForcibly();
-        return "## Test Run Report\n\n**Status:** TIMEOUT  \nTest execution exceeded 15-minute limit.\n";
+        long duration = System.currentTimeMillis() - start;
+        return logSummary(safeCommand, tagExpr, logFile, -1, duration, "TIMEOUT")
+            + "\nTest execution exceeded 15-minute limit.\n";
       }
       exitCode = process.exitValue();
     } catch (IOException | InterruptedException e) {
@@ -146,21 +145,94 @@ public class TestRunSkill implements AgentSkill<String, String> {
 
     // Try Cucumber JSON / JUnit XML report parsing
     Path reportJson = projectRoot.resolve("target/cucumber.json");
-    Path junitXml = projectRoot.resolve("target/surefire-reports");
+    String summary = logSummary(safeCommand, tagExpr, logFile, exitCode, duration, exitCode == 0 ? "PASSED" : "FAILED");
     if (Files.exists(reportJson)) {
       try {
         TestRunReport report = io.github.ygrip.testara.agent.parser.CucumberReportParser
             .parseCucumberJson(reportJson, tagExpr, duration);
-        return report.toMarkdown();
+        return report.toMarkdown() + "\n\n" + summary;
       } catch (IOException e) {
         LOG.warning("Cannot parse cucumber.json: " + e.getMessage());
       }
     }
 
     // Fallback: console summary
-    String status = exitCode == 0 ? "PASSED" : "FAILED";
-    return "## Test Run Report\n\n**Status:** " + status + "  \n**Duration:** "
-        + duration / 1000 + "s  \n**Tag filter:** `" + tagExpr + "`  \n";
+    return summary;
+  }
+
+  private Path runLogFile(Path projectRoot) {
+    String timestamp = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss").format(LocalDateTime.now());
+    return projectRoot.resolve("target/testara-agent-logs/maven-run-" + timestamp + ".log");
+  }
+
+  private String logSummary(String command, String tagExpr, Path logFile, int exitCode, long durationMillis,
+      String status) {
+    List<String> lines;
+    try {
+      lines = Files.exists(logFile) ? Files.readAllLines(logFile, StandardCharsets.UTF_8) : List.of();
+    } catch (IOException e) {
+      lines = List.of("Cannot read captured log: " + e.getMessage());
+    }
+    LogFacts facts = analyzeLog(lines);
+    StringBuilder sb = new StringBuilder();
+    sb.append("## Test Run Log Summary\n\n");
+    sb.append("**Status:** ").append(status).append("  \n");
+    sb.append("**Exit code:** ").append(exitCode).append("  \n");
+    sb.append("**Duration:** ").append(durationMillis / 1000).append("s  \n");
+    sb.append("**Tag filter:** `").append(tagExpr).append("`  \n");
+    sb.append("**Maven command:** `").append(command).append("`  \n");
+    sb.append("**Log file:** `").append(logFile).append("`  \n");
+    sb.append("**Maven summary:** ").append(firstNonBlank(facts.mavenSummary(), "not found")).append("  \n");
+    sb.append("**Scenario summary:** ").append(firstNonBlank(facts.scenarioSummary(), "not found")).append("  \n");
+    sb.append("**Build summary:** ").append(firstNonBlank(facts.buildSummary(), "not found")).append("  \n");
+    sb.append("**Elapsed time:** ").append(firstNonBlank(facts.elapsedTime(), durationMillis / 1000 + "s")).append("  \n");
+    sb.append("\nerrors:\n");
+    if (facts.errors().isEmpty()) sb.append("- none detected\n");
+    else facts.errors().forEach(e -> sb.append("- ").append(e).append("\n"));
+    sb.append("affected-lines:\n");
+    if (facts.affectedLines().isEmpty()) sb.append("- none detected\n");
+    else facts.affectedLines().forEach(l -> sb.append("- ").append(l).append("\n"));
+    sb.append("next-step: read only the referenced log slices or affected files if this summary is insufficient.\n");
+    return sb.toString();
+  }
+
+  private LogFacts analyzeLog(List<String> lines) {
+    List<String> errors = new ArrayList<>();
+    List<String> affectedLines = new ArrayList<>();
+    String mavenSummary = "";
+    String scenarioSummary = "";
+    String buildSummary = "";
+    String elapsed = "";
+    Pattern affected = Pattern.compile("([\\w./\\\\-]+\\.(?:java|feature|xml|properties)):(\\d+)");
+    for (int i = 0; i < lines.size(); i++) {
+      String line = lines.get(i);
+      String stripped = line.strip();
+      if (stripped.contains("Tests run:")) mavenSummary = stripped;
+      if (stripped.matches(".*\\d+ scenarios?.*")) scenarioSummary = stripped;
+      if (stripped.matches(".*\\d+ steps?.*")) {
+        scenarioSummary = scenarioSummary.isBlank() ? stripped : scenarioSummary + "; " + stripped;
+      }
+      if (stripped.contains("BUILD SUCCESS") || stripped.contains("BUILD FAILURE")) buildSummary = stripped;
+      if (stripped.startsWith("Total time:")) elapsed = stripped.replace("Total time:", "").strip();
+      String lower = stripped.toLowerCase();
+      if ((lower.contains("error") || lower.contains("exception") || lower.contains("failure"))
+          && !stripped.isBlank() && errors.size() < 20) {
+        errors.add("line " + (i + 1) + ": " + clipped(stripped));
+      }
+      Matcher matcher = affected.matcher(stripped);
+      if (matcher.find() && affectedLines.size() < 20) {
+        affectedLines.add(matcher.group(1) + ":" + matcher.group(2) + " (log line " + (i + 1) + ")");
+      }
+    }
+    return new LogFacts(mavenSummary, scenarioSummary, buildSummary, elapsed, errors, affectedLines);
+  }
+
+  private String clipped(String value) {
+    return value.length() <= 220 ? value : value.substring(0, 220) + "...";
+  }
+
+  private String firstNonBlank(String value, String fallback) {
+    return value == null || value.isBlank() ? fallback : value;
   }
 
   /**
@@ -222,4 +294,7 @@ public class TestRunSkill implements AgentSkill<String, String> {
         base.commands(), base.validations(), base.drivers(), fakeTag,
         base.properties(), base.conventions(), base.flavorSteps(), base.runtimeCatalog());
   }
+
+  private record LogFacts(String mavenSummary, String scenarioSummary, String buildSummary, String elapsedTime,
+      List<String> errors, List<String> affectedLines) {}
 }

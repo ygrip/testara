@@ -40,6 +40,36 @@ class TestaraBootstrapSkillTest {
   }
 
   @Test
+  void writesBatchUiPagesAndActionsWithCatalogSummary() throws IOException {
+    String pages = """
+        [
+          {"name":"login","actions":["login with valid credentials","show login error"]},
+          {"name":"inventory","actions":["add product to cart"]},
+          {"name":"cart","actions":["open cart page"]}
+        ]
+        """;
+
+    String output = new TestaraBootstrapSkill().execute(
+        new TestaraBootstrapSkill.Input("batch", null, null, null,
+            null, null, null, null, "io.github.ygrip.automation", "selenium",
+            "batch", pages, null, "https://www.saucedemo.com"),
+        writeContext());
+
+    assertTrue(output.contains("artifact: ui-batch"));
+    assertTrue(output.contains("pages: 3"));
+    assertTrue(output.contains("actions: 4"));
+    assertTrue(output.contains("login with valid credentials -> loginWithValidCredentials"));
+    assertTrue(output.contains("show login error -> showLoginError"));
+    assertTrue(output.contains("nextRecommendedCommand: testara_run --tags @regression"));
+    assertTrue(Files.exists(projectRoot.resolve("src/main/java/io/github/ygrip/automation/page/LoginPage.java")));
+    assertTrue(Files.exists(projectRoot.resolve("src/main/java/io/github/ygrip/automation/page/InventoryPage.java")));
+    assertTrue(Files.exists(projectRoot.resolve("src/main/java/io/github/ygrip/automation/page/CartPage.java")));
+    String loginActions = Files.readString(projectRoot.resolve("src/main/java/io/github/ygrip/automation/action/LoginActions.java"));
+    assertTrue(loginActions.contains("@Action(\"login with valid credentials\")"));
+    assertTrue(loginActions.contains("@Action(\"show login error\")"));
+  }
+
+  @Test
   void writesCommandSkeletonUnderMainJavaWithScanHint() throws IOException {
     String output = new TestaraBootstrapSkill().execute(
         new TestaraBootstrapSkill.Input("command", "customer code", null,

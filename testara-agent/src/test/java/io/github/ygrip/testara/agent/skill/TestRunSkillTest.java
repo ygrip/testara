@@ -10,6 +10,8 @@ import io.github.ygrip.testara.agent.index.TestaraProjectProfile;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
@@ -47,6 +49,37 @@ class TestRunSkillTest {
     assertTrue(output.contains("needs_input: test_run_filter"));
     assertTrue(output.contains("feature name, or scenario name"));
     assertTrue(output.contains("indexed-features: 0 | indexed-scenarios: 0"));
+  }
+
+  @Test
+  void executedRunCapturesMavenLogAndReturnsSummary() throws IOException {
+    Path mvnw = projectRoot.resolve("mvnw");
+    Files.writeString(mvnw, """
+        #!/bin/sh
+        echo "[ERROR] Tests run: 1, Failures: 1, Errors: 0, Skipped: 0"
+        echo "1 scenarios (1 failed)"
+        echo "3 steps (1 failed, 2 passed)"
+        echo "src/test/resources/features/login.feature:12 expected error"
+        echo "[INFO] BUILD FAILURE"
+        echo "[INFO] Total time:  2.345 s"
+        exit 1
+        """);
+    assertTrue(mvnw.toFile().setExecutable(true));
+
+    String output = new TestRunSkill().execute("run @smoke", executeContext(profileWithSaucedemo()));
+
+    assertTrue(output.contains("## Test Run Log Summary"));
+    assertTrue(output.contains("**Exit code:** 1"));
+    assertTrue(output.contains("**Maven command:** `"));
+    assertTrue(output.contains("**Log file:** `"));
+    assertTrue(output.contains("1 scenarios (1 failed)"));
+    assertTrue(output.contains("src/test/resources/features/login.feature:12"));
+    assertFalse(output.contains("needs_input"));
+  }
+
+  private AgentContext executeContext(TestaraProjectProfile profile) {
+    return new AgentContext(projectRoot, profile, AgentMode.READ_ONLY, null,
+        Map.of("dryRun", "false", "execute", "true"));
   }
 
   private AgentContext context(TestaraProjectProfile profile) {

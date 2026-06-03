@@ -30,8 +30,8 @@ import java.util.logging.Logger;
  *
  * Defaults:
  * - File writes enabled by default (set TESTARA_AGENT_WRITE_ENABLED=false to disable)
- * - Test execution disabled by default (TESTARA_AGENT_RUN_ENABLED=false)
- * - test_run defaults to dryRun=true
+ * - Test execution enabled by default (set TESTARA_AGENT_RUN_ENABLED=false to disable)
+ * - test_run defaults to execute=true and dryRun=false
  */
 public class McpServer {
 
@@ -76,6 +76,7 @@ public class McpServer {
   private final TestaraDbSkill        dbSkill         = new TestaraDbSkill();
   private final TestaraDebugSkill     debugSkill      = new TestaraDebugSkill();
   private final TestaraValidateSkill  validateSkill   = new TestaraValidateSkill();
+  private final TestaraIndexSkill     indexSkill      = new TestaraIndexSkill();
 
   public McpServer(Path projectRoot) {
     this.projectRoot = projectRoot.toAbsolutePath().normalize();
@@ -159,12 +160,14 @@ public class McpServer {
     tools.add(tool("testara_review",     "Review feature files for quality issues",
         requiredStr("path", "Path to .feature file or directory (absolute, or relative to projectRoot)"),
         optionalStr("projectRoot", "Project root. Required when MCP server was launched outside the workspace.")));
-    tools.add(tool("testara_run",        "Resolve natural-language test intent to tag expression, optionally execute",
-        requiredStr("input", "Natural-language test run request"),
-        optionalBool("dryRun", "Show plan only — default true"),
-        optionalBool("execute", "Actually execute Maven — default false"),
+    tools.add(tool("testara_run",        "Run tests by explicit Cucumber tag expression. Agents should pass tags from user intent or testara_index, not vague natural language.",
+        requiredStr("input", "Explicit Cucumber tag expression to run, e.g. @smoke or @ui and @checkout"),
+        optionalBool("dryRun", "Show plan only — default false"),
+        optionalBool("execute", "Actually execute Maven — default true"),
         optionalStr("module", "Restrict to Maven module"),
         optionalStr("projectRoot", "Project root. Required when MCP server was launched outside the workspace (e.g. from home dir).")));
+    tools.add(tool("testara_index",      "Return compact action, page, locator, tag, step, and property catalogs without exposing property values.",
+        optionalStr("projectRoot", "Project root. Required when MCP server was launched outside the workspace.")));
     tools.add(tool("testara_command",    "List project commands, show command detail, or generate a new CommandLogic<T> class. Omit description to list all.",
         optionalStr("description", "Omit to list all commands; 'detail:<name>' for details; or describe a new command to generate"),
         optionalStr("detail", "Command name to show source and usage docs for"),
@@ -208,11 +211,15 @@ public class McpServer {
         optionalStr("format", "concise (default for MCP) or markdown"),
         optionalStr("projectRoot", "Project root. Required when writing files or when MCP server was launched outside the workspace."),
         optionalBool("write", "Write the generated file to disk. Default false — returns structured artifact for manual creation.")));
-    tools.add(tool("testara_bootstrap",  "Create or preview dynamic Testara bootstrap artifacts: UI page/action bundles, API specs/config, Command, and Validation skeletons.",
-        optionalStr("artifact", "page | action | ui-bundle | request-spec | api-config | command | validation"),
+    tools.add(tool("testara_bootstrap",  "Create or preview dynamic Testara bootstrap artifacts: UI page/action bundles, API specs/config, Command, Validation, or batch UI skeletons.",
+        optionalStr("artifact", "page | action | ui-bundle | batch | request-spec | api-config | command | validation"),
+        optionalStr("mode", "Optional mode. Use batch for multi-page UI generation."),
         optionalStr("intent", "Natural-language artifact intent"),
         optionalStr("pageName", "UI page name"),
         optionalStr("actionName", "UI action name or command/validation description"),
+        optionalStr("pages", "JSON array of pages for batch mode. Example: [{\"name\":\"login\",\"actions\":[\"login with valid credentials\"]}]"),
+        optionalStr("actions", "JSON array or comma-separated action names used when pages omit actions."),
+        optionalStr("baseUrl", "Optional base URL for generated page configuration context."),
         optionalStr("domain", "API/service domain"),
         optionalStr("flow", "API request spec flow"),
         optionalStr("method", "HTTP method"),
@@ -283,6 +290,7 @@ public class McpServer {
       case "testara_review" -> reviewSkill.execute(
           Paths.get(args.path("path").asText(".")), ctx);
       case "testara_run" -> runSkill.execute(args.path("input").asText(""), ctx);
+      case "testara_index" -> indexSkill.execute(null, ctx);
       case "testara_command" -> commandSkill.execute(args.path("description").asText(""), ctx);
       case "testara_command_detail" -> commandSkill.execute("detail:" + args.path("name").asText(""), ctx);
       case "testara_validation" -> validationSkill.execute(args.path("description").asText(""), ctx);
@@ -317,7 +325,9 @@ public class McpServer {
           args.path("pageName").asText(null), args.path("actionName").asText(null),
           args.path("domain").asText(null), args.path("flow").asText(null),
           args.path("method").asText(null), args.path("endpoint").asText(null),
-          args.path("basePackage").asText(null), args.path("engine").asText(null)), ctx);
+          args.path("basePackage").asText(null), args.path("engine").asText(null),
+          args.path("mode").asText(null), args.path("pages").asText(null),
+          args.path("actions").asText(null), args.path("baseUrl").asText(null)), ctx);
       case "testara_db"       -> dbSkill.execute(new TestaraDbSkill.Input(
           args.path("slice").asText("sql"), args.path("mode").asText("explain"),
           args.path("name").asText(null)), ctx);
@@ -344,9 +354,10 @@ public class McpServer {
   private AgentContext buildContext(String toolName, JsonNode args) {
     Map<String, String> opts = new LinkedHashMap<>();
     Path effectiveRoot = resolveProjectRoot(args);
-    // Secure defaults: no execution, no writes
-    opts.put("dryRun", args.path("dryRun").asBoolean(true) ? "true" : "false");
-    opts.put("execute", args.path("execute").asBoolean(false) ? "true" : "false");
+    // testara_run executes by default; writes still require explicit write=true.
+    boolean isRun = "testara_run".equals(toolName);
+    opts.put("dryRun", args.path("dryRun").asBoolean(!isRun) ? "true" : "false");
+    opts.put("execute", args.path("execute").asBoolean(isRun) ? "true" : "false");
     // Default to concise for MCP — agents don't need decorative markdown
     opts.put("format", args.has("format") ? args.path("format").asText() : "concise");
     if (args.has("mode"))   opts.put("mode",   args.path("mode").asText("auto"));

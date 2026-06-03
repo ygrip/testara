@@ -22,7 +22,10 @@ class McpServerTest {
 
     String json = response.toString();
     assertTrue(json.contains("\"testara_ui\""));
+    assertTrue(json.contains("\"testara_index\""));
     assertTrue(json.contains("\"testara_debug\""));
+    assertTrue(json.contains("Run tests by explicit Cucumber tag expression"));
+    assertTrue(json.contains("default true"));
     assertTrue(json.contains("explain | page | action | config | interactions"));
     assertTrue(json.contains("mode=interactions"));
     assertTrue(json.contains("\"format\""));

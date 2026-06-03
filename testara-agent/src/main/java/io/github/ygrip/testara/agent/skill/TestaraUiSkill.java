@@ -519,17 +519,27 @@ public class TestaraUiSkill implements AgentSkill<TestaraUiSkill.Input, String> 
 
   private String toCamelCase(String name) {
     String[] parts = name.replaceAll("[^a-zA-Z0-9]+", " ").trim().split("\\s+");
+    if (parts.length == 0 || parts[0].isBlank()) return "performAction";
     StringBuilder sb = new StringBuilder(parts[0].toLowerCase(Locale.ROOT));
     for (int i = 1; i < parts.length; i++)
       sb.append(Character.toUpperCase(parts[i].charAt(0))).append(parts[i].substring(1).toLowerCase(Locale.ROOT));
-    return sb.toString();
+    String method = sb.toString();
+    return method.length() <= 60 ? method : method.substring(0, 60);
   }
 
   private String normalizeActionName(String actionName) {
-    return actionName.toLowerCase(Locale.ROOT)
-        .replaceAll("\\b(valid|invalid|successful|failed|positive|negative)\\s+(?=credentials?\\b)", "")
+    String normalized = actionName.toLowerCase(Locale.ROOT)
+        .replaceAll("https?://\\S+", " ")
+        .replaceAll("\\b(username|password|token|secret)\\s+\\S+", " ")
+        .replaceAll("\\busing\\s+(valid|invalid)?\\s*(credentials?|username|password)\\b", "with $1 credentials")
         .replaceAll("\\s+", " ")
         .strip();
+    if (normalized.length() > 80) {
+      normalized = normalized.replaceAll("\\b(page|at|with|and|the|user|users?)\\b", " ")
+        .replaceAll("\\s+", " ")
+        .strip();
+    }
+    return normalized.isBlank() ? "perform action" : normalized;
   }
 
   private String inferPageName(String actionName) {
