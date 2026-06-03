@@ -52,7 +52,7 @@ class TestaraBootstrapSkillTest {
     String output = new TestaraBootstrapSkill().execute(
         new TestaraBootstrapSkill.Input("batch", null, null, null,
             null, null, null, null, "io.github.ygrip.automation", "selenium",
-            "batch", pages, null, "https://www.saucedemo.com"),
+            "batch", pages, null, "https://www.saucedemo.com", false, null, false),
         writeContext());
 
     assertTrue(output.contains("artifact: ui-batch"));
@@ -67,6 +67,28 @@ class TestaraBootstrapSkillTest {
     String loginActions = Files.readString(projectRoot.resolve("src/main/java/io/github/ygrip/automation/action/LoginActions.java"));
     assertTrue(loginActions.contains("@Action(\"login with valid credentials\")"));
     assertTrue(loginActions.contains("@Action(\"show login error\")"));
+  }
+
+  @Test
+  void batchBootstrapCanGenerateFeaturesFromCreatedActions() throws IOException {
+    String pages = """
+        [
+          {"name":"login","actions":["login with valid credentials"]}
+        ]
+        """;
+
+    String output = new TestaraBootstrapSkill().execute(
+        new TestaraBootstrapSkill.Input("batch", "login with valid credentials", null, null,
+            "saucedemo", null, null, null, "io.github.ygrip.automation", "selenium",
+            "batch", pages, null, "https://www.saucedemo.com", true, null, true),
+        writeContext());
+
+    assertTrue(output.contains("featureGeneration:"));
+    assertTrue(output.contains("usedActions:"));
+    assertTrue(output.contains("login with valid credentials"));
+    Path feature = projectRoot.resolve("src/test/resources/features/ui/login.feature");
+    assertTrue(Files.exists(feature));
+    assertTrue(Files.readString(feature).contains("When user do \"login with valid credentials\" in \"login\" page with parameter"));
   }
 
   @Test

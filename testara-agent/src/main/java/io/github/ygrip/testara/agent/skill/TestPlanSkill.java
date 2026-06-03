@@ -1,5 +1,7 @@
 package io.github.ygrip.testara.agent.skill;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.ygrip.testara.agent.catalog.GenerationGuard;
 import io.github.ygrip.testara.agent.catalog.PropertyRuleEngine;
 import io.github.ygrip.testara.agent.catalog.StepLinker;
@@ -27,14 +29,24 @@ import java.util.stream.Collectors;
 public class TestPlanSkill implements AgentSkill<TestPlanSkill.Input, String> {
 
   private static final Logger LOG = Logger.getLogger(TestPlanSkill.class.getName());
+  private static final ObjectMapper MAPPER = new ObjectMapper();
 
-  public record Input(String intent, String slice, String domain, List<String> tags) {}
+  public record Input(String intent, String slice, String domain, List<String> tags,
+      String mode, String featureFiles, boolean createFiles, boolean useExistingActionCatalog) {
+    public Input(String intent, String slice, String domain, List<String> tags) {
+      this(intent, slice, domain, tags, null, null, false, false);
+    }
+  }
 
   @Override
   public String name() { return "test-plan"; }
 
   @Override
   public String execute(Input input, AgentContext context) {
+    if ("batch".equalsIgnoreCase(input.mode())) {
+      return executeBatch(input, context);
+    }
+
     TestaraProjectProfile profile = context.profile();
     String slice  = input.slice() != null ? input.slice() : inferSlice(input.intent());
     String domain = input.domain() != null ? input.domain() : inferDomain(input.intent());
@@ -112,6 +124,231 @@ public class TestPlanSkill implements AgentSkill<TestPlanSkill.Input, String> {
     var violations = GenerationGuard.validateFeature(featureContent, flavorSteps, profile.stepDefinitions());
     return GenerationGuard.annotate(sb.toString(), violations);
   }
+
+  private String executeBatch(Input input, AgentContext context) {
+    List<FeatureBatchSpec> features = parseFeatureBatch(input);
+    if (features.isEmpty()) {
+      return "needs_input: testara_plan_batch\n"
+          + "reason: featureFiles must be a JSON array with featureName/path/scenarios.\n";
+    }
+
+    List<String> createdFeatureFiles = new ArrayList<>();
+    List<String> usedActions = new ArrayList<>();
+    List<String> unresolvedActions = new ArrayList<>();
+    Set<String> tagIndex = new LinkedHashSet<>();
+    List<String> fileSummaries = new ArrayList<>();
+    StringBuilder preview = new StringBuilder();
+    Map<String, String> actionCatalog = actionCatalog(context.projectRoot());
+    boolean write = input.createFiles() || "true".equals(context.options().get("write"));
+
+    for (FeatureBatchSpec feature : features) {
+      String featureText = buildBatchFeature(feature, actionCatalog, usedActions, unresolvedActions, tagIndex);
+      preview.append("\n--- ").append(feature.path()).append(" ---\n").append(featureText).append("\n");
+      if (write) {
+        String written = writeFeatureAtPath(context.projectRoot(), feature.path(), featureText);
+        if (written != null) {
+          createdFeatureFiles.add(written);
+          fileSummaries.add(written + " created with " + feature.scenarios().size() + " scenario(s)");
+        }
+      }
+    }
+
+    String recommendedTag = tagIndex.contains("@regression") ? "@regression"
+        : tagIndex.stream().findFirst().orElse("@regression");
+    StringBuilder sb = new StringBuilder();
+    sb.append("mode: batch\n");
+    sb.append("featureFiles: ").append(features.size()).append("\n");
+    sb.append("createdFeatureFiles:\n");
+    if (createdFeatureFiles.isEmpty()) sb.append("- none\n");
+    else createdFeatureFiles.forEach(path -> sb.append("- ").append(path).append("\n"));
+    sb.append("usedActions:\n");
+    if (usedActions.isEmpty()) sb.append("- none\n");
+    else usedActions.stream().distinct().forEach(action -> sb.append("- ").append(action).append("\n"));
+    sb.append("unresolvedActions:\n");
+    if (unresolvedActions.isEmpty()) sb.append("- none\n");
+    else unresolvedActions.stream().distinct().forEach(action -> sb.append("- ").append(action).append("\n"));
+    sb.append("tagIndex:\n");
+    if (tagIndex.isEmpty()) sb.append("- none\n");
+    else tagIndex.forEach(tag -> sb.append("- ").append(tag).append("\n"));
+    sb.append("recommendedRun: testara_run --tags ").append(recommendedTag).append("\n");
+    sb.append("filesChanged:\n");
+    if (fileSummaries.isEmpty()) sb.append("- none\n");
+    else fileSummaries.forEach(summary -> sb.append("- ").append(summary).append("\n"));
+    if (!"summary".equals(context.options().get("format"))) {
+      sb.append("\npreview:\n").append(preview);
+    }
+    return sb.toString();
+  }
+
+  private List<FeatureBatchSpec> parseFeatureBatch(Input input) {
+    String raw = input.featureFiles();
+    if (raw == null || raw.isBlank()) return List.of();
+    try {
+      JsonNode root = MAPPER.readTree(raw);
+      JsonNode array = root.isArray() ? root : root.path("featureFiles");
+      if (!array.isArray()) return List.of();
+      List<FeatureBatchSpec> features = new ArrayList<>();
+      for (JsonNode feature : array) {
+        String featureName = first(feature.path("featureName").asText(null),
+            feature.path("name").asText(null), "Generated feature");
+        String path = first(feature.path("path").asText(null),
+            "src/test/resources/features/" + toFileName(featureName));
+        List<ScenarioBatchSpec> scenarios = new ArrayList<>();
+        JsonNode scenarioArray = feature.path("scenarios");
+        if (scenarioArray.isArray()) {
+          for (JsonNode scenario : scenarioArray) {
+            scenarios.add(new ScenarioBatchSpec(
+                first(scenario.path("name").asText(null), "Generated scenario"),
+                first(scenario.path("intent").asText(null), scenario.path("name").asText("")),
+                stringArray(scenario.path("tags")),
+                stringArray(scenario.path("steps"))));
+          }
+        }
+        features.add(new FeatureBatchSpec(path, featureName, stringArray(feature.path("tags")), scenarios));
+      }
+      return features;
+    } catch (IOException e) {
+      return List.of();
+    }
+  }
+
+  private String buildBatchFeature(FeatureBatchSpec feature, Map<String, String> actionCatalog,
+      List<String> usedActions, List<String> unresolvedActions, Set<String> tagIndex) {
+    StringBuilder sb = new StringBuilder();
+    sb.append("# Generated by Testara Agent — review before committing.\n\n");
+    appendTags(sb, feature.tags(), tagIndex, false);
+    sb.append("Feature: ").append(feature.featureName()).append("\n\n");
+    sb.append("  Background:\n");
+    sb.append("    Given user using chrome in desktop\n\n");
+    for (ScenarioBatchSpec scenario : feature.scenarios()) {
+      appendTags(sb, scenario.tags(), tagIndex, true);
+      sb.append("  Scenario: ").append(scenario.name()).append("\n");
+      List<String> steps = scenario.steps().isEmpty()
+          ? stepsFromIntent(scenario.intent(), actionCatalog, usedActions, unresolvedActions)
+          : scenario.steps();
+      for (String step : steps) {
+        sb.append("    ").append(stripStepIndent(step)).append("\n");
+      }
+      sb.append("\n");
+    }
+    return sb.toString().stripTrailing();
+  }
+
+  private List<String> stepsFromIntent(String intent, Map<String, String> actionCatalog,
+      List<String> usedActions, List<String> unresolvedActions) {
+    String lower = intent == null ? "" : intent.toLowerCase(Locale.ROOT);
+    String page = inferUiPage(lower, inferDomain(first(intent, "generated")));
+    String action = bestAction(lower, actionCatalog);
+    List<String> steps = new ArrayList<>();
+    steps.add("When user open \"" + page + "\" page");
+    steps.add("Then user is in \"" + page + "\" page");
+    if (action != null) {
+      usedActions.add(action);
+      steps.add("When user do \"" + action + "\" in \"" + page + "\" page with parameter");
+      UiActionParameters params = uiActionParameters(page, action,
+          lower.contains("invalid") || lower.contains("negative") || lower.contains("error"));
+      steps.addAll(params.toFeatureTable(6).lines().map(String::strip).toList());
+    } else {
+      unresolvedActions.add(intent);
+      steps.add("# MISSING action for intent: " + intent);
+    }
+    if (lower.contains("error") || lower.contains("invalid") || lower.contains("negative")) {
+      steps.add("Then user should see \"error message\" is displayed");
+    } else if (lower.contains("cart")) {
+      steps.add("Then user should see \"cart badge\" is displayed");
+    } else if (lower.contains("inventory")) {
+      steps.add("Then user is in \"inventory\" page");
+    } else {
+      steps.add("Then user should see \"success message\" is displayed");
+    }
+    return steps;
+  }
+
+  private Map<String, String> actionCatalog(Path root) {
+    Map<String, String> actions = new LinkedHashMap<>();
+    try (var stream = Files.walk(root)) {
+      stream.filter(path -> path.toString().endsWith(".java"))
+          .filter(path -> !path.toString().contains("/target/"))
+          .forEach(path -> {
+            try {
+              String source = Files.readString(path, StandardCharsets.UTF_8);
+              var matcher = java.util.regex.Pattern.compile("@Action\\s*\\(\\s*(?:value\\s*=\\s*)?\"([^\"]+)\"")
+                  .matcher(source);
+              while (matcher.find()) {
+                String action = matcher.group(1);
+                actions.put(action.toLowerCase(Locale.ROOT), action);
+              }
+            } catch (IOException ignored) {
+            }
+          });
+    } catch (IOException ignored) {
+    }
+    return actions;
+  }
+
+  private String bestAction(String lowerIntent, Map<String, String> actionCatalog) {
+    if (actionCatalog.isEmpty()) return null;
+    return actionCatalog.entrySet().stream()
+        .filter(entry -> lowerIntent.contains(entry.getKey()) || wordsOverlap(lowerIntent, entry.getKey()) >= 2)
+        .max(Comparator.comparingInt(entry -> wordsOverlap(lowerIntent, entry.getKey())))
+        .map(Map.Entry::getValue)
+        .orElse(null);
+  }
+
+  private int wordsOverlap(String left, String right) {
+    Set<String> leftWords = Arrays.stream(left.split("[^a-z0-9]+"))
+        .filter(word -> word.length() > 2)
+        .collect(Collectors.toSet());
+    int count = 0;
+    for (String word : right.split("[^a-z0-9]+")) {
+      if (word.length() > 2 && leftWords.contains(word)) count++;
+    }
+    return count;
+  }
+
+  private String writeFeatureAtPath(Path root, String relative, String content) {
+    try {
+      Path target = root.resolve(relative);
+      Files.createDirectories(target.getParent());
+      Files.writeString(target, content + "\n", StandardCharsets.UTF_8);
+      return root.relativize(target).toString();
+    } catch (IOException e) {
+      LOG.warning("Cannot write feature file: " + e.getMessage());
+      return null;
+    }
+  }
+
+  private void appendTags(StringBuilder sb, List<String> tags, Set<String> tagIndex, boolean scenario) {
+    if (tags.isEmpty()) return;
+    tags.forEach(tagIndex::add);
+    if (scenario) sb.append("  ");
+    sb.append(String.join(" ", tags)).append("\n");
+  }
+
+  private List<String> stringArray(JsonNode node) {
+    if (!node.isArray()) return List.of();
+    List<String> values = new ArrayList<>();
+    node.forEach(item -> {
+      String value = item.asText("");
+      if (!value.isBlank()) values.add(value);
+    });
+    return values;
+  }
+
+  private String stripStepIndent(String step) {
+    return step.strip().replaceFirst("^(Given|When|Then|And|But)\\s+", "$1 ");
+  }
+
+  private String first(String... values) {
+    for (String value : values) {
+      if (value != null && !value.isBlank()) return value;
+    }
+    return "";
+  }
+
+  private record FeatureBatchSpec(String path, String featureName, List<String> tags,
+      List<ScenarioBatchSpec> scenarios) {}
+  private record ScenarioBatchSpec(String name, String intent, List<String> tags, List<String> steps) {}
 
   // ── Feature generation ────────────────────────────────────────────────────
 

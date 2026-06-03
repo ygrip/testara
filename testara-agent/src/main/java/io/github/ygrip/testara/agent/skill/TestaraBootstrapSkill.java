@@ -21,14 +21,16 @@ public class TestaraBootstrapSkill implements AgentSkill<TestaraBootstrapSkill.I
   private final TestaraUiSkill uiSkill = new TestaraUiSkill();
   private final TestaraApiSkill apiSkill = new TestaraApiSkill();
   private final ObjectMapper mapper = new ObjectMapper();
+  private final TestPlanSkill planSkill = new TestPlanSkill();
 
   public record Input(String artifact, String intent, String pageName, String actionName,
       String domain, String flow, String method, String endpoint, String basePackage, String engine,
-      String mode, String pages, String actions, String baseUrl) {
+      String mode, String pages, String actions, String baseUrl,
+      boolean generateFeatures, String featureFiles, boolean createFiles) {
     public Input(String artifact, String intent, String pageName, String actionName,
         String domain, String flow, String method, String endpoint, String basePackage, String engine) {
       this(artifact, intent, pageName, actionName, domain, flow, method, endpoint, basePackage, engine,
-          null, null, null, null);
+          null, null, null, null, false, null, false);
     }
   }
 
@@ -132,6 +134,13 @@ public class TestaraBootstrapSkill implements AgentSkill<TestaraBootstrapSkill.I
     if (warnings.isEmpty()) sb.append("- none\n");
     else warnings.forEach(w -> sb.append("- ").append(w).append("\n"));
     sb.append("nextRecommendedCommand: testara_run --tags ").append(recommendedRun).append("\n");
+    if (input.generateFeatures()) {
+      String featureFiles = first(input.featureFiles(), defaultFeatureFiles(pages));
+      String planOutput = planSkill.execute(new TestPlanSkill.Input(first(input.intent(), "generated ui flow"),
+          "ui", first(input.domain(), "ui"), List.of(), "batch", featureFiles,
+          input.createFiles() || "true".equals(context.options().get("write")), true), context);
+      sb.append("featureGeneration:\n").append(indent(planOutput)).append("\n");
+    }
     if (!"summary".equals(context.options().get("format"))) {
       sb.append("\nrawArtifacts:\n").append(raw);
     }
@@ -293,6 +302,34 @@ public class TestaraBootstrapSkill implements AgentSkill<TestaraBootstrapSkill.I
     } catch (IOException e) {
       return List.of(new PageSpec(raw.split(",")[0].strip(), actionsFor(input.actionName(), input.actions())));
     }
+  }
+
+  private String defaultFeatureFiles(List<PageSpec> pages) {
+    var root = mapper.createArrayNode();
+    for (PageSpec page : pages) {
+      var feature = root.addObject();
+      String pageKey = toKebab(first(page.name(), "page"));
+      feature.put("path", "src/test/resources/features/ui/" + pageKey + ".feature");
+      feature.put("featureName", toClassName(pageKey));
+      var tags = feature.putArray("tags");
+      tags.add("@ui");
+      tags.add("@regression");
+      tags.add("@" + pageKey);
+      var scenarios = feature.putArray("scenarios");
+      for (String action : page.actions()) {
+        if (action == null || action.isBlank()) continue;
+        var scenario = scenarios.addObject();
+        scenario.put("name", toClassName(action) + " succeeds");
+        scenario.put("intent", action + " on " + pageKey + " page");
+        var scenarioTags = scenario.putArray("tags");
+        scenarioTags.add("@positive");
+      }
+    }
+    return root.toString();
+  }
+
+  private String indent(String text) {
+    return text.lines().map(line -> "  " + line).reduce("", (left, right) -> left + right + "\n").stripTrailing();
   }
 
   private List<String> actionsFor(String actionName, String rawActions) {

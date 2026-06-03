@@ -6,6 +6,8 @@ import io.github.ygrip.testara.agent.index.TestaraProjectProfile;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
@@ -82,8 +84,74 @@ class TestPlanSkillTest {
     assertFalse(output.contains("Feature:"));
   }
 
+  @Test
+  void batchPlanCreatesMultipleFeatureFilesUsingExistingActions() throws IOException {
+    Path action = projectRoot.resolve("src/main/java/io/github/ygrip/automation/action/LoginActions.java");
+    Files.createDirectories(action.getParent());
+    Files.writeString(action, """
+        package io.github.ygrip.automation.action;
+
+        import io.github.ygrip.testara.ui.model.Action;
+
+        public class LoginActions {
+          @Action("login with valid credentials")
+          public void loginWithValidCredentials() {}
+        }
+        """);
+    String featureFiles = """
+        [
+          {
+            "path":"src/test/resources/features/ui/login.feature",
+            "featureName":"Login",
+            "tags":["@ui","@regression","@login"],
+            "scenarios":[
+              {"name":"Login succeeds","intent":"login with valid credentials and see inventory","tags":["@positive"]}
+            ]
+          },
+          {
+            "path":"src/test/resources/features/ui/cart.feature",
+            "featureName":"Cart",
+            "tags":["@ui","@regression","@cart"],
+            "scenarios":[
+              {"name":"Cart placeholder","steps":["When user open \\"cart\\" page","Then user is in \\"cart\\" page"],"tags":["@positive"]}
+            ]
+          },
+          {
+            "path":"src/test/resources/features/ui/inventory.feature",
+            "featureName":"Inventory",
+            "tags":["@ui","@regression","@inventory"],
+            "scenarios":[
+              {"name":"Inventory placeholder","steps":["When user open \\"inventory\\" page","Then user is in \\"inventory\\" page"],"tags":["@positive"]}
+            ]
+          }
+        ]
+        """;
+
+    String output = new TestPlanSkill().execute(
+        new TestPlanSkill.Input("batch ui flows", "ui", "saucedemo", List.of(),
+            "batch", featureFiles, true, true),
+        writeContext());
+
+    assertTrue(output.contains("mode: batch"));
+    assertTrue(output.contains("createdFeatureFiles:"));
+    assertTrue(output.contains("src/test/resources/features/ui/login.feature"));
+    assertTrue(output.contains("src/test/resources/features/ui/inventory.feature"));
+    assertTrue(output.contains("usedActions:"));
+    assertTrue(output.contains("login with valid credentials"));
+    assertTrue(output.contains("tagIndex:"));
+    assertTrue(output.contains("@regression"));
+    String login = Files.readString(projectRoot.resolve("src/test/resources/features/ui/login.feature"));
+    assertTrue(login.contains("When user do \"login with valid credentials\" in \"login\" page with parameter"));
+    assertTrue(login.contains("Then user is in \"inventory\" page"));
+  }
+
   private AgentContext context() {
     return new AgentContext(projectRoot, profile(), AgentMode.READ_ONLY, null, Map.of("format", "concise"));
+  }
+
+  private AgentContext writeContext() {
+    return new AgentContext(projectRoot, profile(), AgentMode.READ_ONLY, null,
+        Map.of("format", "concise", "write", "true"));
   }
 
   private TestaraProjectProfile profile() {

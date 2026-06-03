@@ -182,8 +182,12 @@ public class McpServer {
         optionalStr("package", "Target Java package")));
     tools.add(tool("testara_validation_detail", "Show source, types, aliases and when/how to use a specific Testara validation",
         requiredStr("name", "Validation name or alias to look up")));
-    tools.add(tool("testara_plan",       "Generate a Testara-compatible Cucumber feature from intent",
+    tools.add(tool("testara_plan",       "Generate one or more Testara-compatible Cucumber feature files from intent or batch schema",
         requiredStr("intent", "Test plan intent"),
+        optionalStr("mode", "single | batch"),
+        optionalStr("featureFiles", "JSON array of feature files for batch mode"),
+        optionalBool("createFiles", "Write generated feature files directly. Default false."),
+        optionalBool("useExistingActionCatalog", "Prefer existing @Action values. Default true in batch mode."),
         optionalStr("slice", "Layer: api, ui, database, streaming, fullstack"),
         optionalStr("domain", "Domain name override")));
     tools.add(tool("testara_guide",      "Return Testara agent guide and generation rules. Call at session start or before generating any artifact.",
@@ -220,6 +224,9 @@ public class McpServer {
         optionalStr("pages", "JSON array of pages for batch mode. Example: [{\"name\":\"login\",\"actions\":[\"login with valid credentials\"]}]"),
         optionalStr("actions", "JSON array or comma-separated action names used when pages omit actions."),
         optionalStr("baseUrl", "Optional base URL for generated page configuration context."),
+        optionalBool("generateFeatures", "Generate feature files after batch pages/actions. Default false."),
+        optionalStr("featureFiles", "JSON array of feature files for generateFeatures or batch planning."),
+        optionalBool("createFiles", "Write generated feature files directly. Default follows write."),
         optionalStr("domain", "API/service domain"),
         optionalStr("flow", "API request spec flow"),
         optionalStr("method", "HTTP method"),
@@ -299,7 +306,11 @@ public class McpServer {
           args.path("intent").asText(""),
           args.path("slice").asText(null),   // null → inferSlice() runs; "api" was masking UI/DB intents
           args.path("domain").asText(null),
-          List.of()), ctx);
+          List.of(),
+          args.path("mode").asText(null),
+          args.path("featureFiles").asText(null),
+          args.path("createFiles").asBoolean(false),
+          args.path("useExistingActionCatalog").asBoolean(true)), ctx);
       case "testara_init" -> initSkill.execute(new TestInitSkill.Input(
           args.path("type").asText("api"),
           args.path("basePackage").asText(null),
@@ -327,7 +338,9 @@ public class McpServer {
           args.path("method").asText(null), args.path("endpoint").asText(null),
           args.path("basePackage").asText(null), args.path("engine").asText(null),
           args.path("mode").asText(null), args.path("pages").asText(null),
-          args.path("actions").asText(null), args.path("baseUrl").asText(null)), ctx);
+          args.path("actions").asText(null), args.path("baseUrl").asText(null),
+          args.path("generateFeatures").asBoolean(false), args.path("featureFiles").asText(null),
+          args.path("createFiles").asBoolean(false)), ctx);
       case "testara_db"       -> dbSkill.execute(new TestaraDbSkill.Input(
           args.path("slice").asText("sql"), args.path("mode").asText("explain"),
           args.path("name").asText(null)), ctx);
