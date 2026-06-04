@@ -148,6 +148,7 @@
     <module>testara-agent</module>
     <module>testara-agent-cli</module>
     <module>testara-agent-mcp</module>
+    <module>testara-archetypes</module>
   </modules>
 
   <dependencyManagement>

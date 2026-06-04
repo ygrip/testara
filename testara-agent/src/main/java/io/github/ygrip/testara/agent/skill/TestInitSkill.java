@@ -1,5 +1,8 @@
 package io.github.ygrip.testara.agent.skill;
 
+import io.github.ygrip.testara.agent.init.ArchetypeInvoker;
+import io.github.ygrip.testara.agent.init.ProjectStateDetector;
+import io.github.ygrip.testara.agent.init.ProjectStateDetector.ProjectState;
 import io.github.ygrip.testara.agent.validation.TestCompileGate;
 
 import java.io.IOException;
@@ -10,6 +13,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.logging.Logger;
+import java.util.stream.Collectors;
 
 /**
  * Skill: bootstrap a Testara project with slice-aware scaffold.
@@ -21,6 +25,8 @@ public class TestInitSkill implements AgentSkill<TestInitSkill.Input, String> {
 
   private static final Logger LOG = Logger.getLogger(TestInitSkill.class.getName());
   private final TestaraVersionResolver versionResolver;
+  private final ProjectStateDetector stateDetector = new ProjectStateDetector();
+  private final ArchetypeInvoker archetypeInvoker = new ArchetypeInvoker();
 
   public TestInitSkill() {
     this(new TestaraVersionResolver());
@@ -126,6 +132,65 @@ public class TestInitSkill implements AgentSkill<TestInitSkill.Input, String> {
 
   private String applyFiles(String type, String groupId, String artifactId, String basePkg, String pkgPath, String engine,
       boolean integrate, Path root, boolean compile, boolean includeExamples) {
+    ProjectState state = stateDetector.detect(root);
+    return switch (state) {
+      case FRESH -> applyArchetype(type, groupId, artifactId, basePkg, pkgPath, engine, root, compile, includeExamples);
+      case UNSUPPORTED_GRADLE -> "init_unsupported: Gradle projects are not supported by testara_init.\n";
+      case AMBIGUOUS -> integrate
+          ? applyPatch(type, groupId, artifactId, basePkg, pkgPath, engine, true, root, compile, includeExamples)
+          : "init_ambiguous: Directory is not empty and has no recognised build file.\n"
+              + "action: Set integrateExisting=true to patch anyway, or clear the directory first.\n";
+      default -> applyPatch(type, groupId, artifactId, basePkg, pkgPath, engine, integrate, root, compile, includeExamples);
+    };
+  }
+
+  private String applyArchetype(String type, String groupId, String artifactId, String basePkg, String pkgPath,
+      String engine, Path root, boolean compile, boolean includeExamples) {
+    String testaraVersion = versionResolver.resolve(root.getParent() != null ? root.getParent() : root);
+    String effectiveArtifactId = artifactId != null ? artifactId
+        : root.getFileName() != null ? toKebab(root.getFileName().toString()) : "automation";
+    Path outputDir = root.getParent() != null ? root.getParent() : root;
+
+    ArchetypeInvoker.ArchetypeRequest req = new ArchetypeInvoker.ArchetypeRequest(
+        groupId, effectiveArtifactId, "1.0.0-SNAPSHOT", basePkg,
+        archetypeFlavor(type), engine, testaraVersion, "21", outputDir);
+
+    ArchetypeInvoker.ArchetypeResult result = archetypeInvoker.invoke(req);
+    if (!result.success()) {
+      return "init_failed: Archetype generation failed.\nerrors:\n"
+          + result.errors().stream().map(e -> "  - " + e).collect(Collectors.joining("\n")) + "\n";
+    }
+
+    Path generatedRoot = result.generatedDir();
+    List<String> created = new ArrayList<>();
+    List<String> skipped = new ArrayList<>();
+
+    try {
+      writeConfigFiles(type, basePkg, pkgPath, engine, generatedRoot, includeExamples, created, skipped);
+    } catch (IOException e) {
+      return "init_error: Failed to write config files: " + e.getMessage() + "\n";
+    }
+
+    String compileResult = "";
+    if (compile) {
+      TestCompileGate.Result cr = new TestCompileGate().run(generatedRoot);
+      compileResult = "compile: " + cr.toLine();
+    }
+
+    String configFilesLine = created.isEmpty() ? "none" : String.join(", ", created);
+    return "status: SUCCESS\n"
+        + "mode: ARCHETYPE_GENERATED\n"
+        + "archetype: io.github.ygrip:" + result.archetypeArtifactId() + ":" + testaraVersion + "\n"
+        + "flavor: " + type + (engine != null ? "/" + engine : "") + "\n"
+        + "project: " + groupId + ":" + effectiveArtifactId + " (" + basePkg + ")\n"
+        + "generatedAt: " + generatedRoot + "\n"
+        + "configFiles: " + configFilesLine + "\n"
+        + (compileResult.isEmpty() ? "" : compileResult + "\n")
+        + "next: testara_bootstrap, testara_plan, testara_run\n";
+  }
+
+  private String applyPatch(String type, String groupId, String artifactId, String basePkg, String pkgPath, String engine,
+      boolean integrate, Path root, boolean compile, boolean includeExamples) {
     List<String> created = new ArrayList<>();
     List<String> skipped = new ArrayList<>();
 
@@ -140,49 +205,19 @@ public class TestInitSkill implements AgentSkill<TestInitSkill.Input, String> {
         skipped.add("pom.xml (already exists)");
       }
 
-      mkdirs(root, "src/test/resources/features/" + type);
-      mkdirs(root, "src/test/resources/files");
-      mkdirs(root, "src/test/resources/validations");
-      mkdirs(root, "src/main/java/" + pkgPath + "/command");
-      mkdirs(root, "src/main/java/" + pkgPath + "/validation");
+      writeConfigFiles(type, basePkg, pkgPath, engine, root, includeExamples, created, skipped);
 
-      writeIfAbsent(root, "src/test/resources/configuration.properties",
-          generateProperties(type, basePkg, engine, includeExamples), created, skipped);
-      writeIfAbsent(root, "src/test/resources/cucumber.properties",
-          generateCucumberProperties(type, basePkg, includeExamples), created, skipped);
-      writeIfAbsent(root, "src/test/resources/junit-platform.properties",
-          generateJunitPlatformProperties(), created, skipped);
-      writeIfAbsent(root, "src/test/resources/application.properties",
-          generateApplicationProperties(type, includeExamples), created, skipped);
-      writeIfAbsent(root, "src/test/resources/log4j2.xml",
-          generateLog4j2Config(basePkg), created, skipped);
-      writeIfAbsent(root, "src/test/java/" + pkgPath + "/Junit5RunnerTests.java",
-          generateJunit5Runner(basePkg), created, skipped);
-      writeIfAbsent(root, "src/test/java/" + pkgPath + "/Junit4RunnerTests.java",
-          generateJunit4Runner(basePkg), created, skipped);
-      if (includeExamples) {
-        writeIfAbsent(root, "src/test/resources/features/" + type + "/sample.feature",
-            generateSampleFeature(type, basePkg), created, skipped);
-      }
-
-      // Slice-specific extras
       boolean isUi  = type.equals("ui") || type.equals("fullstack");
       boolean isApi = type.equals("api") || type.equals("fullstack");
-      if (isUi) {
-        mkdirs(root, "src/main/java/" + pkgPath + "/page");
-        mkdirs(root, "src/main/java/" + pkgPath + "/action");
-        if (includeExamples) {
-          writeIfAbsent(root, "src/main/java/" + pkgPath + "/page/HomePage.java",
-              generatePageObject(basePkg, engine), created, skipped);
-        }
+      if (isUi && includeExamples) {
+        writeIfAbsent(root, "src/main/java/" + pkgPath + "/page/HomePage.java",
+            generatePageObject(basePkg, engine), created, skipped);
       }
-      if (isApi) {
-        if (includeExamples) {
-          mkdirs(root, "src/test/resources/files/sample/request");
-          mkdirs(root, "src/test/resources/files/sample/payload");
-          writeIfAbsent(root, "src/test/resources/files/sample/request/sample-get.json",
-              generateRequestSpec(basePkg, type), created, skipped);
-        }
+      if (isApi && includeExamples) {
+        mkdirs(root, "src/test/resources/files/sample/request");
+        mkdirs(root, "src/test/resources/files/sample/payload");
+        writeIfAbsent(root, "src/test/resources/files/sample/request/sample-get.json",
+            generateRequestSpec(basePkg, type), created, skipped);
       }
     } catch (IOException e) {
       return "Error creating project files: " + e.getMessage() + "\n";
@@ -202,7 +237,6 @@ public class TestInitSkill implements AgentSkill<TestInitSkill.Input, String> {
       sb.append("\n");
     }
 
-    // Run compile gate
     if (compile) {
       TestCompileGate.Result result = new TestCompileGate().run(root);
       sb.append("## Compile\n\n").append(result.toLine()).append("\n\n");
@@ -215,6 +249,49 @@ public class TestInitSkill implements AgentSkill<TestInitSkill.Input, String> {
     sb.append("2. Run the tests:  \n");
     sb.append("   `TESTARA_AGENT_RUN_ENABLED=true testara-agent test-run 'describe' --execute`\n");
     return sb.toString();
+  }
+
+  private void writeConfigFiles(String type, String basePkg, String pkgPath, String engine,
+      Path root, boolean includeExamples, List<String> created, List<String> skipped) throws IOException {
+    mkdirs(root, "src/test/resources/features/" + type);
+    mkdirs(root, "src/test/resources/files");
+    mkdirs(root, "src/test/resources/validations");
+    mkdirs(root, "src/main/java/" + pkgPath + "/command");
+    mkdirs(root, "src/main/java/" + pkgPath + "/validation");
+
+    writeIfAbsent(root, "src/test/resources/configuration.properties",
+        generateProperties(type, basePkg, engine, includeExamples), created, skipped);
+    writeIfAbsent(root, "src/test/resources/cucumber.properties",
+        generateCucumberProperties(type, basePkg, includeExamples), created, skipped);
+    writeIfAbsent(root, "src/test/resources/junit-platform.properties",
+        generateJunitPlatformProperties(), created, skipped);
+    writeIfAbsent(root, "src/test/resources/application.properties",
+        generateApplicationProperties(type, includeExamples), created, skipped);
+    writeIfAbsent(root, "src/test/resources/log4j2.xml",
+        generateLog4j2Config(basePkg), created, skipped);
+    writeIfAbsent(root, "src/test/java/" + pkgPath + "/Junit5RunnerTests.java",
+        generateJunit5Runner(basePkg), created, skipped);
+    writeIfAbsent(root, "src/test/java/" + pkgPath + "/Junit4RunnerTests.java",
+        generateJunit4Runner(basePkg), created, skipped);
+
+    boolean isUi = type.equals("ui") || type.equals("fullstack");
+    boolean isApi = type.equals("api") || type.equals("fullstack");
+    if (isUi) {
+      mkdirs(root, "src/main/java/" + pkgPath + "/page");
+      mkdirs(root, "src/main/java/" + pkgPath + "/action");
+    }
+    if (includeExamples) {
+      writeIfAbsent(root, "src/test/resources/features/" + type + "/sample.feature",
+          generateSampleFeature(type, basePkg), created, skipped);
+    }
+  }
+
+  private String archetypeFlavor(String type) {
+    return switch (type) {
+      case "ui" -> "ui";
+      case "fullstack", "all" -> "all";
+      default -> "api";
+    };
   }
 
   private void writeIfAbsent(Path root, String rel, String content,

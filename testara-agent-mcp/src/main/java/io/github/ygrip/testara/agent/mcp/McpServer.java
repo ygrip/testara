@@ -245,15 +245,19 @@ public class McpServer {
         optionalStr("failedStep", "Exact failed Gherkin step, e.g. Then user should see \"error\" is displayed"),
         optionalStr("snippet", "Stack trace, report excerpt, or console failure snippet"),
         optionalStr("projectRoot", "Project root. Required when MCP server was launched outside the workspace.")));
-    tools.add(tool("testara_init",       "Bootstrap or integrate a Testara automation project. For ui/fullstack types, OMIT the engine param so the skill prompts the user to choose — do NOT default to selenium.",
+    tools.add(tool("testara_init",
+        "Bootstrap or integrate a Testara automation project. "
+        + "Fresh projects use Maven archetype:generate (type=api|ui|all) and return a compact summary. "
+        + "Existing projects are patched with missing Testara config files. "
+        + "For ui/all types, OMIT engine on first call so the skill prompts the user to choose.",
         optionalStr("projectRoot", "Target workspace root. Required for writes when MCP server was launched outside the workspace."),
-        optionalStr("type", "api, ui, database, streaming, fullstack"),
+        optionalStr("type", "api | ui | all (full-stack). Also accepts: fullstack, database, streaming."),
         optionalStr("groupId", "Maven groupId. OMIT on first call — the skill will prompt the user to provide it. Pass only after the user has explicitly answered."),
         optionalStr("artifactId", "Maven artifactId. OMIT on first call — the skill will prompt the user to provide it. Pass only after the user has explicitly answered."),
         optionalStr("basePackage", "Base Java package"),
-        optionalStr("engine", "UI engine: selenium | playwright | appium. OMIT on first call for ui/fullstack — the skill will prompt the user to choose. Pass engine only after the user has explicitly answered."),
+        optionalStr("engine", "UI engine: selenium (default) | playwright | appium. OMIT on first call for ui/all — the skill will prompt the user to choose."),
         optionalBool("autoGenerateCoordinates", "Use generated Maven coordinates when groupId/artifactId are omitted. Default false so agents ask first."),
-        optionalBool("integrateExisting", "Integrate into existing project"),
+        optionalBool("integrateExisting", "Patch into existing project without running archetype. Default false."),
         optionalBool("includeExamples", "Also generate demo sample feature/page/request artifacts. Default false; prefer contextual generation."),
         optionalBool("write", "Create files on disk. Default false."),
         optionalBool("compile", "Run test-compile after writing files. Default true.")));
