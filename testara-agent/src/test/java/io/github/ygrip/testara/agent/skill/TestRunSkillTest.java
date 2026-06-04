@@ -43,6 +43,29 @@ class TestRunSkillTest {
   }
 
   @Test
+  void preflightFailsWithSuggestionsWhenTagMatchesNoScenarios() {
+    String output = new TestRunSkill().execute("run @nonexistent", context(profileWithSaucedemo()));
+
+    assertTrue(output.contains("preflight: FAILED"));
+    assertTrue(output.contains("mavenExecuted: false"));
+    assertTrue(output.contains("reason:"));
+    assertTrue(output.contains("resolved-expression: @nonexistent"));
+    assertTrue(output.contains("available-tags:"));
+    assertFalse(output.contains("**Matched scenarios:**"));
+    assertFalse(output.contains("needs_input"));
+  }
+
+  @Test
+  void preflightSuggestsRelatedTagsForPartialMatch() {
+    String output = new TestRunSkill().execute("run @smok", context(profileWithSaucedemo()));
+
+    assertTrue(output.contains("preflight: FAILED"));
+    assertTrue(output.contains("mavenExecuted: false"));
+    assertTrue(output.contains("suggested-expressions:"));
+    assertTrue(output.contains("@smoke"));
+  }
+
+  @Test
   void asksForInputWhenProjectHasNoRunnableContext() {
     String output = new TestRunSkill().execute("run checkout", context(emptyProfile()));
 

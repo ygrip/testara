@@ -220,6 +220,40 @@ public class TagExpressionResolver {
 
   private record Match(int score, Set<String> tags) {}
 
+  /**
+   * For a tag expression that matched zero scenarios, returns up to {@code limit} alternative
+   * tag suggestions with their scenario counts, ordered by similarity to the requested tags.
+   */
+  public List<String> suggestAlternatives(String tagExpression, TestaraProjectProfile profile, int limit) {
+    Set<String> requested = extractPositiveTags(tagExpression);
+    if (requested.isEmpty()) {
+      return profile.tags().stream()
+          .sorted(Comparator.comparingInt(t -> -countMatching(t.tag(), profile)))
+          .limit(limit)
+          .map(t -> t.tag() + " (" + countMatching(t.tag(), profile) + " scenarios)")
+          .toList();
+    }
+    return profile.tags().stream()
+        .filter(t -> {
+          String indexed = t.tag().toLowerCase(Locale.ROOT).replace("@", "");
+          return requested.stream().anyMatch(req -> {
+            String r = req.toLowerCase(Locale.ROOT).replace("@", "");
+            return indexed.contains(r) || r.contains(indexed);
+          });
+        })
+        .sorted(Comparator.comparingInt(t -> -countMatching(t.tag(), profile)))
+        .limit(limit)
+        .map(t -> t.tag() + " (" + countMatching(t.tag(), profile) + " scenarios)")
+        .toList();
+  }
+
+  private Set<String> extractPositiveTags(String tagExpression) {
+    Set<String> tags = new LinkedHashSet<>();
+    Matcher m = EXPLICIT_TAG.matcher(tagExpression);
+    while (m.find()) tags.add(m.group(0));
+    return tags;
+  }
+
   /** Count scenarios matching the resolved expression (simple tag set match). */
   public int countMatching(String tagExpression, TestaraProjectProfile profile) {
     if (tagExpression.isBlank()) return profile.totalScenarios();

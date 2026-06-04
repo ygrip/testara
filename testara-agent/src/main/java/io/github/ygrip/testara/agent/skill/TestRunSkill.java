@@ -66,8 +66,7 @@ public class TestRunSkill implements AgentSkill<String, String> {
     if (tagExpr.isBlank()) return unresolvedPrompt(input, context, profile);
 
     int matched = resolver.countMatching(tagExpr, profile);
-    if (matched == 0) return unresolvedPrompt(input, context, profile)
-        + "\nresolved-expression-without-matches: " + tagExpr;
+    if (matched == 0) return preflightFailure(input, tagExpr, context, profile);
     int matchedFeatures = (int) profile.features().stream()
         .filter(f -> f.scenarios().stream().anyMatch(s ->
             resolver.countMatching(tagExpr, profileForScenario(profile, f, s)) > 0))
@@ -111,6 +110,29 @@ public class TestRunSkill implements AgentSkill<String, String> {
         + "available-tags: " + availableTags + "\n"
         + "scenario-examples: " + scenarioExamples + "\n"
         + "examples: @smoke, @ui and @checkout, feature name, exact scenario name";
+  }
+
+  private String preflightFailure(String input, String resolvedExpr,
+      AgentContext context, TestaraProjectProfile profile) {
+    List<String> suggestions = resolver.suggestAlternatives(resolvedExpr, profile, 8);
+    String availableTags = profile.tags().stream()
+        .map(t -> t.tag())
+        .limit(15)
+        .collect(Collectors.joining(", "));
+    StringBuilder sb = new StringBuilder();
+    sb.append("preflight: FAILED\n");
+    sb.append("reason: resolved expression matches 0 scenarios — Maven execution skipped\n");
+    sb.append("mavenExecuted: false\n");
+    sb.append("input: ").append(input).append("\n");
+    sb.append("resolved-expression: ").append(resolvedExpr).append("\n");
+    sb.append("indexed-scenarios: ").append(profile.totalScenarios()).append("\n");
+    sb.append("available-tags: ").append(availableTags).append("\n");
+    if (!suggestions.isEmpty()) {
+      sb.append("suggested-expressions:\n");
+      suggestions.forEach(s -> sb.append("  - ").append(s).append("\n"));
+    }
+    sb.append("fix: use an explicit @tag from available-tags, or call testara_context to list all project tags");
+    return sb.toString();
   }
 
   private String executeAndReport(String command, String tagExpr, Path projectRoot) {
