@@ -60,6 +60,9 @@ class TestaraBootstrapSkillTest {
     assertTrue(output.contains("actions: 4"));
     assertTrue(output.contains("login with valid credentials -> loginWithValidCredentials"));
     assertTrue(output.contains("show login error -> showLoginError"));
+    assertTrue(output.contains("filesChanged:"));
+    assertTrue(output.contains("created src/main/java/io/github/ygrip/automation/page/LoginPage.java [class:LoginPage]"));
+    assertTrue(output.contains("[class:LoginActions; actions:login with valid credentials -> loginWithValidCredentials,show login error -> showLoginError]"));
     assertTrue(output.contains("nextRecommendedCommand: testara_run --tags @regression"));
     assertTrue(Files.exists(projectRoot.resolve("src/main/java/io/github/ygrip/automation/page/LoginPage.java")));
     assertTrue(Files.exists(projectRoot.resolve("src/main/java/io/github/ygrip/automation/page/InventoryPage.java")));
@@ -102,6 +105,8 @@ class TestaraBootstrapSkillTest {
     String source = Files.readString(command);
 
     assertTrue(output.contains("written: src/main/java/com/acme/tests/command/CustomerCodeCommand.java"));
+    assertTrue(output.contains("filesChanged:"));
+    assertTrue(output.contains("created src/main/java/com/acme/tests/command/CustomerCodeCommand.java [class:CustomerCodeCommand; type:command]"));
     assertTrue(output.contains("command.executor.scan-locations=io.github.ygrip.testara,com.acme.tests.command"));
     assertTrue(source.contains("@CommandTag(command = \"customer-code\")"));
     assertTrue(source.contains("implements CommandLogic<String>"));

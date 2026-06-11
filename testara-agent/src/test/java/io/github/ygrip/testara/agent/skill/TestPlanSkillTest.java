@@ -140,6 +140,9 @@ class TestPlanSkillTest {
     assertTrue(output.contains("login with valid credentials"));
     assertTrue(output.contains("tagIndex:"));
     assertTrue(output.contains("@regression"));
+    assertTrue(output.contains("filesChanged:"));
+    assertTrue(output.contains("created src/test/resources/features/ui/login.feature [feature:Login; scenarios:Login succeeds; tags:@ui @regression @login]"));
+    assertTrue(output.contains("created src/test/resources/features/ui/inventory.feature [feature:Inventory; scenarios:Inventory placeholder; tags:@ui @regression @inventory]"));
     String login = Files.readString(projectRoot.resolve("src/test/resources/features/ui/login.feature"));
     assertTrue(login.contains("When user do \"login with valid credentials\" in \"login\" page with parameter"));
     assertTrue(login.contains("Then user is in \"inventory\" page"));

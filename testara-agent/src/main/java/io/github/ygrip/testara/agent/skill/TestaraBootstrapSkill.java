@@ -89,6 +89,7 @@ public class TestaraBootstrapSkill implements AgentSkill<TestaraBootstrapSkill.I
     List<String> pageCatalog = new ArrayList<>();
     List<String> locatorCatalog = new ArrayList<>();
     List<String> warnings = new ArrayList<>();
+    List<String> filesChanged = new ArrayList<>();
     StringBuilder raw = new StringBuilder();
 
     for (PageSpec pageSpec : pages) {
@@ -99,7 +100,9 @@ public class TestaraBootstrapSkill implements AgentSkill<TestaraBootstrapSkill.I
       String pageOutput = uiSkill.execute(new TestaraUiSkill.Input("page", pageName, null, input.engine(), basePackage,
           null), context);
       raw.append("\n--- page ").append(pageKey).append(" ---\n").append(pageOutput).append("\n");
-      createdFiles.add("src/main/java/" + basePackage.replace('.', '/') + "/page/" + pageClass + ".java");
+      String pagePath = "src/main/java/" + basePackage.replace('.', '/') + "/page/" + pageClass + ".java";
+      createdFiles.add(pagePath);
+      filesChanged.add("created " + pagePath + " [class:" + pageClass + "]");
       locatorCatalog.add(pageKey + ": see generated " + pageClass + " locator fields");
       if (pageOutput.contains("TODO")) warnings.add(pageKey + " has low-confidence TODO locators");
 
@@ -108,11 +111,14 @@ public class TestaraBootstrapSkill implements AgentSkill<TestaraBootstrapSkill.I
           .toList();
       if (!actionNames.isEmpty()) {
         String actionClass = toClassName(pageKey) + "Actions";
-        createdFiles.add("src/main/java/" + basePackage.replace('.', '/') + "/action/" + actionClass + ".java");
+        String actionPath = "src/main/java/" + basePackage.replace('.', '/') + "/action/" + actionClass + ".java";
+        createdFiles.add(actionPath);
         ActionWrite actionWrite = writeBatchActions(pageName, pageClass, actionClass, actionNames,
             basePackage, context.projectRoot(), "true".equals(context.options().get("write")));
         raw.append("\n--- actions ").append(pageKey).append(" ---\n").append(actionWrite.summary()).append("\n");
         actionCatalog.addAll(actionWrite.catalog());
+        String actionSymbols = actionWrite.catalog().isEmpty() ? "" : "; actions:" + String.join(",", actionWrite.catalog());
+        filesChanged.add("created " + actionPath + " [class:" + actionClass + actionSymbols + "]");
       }
     }
 
@@ -133,6 +139,9 @@ public class TestaraBootstrapSkill implements AgentSkill<TestaraBootstrapSkill.I
     sb.append("warnings:\n");
     if (warnings.isEmpty()) sb.append("- none\n");
     else warnings.forEach(w -> sb.append("- ").append(w).append("\n"));
+    sb.append("filesChanged:\n");
+    if (filesChanged.isEmpty()) sb.append("- none\n");
+    else filesChanged.forEach(entry -> sb.append("- ").append(entry).append("\n"));
     sb.append("nextRecommendedCommand: testara_run --tags ").append(recommendedRun).append("\n");
     if (input.generateFeatures()) {
       String featureFiles = first(input.featureFiles(), defaultFeatureFiles(pages));
@@ -219,7 +228,10 @@ public class TestaraBootstrapSkill implements AgentSkill<TestaraBootstrapSkill.I
         Path target = root.resolve(relativePath);
         Files.createDirectories(target.getParent());
         Files.writeString(target, source, StandardCharsets.UTF_8);
-        return "artifact: " + artifact + "\nwritten: " + relativePath + "\nscan-location: " + scanHint;
+        String className = target.getFileName().toString().replace(".java", "");
+        return "artifact: " + artifact + "\nwritten: " + relativePath
+            + "\nfilesChanged:\n- created " + relativePath + " [class:" + className + "; type:" + artifact + "]"
+            + "\nscan-location: " + scanHint;
       } catch (IOException e) {
         return "Error: " + e.getMessage();
       }

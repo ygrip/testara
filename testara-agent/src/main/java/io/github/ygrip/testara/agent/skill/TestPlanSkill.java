@@ -87,11 +87,29 @@ public class TestPlanSkill implements AgentSkill<TestPlanSkill.Input, String> {
     int score = totalStepLines > 0 ? (builtInCount * 100 / totalStepLines) : 100;
     int runtimeScore = computeRuntimeContextScore(featureContent, generatedArtifacts, slice);
 
+    List<String> scenarioNames = Arrays.stream(featureContent.split("\n"))
+        .filter(l -> l.trim().startsWith("Scenario:"))
+        .map(l -> l.trim().substring("Scenario:".length()).trim())
+        .toList();
+    List<String> featureTags = Arrays.stream(featureContent.split("\n"))
+        .filter(l -> l.trim().startsWith("@") && !l.trim().startsWith("@P"))
+        .flatMap(l -> Arrays.stream(l.trim().split("\\s+")))
+        .filter(t -> t.startsWith("@") && !Set.of("@P1","@P2","@P3","@positive","@negative").contains(t))
+        .distinct()
+        .toList();
+
     if (concise) {
       StringBuilder sb = new StringBuilder();
       if (write) {
         sb.append(writtenPath != null ? "written: " + writtenPath : "write failed");
         generatedArtifacts.forEach(a -> sb.append("\ngenerated: ").append(a));
+        if (writtenPath != null) {
+          String scenarioSymbols = scenarioNames.isEmpty() ? "" : "; scenarios:" + String.join(",", scenarioNames);
+          String tagSymbols = featureTags.isEmpty() ? "" : "; tags:" + String.join(" ", featureTags);
+          sb.append("\nfilesChanged:\n- created ").append(writtenPath)
+              .append(" [feature:").append(toFeatureName(input.intent()))
+              .append(scenarioSymbols).append(tagSymbols).append("]");
+        }
         sb.append("\n\n");
       }
       sb.append(featureContent);
@@ -112,6 +130,13 @@ public class TestPlanSkill implements AgentSkill<TestPlanSkill.Input, String> {
     if (write) {
       sb.append(writtenPath != null ? "> Written to `" + writtenPath + "`\n" : "> Warning: could not write.\n");
       generatedArtifacts.forEach(a -> sb.append("> Generated: `").append(a).append("`\n"));
+      if (writtenPath != null) {
+        String scenarioSymbols = scenarioNames.isEmpty() ? "" : "; scenarios:" + String.join(",", scenarioNames);
+        String tagSymbols = featureTags.isEmpty() ? "" : "; tags:" + String.join(" ", featureTags);
+        sb.append("> filesChanged: created ").append(writtenPath)
+            .append(" [feature:").append(toFeatureName(input.intent()))
+            .append(scenarioSymbols).append(tagSymbols).append("]\n");
+      }
       sb.append("\n");
     }
     sb.append("```gherkin\n").append(featureContent).append("\n```\n\n");
@@ -148,7 +173,12 @@ public class TestPlanSkill implements AgentSkill<TestPlanSkill.Input, String> {
         String written = writeFeatureAtPath(context.projectRoot(), feature.path(), featureText);
         if (written != null) {
           createdFeatureFiles.add(written);
-          fileSummaries.add(written + " created with " + feature.scenarios().size() + " scenario(s)");
+          String scenarioNames = feature.scenarios().stream()
+              .map(ScenarioBatchSpec::name)
+              .collect(Collectors.joining(","));
+          String tags = feature.tags().isEmpty() ? "" : "; tags:" + String.join(" ", feature.tags());
+          fileSummaries.add("created " + written + " [feature:" + feature.featureName()
+              + "; scenarios:" + scenarioNames + tags + "]");
         }
       }
     }
