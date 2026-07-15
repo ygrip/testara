@@ -11,6 +11,7 @@ import io.github.ygrip.testara.engine.extension.TestaraExtensionContext;
 import io.github.ygrip.testara.engine.listener.FailedScenariosListener;
 import io.github.ygrip.testara.engine.listener.ParallelExecutionTracer;
 import io.github.ygrip.testara.engine.model.RerunStrategy;
+import io.github.ygrip.testara.engine.option.TestaraConfigurationParameters;
 import io.github.ygrip.testara.engine.option.TestaraCucumberEngineOptions;
 import io.github.ygrip.testara.engine.support.ExceptionHandler;
 import io.github.ygrip.testara.reporter.cucumber.CucumberSummaryReportGenerator;
@@ -83,7 +84,7 @@ public final class TestaraCucumberEngineExecutionContext implements EngineExecut
   public TestaraCucumberEngineExecutionContext(ExecutionRequest request) {
     this.reportFiles = new ArrayList<>();
     this.listener = request.getEngineExecutionListener();
-    this.options = new TestaraCucumberEngineOptions(request.getConfigurationParameters());
+    this.options = new TestaraCucumberEngineOptions(TestaraConfigurationParameters.merge(request.getConfigurationParameters()));
 
     // Initialize rerun components
     loadExtensions(options);

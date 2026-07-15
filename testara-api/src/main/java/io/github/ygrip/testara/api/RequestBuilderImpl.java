@@ -243,17 +243,9 @@ public class RequestBuilderImpl implements RequestBuilder, RestApiFacade {
    */
   @Override
   public RequestBuilder setBody(Object body) throws Exception {
-    Object result;
-    try {
-      result = converter.convert(body);
-    } catch (Exception ignored) {
-      result = body;
-    }
-
-    if (result != null) {
-      getInternal().getRequest()
-        .setBody(result);
-      log.debug("#Set request body :\n{}", result);
+    if (body != null) {
+      getInternal().getRequest().setBody(body);
+      log.trace("#Set request body :\n{}", body);
     }
     return this;
   }

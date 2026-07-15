@@ -5,6 +5,8 @@ import io.github.ygrip.testara.engine.descriptor.TestaraCucumberEngineDescriptor
 import io.github.ygrip.testara.engine.descriptor.TestaraDiscoverySelectorResolver;
 import io.github.ygrip.testara.engine.executor.AdaptiveHierarchicalTestExecutorService;
 import io.github.ygrip.testara.engine.executor.VirtualThreadHierarchicalTestExecutorService;
+import io.github.ygrip.testara.engine.option.MergedConfigurationDiscoveryRequest;
+import io.github.ygrip.testara.engine.option.TestaraConfigurationParameters;
 import io.github.ygrip.testara.engine.option.TestaraCucumberEngineOptions;
 import lombok.extern.log4j.Log4j2;
 import org.junit.platform.engine.ConfigurationParameters;
@@ -61,22 +63,23 @@ public final class TestaraCucumberTestEngine extends HierarchicalTestEngine<Test
   @Override
   public TestDescriptor discover(EngineDiscoveryRequest engineDiscoveryRequest, UniqueId uniqueId) {
     log.debug("Testara Junit5 discover tests with engine id {} [PID:{}]", uniqueId, ProcessHandle.current().pid());
-    ConfigurationParameters configurationParameters = engineDiscoveryRequest.getConfigurationParameters();
+    EngineDiscoveryRequest request = new MergedConfigurationDiscoveryRequest(engineDiscoveryRequest);
+    ConfigurationParameters configurationParameters = request.getConfigurationParameters();
     TestSource testSource = createEngineTestSource(configurationParameters);
     DiscoveryIssueReporter issueReporter =
-        deduplicating(forwarding(engineDiscoveryRequest.getDiscoveryListener(), uniqueId));
+        deduplicating(forwarding(request.getDiscoveryListener(), uniqueId));
 
     TestaraCucumberEngineOptions options = new TestaraCucumberEngineOptions(configurationParameters);
     TestaraCucumberEngineDescriptor engineDescriptor = new TestaraCucumberEngineDescriptor(uniqueId, options, testSource);
 
     TestaraDiscoverySelectorResolver resolver = new TestaraDiscoverySelectorResolver();
-    resolver.resolveSelectors(engineDiscoveryRequest, engineDescriptor);
+    resolver.resolveSelectors(request, engineDescriptor);
     return engineDescriptor;
   }
 
   @Override
   protected HierarchicalTestExecutorService createExecutorService(ExecutionRequest request) {
-    ConfigurationParameters config = request.getConfigurationParameters();
+    ConfigurationParameters config = TestaraConfigurationParameters.merge(request.getConfigurationParameters());
 
     if (!config.getBoolean("cucumber.execution.parallel.enabled").orElse(false)) {
       log.info("Parallel execution disabled - using default executor");

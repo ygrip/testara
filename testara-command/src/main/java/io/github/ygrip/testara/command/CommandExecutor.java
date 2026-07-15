@@ -7,6 +7,12 @@ import io.github.ygrip.testara.command.model.CommandInfo;
 import io.github.ygrip.testara.command.model.CommandLogic;
 import io.github.ygrip.testara.command.model.CommandModel;
 import io.github.ygrip.testara.command.model.CommandTag;
+import io.github.ygrip.testara.command.parser.CommandModelConverter;
+import io.github.ygrip.testara.command.parser.CommandParseException;
+import io.github.ygrip.testara.command.parser.CommandParserMode;
+import io.github.ygrip.testara.command.parser.CommandParserOptions;
+import io.github.ygrip.testara.command.parser.LegacyCommandParser;
+import io.github.ygrip.testara.command.parser.StreamingCommandParser;
 import io.github.ygrip.testara.command.properties.CommandExecutorProperties;
 import io.github.ygrip.testara.core.context.TestFramework;
 import io.github.ygrip.testara.core.model.PopulatedTag;
@@ -18,6 +24,8 @@ import lombok.extern.log4j.Log4j2;
 import org.apache.commons.lang3.ObjectUtils;
 import org.apache.commons.lang3.StringUtils;
 
+import java.lang.reflect.ParameterizedType;
+import java.lang.reflect.Type;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -51,8 +59,6 @@ public final class CommandExecutor {
   private static final ConcurrentMap<String, CommandModel> PARSE_CACHE = new ConcurrentHashMap<>();
   private static final ConcurrentMap<String, Object> EXECUTION_CACHE = new ConcurrentHashMap<>();
   // Cache configuration
-  private static final int MAX_PARSE_CACHE_SIZE = 1000;
-  private static final int MAX_EXECUTION_CACHE_SIZE = 500;
   private static final CommandExecutorProperties properties;
 
   static {
@@ -79,6 +85,15 @@ public final class CommandExecutor {
         prop.getDefaultCommandSeparator()));
     prop.setScanLocations(new HashSet<>(List.of(StringUtils.split(System.getProperty("command.executor.scan-locations",
         String.join(",", prop.getScanLocations())), ","))));
+    prop.setParserMode(CommandParserMode.valueOf(
+        System.getProperty("command.executor.parser-mode", prop.getParserMode().name())));
+    prop.setMaxParserDepth(Integer.parseInt(
+        System.getProperty("command.executor.max-parser-depth", prop.getMaxParserDepth().toString())));
+    prop.setMaxParserArguments(Integer.parseInt(
+        System.getProperty("command.executor.max-parser-arguments", prop.getMaxParserArguments().toString())));
+    prop.setMaxParserCommandNameLength(Integer.parseInt(
+        System.getProperty("command.executor.max-parser-command-name-length",
+            prop.getMaxParserCommandNameLength().toString())));
     return prop;
   }
 
@@ -250,8 +265,10 @@ public final class CommandExecutor {
       return null;
     }
 
+    final var properties = properties();
+
     // Check parse cache first
-    if (properties().getCacheEnabled() && PARSE_CACHE.size() < MAX_PARSE_CACHE_SIZE) {
+    if (properties.getCacheEnabled() && PARSE_CACHE.size() < properties.getMaxParseCacheSize()) {
       String cacheKey = (parent != null ? parent + ":" : "") + stringInput;
       CommandModel cached = PARSE_CACHE.get(cacheKey);
       if (cached != null) {
@@ -262,7 +279,7 @@ public final class CommandExecutor {
     CommandModel result = parseCommandInternal(stringInput, parent);
 
     // Cache the result
-    if (properties().getCacheEnabled() && result != null && PARSE_CACHE.size() < MAX_PARSE_CACHE_SIZE) {
+    if (properties.getCacheEnabled() && PARSE_CACHE.size() < properties.getMaxParseCacheSize()) {
       String cacheKey = (parent != null ? parent + ":" : "") + stringInput;
       PARSE_CACHE.put(cacheKey, result);
     }
@@ -271,108 +288,32 @@ public final class CommandExecutor {
   }
 
   /**
-   * Internal command parsing logic using streaming approach for better performance
+   * Routes to the legacy or AST parser based on the configured parser-mode.
    */
   private static CommandModel parseCommandInternal(String input, String parent) throws InvalidCommandFormatException {
-    if (!StringUtils.trim(input).endsWith(")")) {
-      throw new InvalidCommandFormatException("Invalid command format: " + input);
+    if (properties().getParserMode() == CommandParserMode.STREAMING_AST) {
+      return parseCommandWithAst(input, parent);
     }
-    // Use streaming parser instead of regex for better performance
-    CommandParseResult parseResult = parseCommandStream(input);
-
-    if (parseResult == null || parseResult.command == null) {
-      throw new InvalidCommandFormatException("Invalid command format: " + input);
-    }
-
-    List<Object> parametersList = reconstructParameters(parseResult.command, parseResult.parameters);
-
-    CommandModel result = new CommandModel();
-    result.setCommand(parseResult.command);
-    result.setParameters(parametersList);
-    result.setParentCommand(parent);
-    result.setCacheable(isCacheableCommand(result));
-
-    return result;
+    return new LegacyCommandParser(properties().getDefaultCommandSeparator()).parse(input, parent);
   }
 
   /**
-   * Stream-based command parser for better performance with large strings
+   * Parse via the streaming AST parser and convert the result to {@link CommandModel}.
    */
-  private static CommandParseResult parseCommandStream(String input) {
-    if (input == null || input.isEmpty()) {
-      return null;
+  private static CommandModel parseCommandWithAst(String input, String parent) throws InvalidCommandFormatException {
+    var props = properties();
+    CommandParserOptions opts = new CommandParserOptions(
+        props.getMaxParserDepth(),
+        props.getMaxParserArguments(),
+        props.getMaxParserCommandNameLength(),
+        props.getDefaultCommandSeparator()
+    );
+    try {
+      var node = new StreamingCommandParser(opts).parse(input);
+      return new CommandModelConverter().convert(node, parent);
+    } catch (CommandParseException e) {
+      throw new InvalidCommandFormatException(e.getMessage());
     }
-
-    int length = input.length();
-    int openParenIndex = -1;
-
-    // Find the first opening parenthesis
-    for (int i = 0; i < length; i++) {
-      if (input.charAt(i) == '(') {
-        openParenIndex = i;
-        break;
-      }
-    }
-
-    if (openParenIndex == -1) {
-      // No parentheses found, not a valid command format
-      return null;
-    }
-
-    // Extract command name (everything before first opening parenthesis)
-    String command = input.substring(0, openParenIndex);
-    if (command.trim().equals(IGNORED_COMMAND)) {
-      return new CommandParseResult(command, input.substring(openParenIndex + 1, length - 1));
-    }
-
-    // Find matching closing parenthesis using streaming approach
-    int closeParenIndex = findMatchingClosingParentheses(input, openParenIndex);
-    if (closeParenIndex == -1) {
-      // No matching closing parenthesis found
-      return null;
-    }
-
-    // Extract parameters (everything between parentheses)
-    String parameters = "";
-    if (closeParenIndex > openParenIndex + 1) {
-      parameters = input.substring(openParenIndex + 1, closeParenIndex);
-    }
-
-    return new CommandParseResult(command, parameters);
-  }
-
-  /**
-   * Find matching closing parenthesis using streaming approach
-   * Handles nested parentheses and quoted strings correctly
-   */
-  private static int findMatchingClosingParentheses(String input, int openIndex) {
-    int length = input.length();
-    int depth = 0;
-    boolean hasIgnoredIdentifier = false;
-    int lastIndexOfClosing = input.lastIndexOf(')');
-
-    for (int i = openIndex; i < length; i++) {
-      char c = input.charAt(i);
-
-      if (hasIgnoredIdentifier) {
-        return lastIndexOfClosing;
-      }
-
-      if (c == '!') {
-        hasIgnoredIdentifier = true;
-      }
-
-      if (c == '(') {
-        depth++;
-      } else if (c == ')') {
-        depth--;
-        if (depth == 0) {
-          return i; // Found matching closing parenthesis
-        }
-      }
-    }
-
-    return -1; // No matching closing parenthesis found
   }
 
   /**
@@ -430,9 +371,10 @@ public final class CommandExecutor {
 
       T result = (T) logic(logic, parameters);
 
+      final var properties = properties();
       // Cache the result if applicable
-      if (properties().getCacheEnabled() && isCacheableCommand(command) && result != null
-          && EXECUTION_CACHE.size() < MAX_EXECUTION_CACHE_SIZE) {
+      if (properties.getCacheEnabled() && isCacheableCommand(command) && result != null
+        && EXECUTION_CACHE.size() < properties.getMaxExecutionCacheSize()) {
         String cacheKey = generateCacheKey(command);
         EXECUTION_CACHE.put(cacheKey, result);
       }
@@ -475,7 +417,7 @@ public final class CommandExecutor {
     }
 
     if (input instanceof CommandModel) {
-      executeCommand((CommandModel) input);
+      return executeCommand((CommandModel) input);
     }
 
     try {
@@ -536,148 +478,6 @@ public final class CommandExecutor {
     }
 
     return logic.execute(processedParameters);
-  }
-
-  /**
-   * Reconstruct parameters using efficient streaming approach
-   */
-  private static List<Object> reconstructParameters(String command, String input) {
-    if (input == null || input.trim().isEmpty()) {
-      return Collections.emptyList();
-    }
-
-    if (command.trim().equals(IGNORED_COMMAND)) {
-      return Collections.singletonList(input);
-    }
-
-    // Handle single parameter (no separators)
-    if (!input.contains(properties().getDefaultCommandSeparator())) {
-      return Collections.singletonList(parseSingleParameter(input, command));
-    }
-
-    // Parse multiple parameters using streaming approach
-    return parseMultipleParameters(input, command);
-  }
-
-  /**
-   * Parse a single parameter, checking if it's a nested command
-   */
-  private static Object parseSingleParameter(String input, String parentCommand) {
-    if (input.contains("(") && input.trim().endsWith(")")) {
-      try {
-        return parseCommandInternal(input, parentCommand);
-      } catch (Exception ignored) {
-        return input;
-      }
-    }
-    return input;
-  }
-
-  private static int reverseFindMatchingClosingParentheses(String input, int openIndex) {
-    int length = input.length();
-    char separator = properties().getDefaultCommandSeparator().charAt(0);
-    int lastIndex = input.lastIndexOf(')');
-    if (!input.contains(properties().getDefaultCommandSeparator())) {
-      return lastIndex;
-    }
-
-    for (int i = length - 1; i > openIndex; i--) {
-      char c = input.charAt(i);
-      if (c == separator) {
-        if (i > 0) {
-          if (input.charAt(i - 1) == ')') {
-            lastIndex = i - 1;
-            break;
-          }
-        }
-      }
-    }
-    return lastIndex;
-  }
-
-  /**
-   * Parse multiple parameters using efficient streaming approach
-   */
-  private static List<Object> parseMultipleParameters(String input, String parentCommand) {
-    List<Object> parameters = new ArrayList<>();
-    StringBuilder currentParam = new StringBuilder();
-
-    int length = input.length();
-    int depth = 0;
-    boolean hasIgnoredParameter = false;
-    int ignoredAt = 0;
-    char separatorChar = properties().getDefaultCommandSeparator().charAt(0);
-
-    for (int i = 0; i < length; i++) {
-      char c = input.charAt(i);
-
-      if (hasIgnoredParameter) {
-        int lastClosing = reverseFindMatchingClosingParentheses(input, ignoredAt);
-        if (lastClosing > 0) {
-          parameters.add(parseParameterValue(input.substring(ignoredAt, lastClosing + 1), parentCommand));
-          currentParam.setLength(0); // Reset for next parameter
-          depth = 0;
-          i = lastClosing;
-        } else {
-          currentParam.append(c);
-        }
-        ignoredAt = 0;
-        hasIgnoredParameter = false;
-        continue;
-      }
-
-      if (c == '!') {
-        String temp = currentParam.toString().trim();
-        if (temp.isEmpty()) {
-          ignoredAt = i;
-          hasIgnoredParameter = true;
-        }
-        currentParam.append(c);
-        continue;
-      }
-
-      if (c == '(') {
-        depth++;
-      } else if (c == ')') {
-        depth--;
-      }
-
-      // Check for parameter separator at root level
-      if (c == separatorChar && depth == 0) {
-        // Found a parameter separator at root level
-        String paramStr = currentParam.toString();
-        parameters.add(parseParameterValue(paramStr, parentCommand));
-        currentParam.setLength(0); // Reset for next parameter
-      } else {
-        currentParam.append(c);
-      }
-    }
-
-    // Add the last parameter
-    String paramStr = currentParam.toString();
-    parameters.add(parseParameterValue(paramStr, parentCommand));
-
-    return parameters;
-  }
-
-  /**
-   * Parse individual parameter value, handling nested commands
-   */
-  private static Object parseParameterValue(String param, String parentCommand) {
-    if (param == null || param.trim().isEmpty()) {
-      return param;
-    }
-
-    // Check if this parameter is a nested command
-    if (param.contains("(") && param.trim().endsWith(")")) {
-      try {
-        return parseCommandInternal(param, parentCommand);
-      } catch (Exception ignored) {
-        // If parsing as command fails, treat as regular parameter
-      }
-    }
-
-    return param;
   }
 
   /**
@@ -763,11 +563,11 @@ public final class CommandExecutor {
     // Walk the class hierarchy to find the ParameterizedType for CommandLogic<T>
     Class<?> current = clazz;
     while (current != null && current != Object.class) {
-      for (java.lang.reflect.Type iface : current.getGenericInterfaces()) {
-        if (iface instanceof java.lang.reflect.ParameterizedType pt) {
-          java.lang.reflect.Type raw = pt.getRawType();
+      for (Type iface : current.getGenericInterfaces()) {
+        if (iface instanceof ParameterizedType pt) {
+          Type raw = pt.getRawType();
           if (raw instanceof Class<?> rawClass && CommandLogic.class.isAssignableFrom(rawClass)) {
-            java.lang.reflect.Type typeArg = pt.getActualTypeArguments()[0];
+            Type typeArg = pt.getActualTypeArguments()[0];
             if (typeArg instanceof Class<?> c) {
               return c.getSimpleName();
             }
@@ -786,19 +586,5 @@ public final class CommandExecutor {
   public static void clearAllCaches() {
     PARSE_CACHE.clear();
     EXECUTION_CACHE.clear();
-  }
-
-
-  /**
-   * Result holder for command parsing
-   */
-  private static class CommandParseResult {
-    final String command;
-    final String parameters;
-
-    CommandParseResult(String command, String parameters) {
-      this.command = command;
-      this.parameters = parameters;
-    }
   }
 }
