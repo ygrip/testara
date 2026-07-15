@@ -4,6 +4,7 @@ import java.time.Duration;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 
 import org.awaitility.Awaitility;
@@ -91,8 +92,19 @@ public abstract class UserAction {
    * Prefer capabilities for agnostic behaviour.
    */
   public Object getDriver() {
-    DriverSession<?> session = currentSession();
-    return session != null ? session.instance() : null;
+    try (var session = currentSession()) {
+      return Optional.ofNullable(session)
+        .map(DriverSession::instance)
+        .orElse(null);
+    }
+  }
+
+  public <T> T driverOf(Class<T> type) {
+    try (var session = currentSession()) {
+      return Optional.ofNullable(session)
+        .map(driver -> session.instanceOf(type))
+        .orElse(null);
+    }
   }
 
   public void open(String page) {
@@ -177,7 +189,10 @@ public abstract class UserAction {
    * Example: {@code attemptsTo(Navigate.to("/login"), Enter.text("admin").into("#username"), Click.on("#submit")); }
    */
   public void attemptsTo(Interaction... interactions) {
-    Actor.withCurrentSession()
-      .attemptsTo(interactions);
+    actor().attemptsTo(interactions);
+  }
+
+  public Actor actor() {
+    return ActorManager.currentActor();
   }
 }

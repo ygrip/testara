@@ -1,14 +1,21 @@
 package io.github.ygrip.testara.ui.playwright.capability;
 
+import static org.awaitility.Awaitility.await;
+
+import java.time.Duration;
+import java.util.Date;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
 import org.apache.commons.lang3.ObjectUtils;
 
 import io.github.ygrip.testara.ui.capability.ObservationCapability;
+import io.github.ygrip.testara.ui.model.CapturedCookie;
 import io.github.ygrip.testara.ui.page.Element;
 import com.microsoft.playwright.Page;
+import com.microsoft.playwright.options.Cookie;
 
 import io.github.ygrip.testara.ui.playwright.driver.PlaywrightSession;
 import lombok.extern.log4j.Log4j2;
@@ -202,5 +209,55 @@ public final class PlaywrightObservationCapability extends PlaywrightElementReso
   public byte[] captureRegion(int x, int y, int width, int height) {
     return session.runOnApiThread(() -> session.pageForApi().screenshot(new Page.ScreenshotOptions()
         .setClip(x, y, width, height)));
+  }
+
+  @Override
+  public CapturedCookie getCookieNamed(String name) {
+    final var cookie = await().alias("%s cookie to be present".formatted(name))
+      .atMost(Duration.ofSeconds(10))
+      .pollInterval(Duration.ofMillis(100))
+      .until(
+        () -> Objects.requireNonNull(session.contextForApi()
+          .cookies()
+          .stream()
+          .filter(capture -> capture.name.equals(name))
+          .findAny()
+          .orElse(null)), obj -> true
+      );
+
+    return toCapturedCookie(cookie);
+  }
+
+  private CapturedCookie toCapturedCookie(Cookie cookie) {
+    return Optional.ofNullable(cookie)
+      .map(captured -> CapturedCookie.builder()
+        .name(captured.name)
+        .path(captured.path)
+        .maxAge(Optional.ofNullable(captured.expires)
+          .orElse(0D)
+          .longValue())
+        .value(captured.value)
+        .secured(captured.secure)
+        .domain(captured.domain)
+        .httpOnly(captured.httpOnly)
+        .sameSite(captured.sameSite.name())
+        .expiryDate(new Date(cookie.expires.longValue() * 1000))
+        .build())
+      .orElse(null);
+  }
+
+  @Override
+  public List<CapturedCookie> getCookies() {
+    final var cookies = await().alias("wait cookie to be present")
+      .atMost(Duration.ofSeconds(10))
+      .pollInterval(Duration.ofMillis(100))
+      .until(
+        () -> session.contextForApi()
+          .cookies(), obj -> true
+      );
+
+    return cookies.stream()
+      .map(this::toCapturedCookie)
+      .collect(Collectors.toList());
   }
 }

@@ -1,20 +1,28 @@
 package io.github.ygrip.testara.ui.appium.capability;
 
+import static org.awaitility.Awaitility.await;
+
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
+import java.time.Duration;
+import java.util.Date;
 import java.util.List;
+import java.util.Objects;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 import javax.imageio.ImageIO;
 
 import org.apache.commons.lang3.ObjectUtils;
+import org.openqa.selenium.Cookie;
 import org.openqa.selenium.JavascriptExecutor;
 import org.openqa.selenium.OutputType;
 import org.openqa.selenium.TakesScreenshot;
 import org.openqa.selenium.WebElement;
 
 import io.github.ygrip.testara.ui.capability.ObservationCapability;
+import io.github.ygrip.testara.ui.model.CapturedCookie;
 import io.github.ygrip.testara.ui.page.Element;
 
 import io.appium.java_client.AppiumDriver;
@@ -157,5 +165,51 @@ public final class AppiumObservationCapability extends AppiumElementResolver
       log.warn("Failed to capture region screenshot: {}", e.getMessage());
       return new byte[0];
     }
+  }
+
+  @Override
+  public CapturedCookie getCookieNamed(String name) {
+    final var cookie = await().alias("%s cookie to be present".formatted(name))
+      .atMost(Duration.ofSeconds(10))
+      .pollInterval(Duration.ofMillis(100))
+      .until(
+        () -> driver.manage()
+          .getCookieNamed(name), Objects::nonNull
+      );
+
+    return toCapturedCookie(cookie);
+  }
+
+  private CapturedCookie toCapturedCookie(Cookie cookie){
+    return Optional.ofNullable(cookie)
+      .map(captured -> CapturedCookie.builder()
+        .name(captured.getName())
+        .path(captured.getPath())
+        .maxAge(Optional.ofNullable(captured.getExpiry())
+          .map(Date::getTime)
+          .orElse(0L))
+        .value(captured.getValue())
+        .secured(captured.isSecure())
+        .domain(captured.getDomain())
+        .httpOnly(captured.isHttpOnly())
+        .sameSite(captured.getSameSite())
+        .expiryDate(captured.getExpiry())
+        .build())
+      .orElse(null);
+  }
+
+  @Override
+  public List<CapturedCookie> getCookies() {
+    final var cookies = await().alias("wait cookie to be present")
+      .atMost(Duration.ofSeconds(10))
+      .pollInterval(Duration.ofMillis(100))
+      .until(
+        () -> driver.manage()
+          .getCookies(), obj -> true
+      );
+
+    return cookies.stream()
+      .map(this::toCapturedCookie)
+      .collect(Collectors.toList());
   }
 }

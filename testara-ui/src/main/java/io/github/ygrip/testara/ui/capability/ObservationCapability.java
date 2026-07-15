@@ -1,7 +1,9 @@
 package io.github.ygrip.testara.ui.capability;
 
+import java.time.Duration;
 import java.util.List;
 
+import io.github.ygrip.testara.ui.model.CapturedCookie;
 import io.github.ygrip.testara.ui.page.Element;
 
 /**
@@ -29,6 +31,12 @@ public interface ObservationCapability<E> {
 
   /** Get page title url. */
   String getPageTitle();
+
+  /** Get browser cookie by name. */
+  CapturedCookie getCookieNamed(String name);
+
+  /** Get all browser cookies */
+  List<CapturedCookie> getCookies();
 
   /** Get attribute value. */
   String getAttribute(Element locator, String attributeName);

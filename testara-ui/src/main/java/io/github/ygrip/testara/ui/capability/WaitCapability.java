@@ -42,7 +42,7 @@ public interface WaitCapability {
   /** Wait for fixed time (use sparingly). */
   WaitCapability forDuration(Duration duration);
 
-  /** Fluent step for entering text into a locator. */
+  /** Interface to define duration of a WaitCapability. */
   interface WaitPage {
     WaitCapability forDuration(Duration duration);
   }
