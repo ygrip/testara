@@ -8,6 +8,8 @@ import io.github.ygrip.testara.core.context.TestContextProvider;
 import io.github.ygrip.testara.core.context.TestContextProviderLoader;
 import io.github.ygrip.testara.core.context.TestComponent;
 import io.github.ygrip.testara.core.context.TestFramework;
+import io.github.ygrip.testara.core.function.MethodInvocationCollector;
+import io.github.ygrip.testara.core.function.RetryableMethodPostProcessor;
 import io.github.ygrip.testara.core.registry.RegistryScope;
 import io.github.ygrip.testara.core.registry.RootRegistry;
 import io.github.ygrip.testara.core.scan.ClassScanner;
@@ -155,7 +157,7 @@ public class TestaraFrameworkExtension implements TestaraExtension {
       
       // Now instantiate RetryableMethodPostProcessor - this registers MethodInterceptionPostProcessor
       // with PostProcessorRegistry, enabling ByteBuddy proxy creation for @RetryableMethod classes
-      TestFramework.context().get(io.github.ygrip.testara.core.function.RetryableMethodPostProcessor.class);
+      TestFramework.context().get(RetryableMethodPostProcessor.class);
     } catch (Exception e) {
       log.warn("Failed to enable method interception: {}. @RetryableMethod won't work.", e.getMessage());
     }
@@ -168,18 +170,18 @@ public class TestaraFrameworkExtension implements TestaraExtension {
    */
   private void ensureRetryableComponentsRegistered() {
     // Register MethodInvocationCollector if not already registered (dependency of RetryableMethodPostProcessor)
-    if (!RootRegistry.instance().hasProvider(io.github.ygrip.testara.core.function.MethodInvocationCollector.class)) {
+    if (!RootRegistry.instance().hasProvider(MethodInvocationCollector.class)) {
       RootRegistry.instance().register(
-          io.github.ygrip.testara.core.function.MethodInvocationCollector.class,
+          MethodInvocationCollector.class,
           RegistryScope.TEST
       );
       log.debug("Explicitly registered MethodInvocationCollector for method interception");
     }
 
     // Register RetryableMethodPostProcessor if not already registered
-    if (!RootRegistry.instance().hasProvider(io.github.ygrip.testara.core.function.RetryableMethodPostProcessor.class)) {
+    if (!RootRegistry.instance().hasProvider(RetryableMethodPostProcessor.class)) {
       RootRegistry.instance().register(
-          io.github.ygrip.testara.core.function.RetryableMethodPostProcessor.class,
+          RetryableMethodPostProcessor.class,
           RegistryScope.TEST
       );
       log.debug("Explicitly registered RetryableMethodPostProcessor for method interception");

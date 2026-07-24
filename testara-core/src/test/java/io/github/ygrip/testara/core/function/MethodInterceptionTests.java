@@ -11,6 +11,9 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.parallel.Execution;
+import org.junit.jupiter.api.parallel.ExecutionMode;
+import org.junit.jupiter.api.parallel.Isolated;
 
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -24,6 +27,8 @@ import static org.hamcrest.Matchers.*;
  */
 @Tag("function")
 @TestWith(properties = {"classpath:application.properties", "classpath:configuration.properties"})
+@Isolated("Mutates the global post-processor registry")
+@Execution(ExecutionMode.SAME_THREAD)
 public class MethodInterceptionTests extends BaseTests {
 
   @BeforeEach
@@ -424,4 +429,3 @@ public class MethodInterceptionTests extends BaseTests {
     }
   }
 }
-

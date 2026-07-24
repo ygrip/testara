@@ -24,8 +24,10 @@ import io.github.ygrip.testara.ui.capability.InteractionCapability;
 import io.github.ygrip.testara.ui.capability.NavigationCapability;
 import io.github.ygrip.testara.ui.capability.ObservationCapability;
 import io.github.ygrip.testara.ui.capability.WaitCapability;
+import io.github.ygrip.testara.ui.driver.CurrentPageHolder;
 import io.github.ygrip.testara.ui.driver.DriverSession;
 import io.github.ygrip.testara.ui.model.DeviceType;
+import io.github.ygrip.testara.ui.page.PageContext;
 
 import io.appium.java_client.AppiumDriver;
 import lombok.extern.log4j.Log4j2;
@@ -34,9 +36,25 @@ import lombok.extern.log4j.Log4j2;
 public final class AppiumSession implements DriverSession<AppiumDriver> {
   private final DeviceType deviceType;
   private AppiumDriver driver;
+  private final CurrentPageHolder pageState = new CurrentPageHolder(this);
 
   public AppiumSession() {
     this.deviceType = DeviceType.ANDROID;
+  }
+
+  @Override
+  public PageContext<?> currentPage() {
+    return pageState.current();
+  }
+
+  @Override
+  public void activatePage(PageContext<?> page) {
+    pageState.activate(page);
+  }
+
+  @Override
+  public void clearCurrentPage() {
+    pageState.clear();
   }
 
   @Override
@@ -103,6 +121,7 @@ public final class AppiumSession implements DriverSession<AppiumDriver> {
         .getInstance(AppiumPageFinder.class);
     }
     finder.setDeviceType(platform());
+    finder.bindSession(this);
     return finder;
   }
 
@@ -114,6 +133,7 @@ public final class AppiumSession implements DriverSession<AppiumDriver> {
         driver.quit();
       } finally {
         driver = null;
+        pageState.clear();
       }
     }
   }

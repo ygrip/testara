@@ -7,8 +7,11 @@ import io.github.ygrip.testara.ui.error.SessionMismatchException;
 import io.github.ygrip.testara.ui.interaction.InteractionContext;
 import io.github.ygrip.testara.ui.page.Element;
 
+@FunctionalInterface
 public interface Observation<T> {
-  Observation<T> root(Element root);
+  default Observation<T> root(Element root) {
+    return this;
+  }
 
   T perform(InteractionContext context);
 
@@ -16,5 +19,9 @@ public interface Observation<T> {
     if(ObjectUtils.isEmpty(session)){
       throw new SessionMismatchException("#Observation expect a valid session");
     }
+  }
+
+  default String description() {
+    return getClass().getSimpleName();
   }
 }

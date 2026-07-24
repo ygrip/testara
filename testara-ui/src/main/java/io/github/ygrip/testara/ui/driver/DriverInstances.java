@@ -9,7 +9,8 @@ import java.util.concurrent.ConcurrentHashMap;
 
 public final class DriverInstances {
   private final ConcurrentHashMap<String, DriverSession<?>> driverMap = new ConcurrentHashMap<>();
-  private final ThreadLocal<Set<String>> driversUsedInCurrentThread = new ThreadLocal<>();
+  private final ThreadLocal<Set<String>> driversUsedInCurrentThread =
+    ThreadLocal.withInitial(ConcurrentHashMap::newKeySet);
   private String currentDriver;
   private DriverSession<?> currentActiveDriver;
 

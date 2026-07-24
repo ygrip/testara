@@ -56,10 +56,26 @@ public interface DriverSession<D> extends AutoCloseable {
    */
   DriverSession<D> on(DeviceType platform);
 
+  /**
+   * The page currently active in this browser session, or {@code null} if none is active yet.
+   * Ownership of current-page state belongs to the session (not the shared {@code PageFinder}).
+   */
+  PageContext<?> currentPage();
+
+  /**
+   * Mark {@code page} as the current page of this session. Implementations log the transition.
+   */
+  void activatePage(PageContext<?> page);
+
+  /**
+   * Forget the current page of this session (e.g. on navigation reset or close).
+   */
+  void clearCurrentPage();
+
   default boolean isOn(PageContext<?> page){
     final var current = page.isCurrentPage();
     if(current){
-      finder().setCurrentPage(page);
+      activatePage(page);
     }
     return current;
   }

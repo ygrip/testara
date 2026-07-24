@@ -1,8 +1,17 @@
 package io.github.ygrip.testara.core.function;
 
-import io.github.ygrip.testara.core.BaseTests;
-import io.github.ygrip.testara.core.TestWith;
-import io.github.ygrip.testara.core.context.TestFramework;
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.is;
+import static org.hamcrest.Matchers.notNullValue;
+import static org.hamcrest.Matchers.sameInstance;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+
+import java.lang.invoke.MethodHandle;
+import java.lang.invoke.MethodHandles;
+import java.lang.reflect.Method;
+import java.time.Duration;
+
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -10,14 +19,11 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
-import java.lang.invoke.MethodHandle;
-import java.lang.invoke.MethodHandles;
-import java.lang.reflect.Method;
-import java.time.Duration;
-
-import static org.hamcrest.MatcherAssert.assertThat;
-import static org.hamcrest.Matchers.*;
-import static org.junit.jupiter.api.Assertions.assertThrows;
+import io.github.ygrip.testara.core.BaseTests;
+import io.github.ygrip.testara.core.TestWith;
+import io.github.ygrip.testara.core.context.TestFramework;
+import io.github.ygrip.testara.core.factory.InstanceResolver;
+import io.github.ygrip.testara.core.factory.PostProcessorRegistry;
 
 /**
  * Integration tests for the @RetryableMethod functionality.
@@ -38,7 +44,8 @@ public class RetryableMethodIntegrationTests extends BaseTests {
     MethodInterceptionPostProcessor.clearCache();
 
     // Get collector from context
-    collector = TestFramework.context().get(MethodInvocationCollector.class);
+    collector = TestFramework.context()
+      .get(MethodInvocationCollector.class);
 
     // Create test service
     service = new RetryableTestService();
@@ -89,6 +96,7 @@ public class RetryableMethodIntegrationTests extends BaseTests {
     }
   }
 
+
   @Nested
   @DisplayName("Execution Phase Tests")
   class ExecutionTests {
@@ -127,9 +135,8 @@ public class RetryableMethodIntegrationTests extends BaseTests {
     void shouldThrowWhenIntervalGreaterThanTimeout() {
       collector.startCollecting();
 
-      Exception exception = assertThrows(Exception.class, () ->
-          collector.executeAll(Duration.ofMillis(100), Duration.ofSeconds(1))
-      );
+      Exception exception =
+        assertThrows(Exception.class, () -> collector.executeAll(Duration.ofMillis(100), Duration.ofSeconds(1)));
 
       assertThat(exception.getMessage(), containsString("Interval cannot be greater than timeout"));
     }
@@ -146,6 +153,7 @@ public class RetryableMethodIntegrationTests extends BaseTests {
     }
   }
 
+
   @Nested
   @DisplayName("Proxy Creation Tests")
   class ProxyCreationTests {
@@ -155,13 +163,18 @@ public class RetryableMethodIntegrationTests extends BaseTests {
     void shouldCreateProxyForRetryableClass() {
       MethodInterceptionPostProcessor processor = new MethodInterceptionPostProcessor();
       processor.configure(() -> collector, null);
+      PostProcessorRegistry.instance()
+        .register(processor);
 
-      Object proxy = processor.postProcess(service, RetryableTestService.class);
+      Object proxy = new InstanceResolver().resolve(RetryableTestService.class);
 
       // Proxy should be a different instance
       assertThat(proxy, is(notNullValue()));
       // Should be a ByteBuddy proxy
-      assertThat(proxy.getClass().getName(), containsString("$ByteBuddy$"));
+      assertThat(
+        proxy.getClass()
+          .getName(), containsString("$ByteBuddy$")
+      );
     }
 
     @Test
@@ -182,17 +195,21 @@ public class RetryableMethodIntegrationTests extends BaseTests {
     void shouldNotProxyAlreadyProxied() {
       MethodInterceptionPostProcessor processor = new MethodInterceptionPostProcessor();
       processor.configure(() -> collector, null);
+      PostProcessorRegistry.instance()
+        .register(processor);
 
-      // First proxy
-      Object proxy1 = processor.postProcess(service, RetryableTestService.class);
-      assertThat(proxy1.getClass().getName(), containsString("$ByteBuddy$"));
+      Object proxy1 = new InstanceResolver().resolve(RetryableTestService.class);
+      assertThat(
+        proxy1.getClass()
+          .getName(), containsString("$ByteBuddy$")
+      );
 
       // Second proxy attempt should return the same proxy
-      @SuppressWarnings("unchecked")
-      Object proxy2 = processor.postProcess(proxy1, (Class<Object>) proxy1.getClass());
+      @SuppressWarnings("unchecked") Object proxy2 = processor.postProcess(proxy1, (Class<Object>) proxy1.getClass());
       assertThat(proxy2, is(sameInstance(proxy1)));
     }
   }
+
 
   @Nested
   @DisplayName("MethodInvocation Tests")
@@ -202,9 +219,10 @@ public class RetryableMethodIntegrationTests extends BaseTests {
     @DisplayName("Should create MethodInvocation with valid instance")
     void shouldCreateMethodInvocation() throws Throwable {
       Method method = RetryableTestService.class.getMethod("retryableOperation");
-      MethodHandle handle = MethodHandles.lookup().unreflect(method);
+      MethodHandle handle = MethodHandles.lookup()
+        .unreflect(method);
 
-      MethodInvocation invocation = new MethodInvocation(service, handle, new Object[]{}, "test operation");
+      MethodInvocation invocation = new MethodInvocation(service, handle, new Object[] {}, "test operation");
 
       assertThat(invocation.getMethodDescription(), is("test operation"));
       assertThat(invocation.getClassReference(), containsString("RetryableTestService"));
@@ -214,20 +232,20 @@ public class RetryableMethodIntegrationTests extends BaseTests {
     @DisplayName("Should throw on null instance")
     void shouldThrowOnNullInstance() throws Exception {
       Method method = RetryableTestService.class.getMethod("retryableOperation");
-      MethodHandle handle = MethodHandles.lookup().unreflect(method);
+      MethodHandle handle = MethodHandles.lookup()
+        .unreflect(method);
 
-      assertThrows(IllegalStateException.class, () ->
-          new MethodInvocation(null, handle, new Object[]{}, "test")
-      );
+      assertThrows(IllegalStateException.class, () -> new MethodInvocation(null, handle, new Object[] {}, "test"));
     }
 
     @Test
     @DisplayName("Should invoke method successfully")
     void shouldInvokeMethodSuccessfully() throws Throwable {
       Method method = RetryableTestService.class.getMethod("retryableOperation");
-      MethodHandle handle = MethodHandles.lookup().unreflect(method);
+      MethodHandle handle = MethodHandles.lookup()
+        .unreflect(method);
 
-      MethodInvocation invocation = new MethodInvocation(service, handle, new Object[]{}, "test operation");
+      MethodInvocation invocation = new MethodInvocation(service, handle, new Object[] {}, "test operation");
 
       invocation.invoke();
 
@@ -238,15 +256,17 @@ public class RetryableMethodIntegrationTests extends BaseTests {
     @DisplayName("Should invoke method with parameters")
     void shouldInvokeMethodWithParams() throws Throwable {
       Method method = RetryableTestService.class.getMethod("retryableWithParams", int.class, int.class);
-      MethodHandle handle = MethodHandles.lookup().unreflect(method);
+      MethodHandle handle = MethodHandles.lookup()
+        .unreflect(method);
 
-      MethodInvocation invocation = new MethodInvocation(service, handle, new Object[]{5, 3}, "add operation");
+      MethodInvocation invocation = new MethodInvocation(service, handle, new Object[] {5, 3}, "add operation");
 
       Object result = invocation.invoke();
 
       assertThat(result, is(8));
     }
   }
+
 
   @Nested
   @DisplayName("Thread Safety Tests")
@@ -276,6 +296,7 @@ public class RetryableMethodIntegrationTests extends BaseTests {
     }
   }
 
+
   @Nested
   @DisplayName("Error Handling Tests")
   class ErrorHandlingTests {
@@ -286,9 +307,10 @@ public class RetryableMethodIntegrationTests extends BaseTests {
       service.setFailuresBeforeSuccess(1);
 
       Method method = RetryableTestService.class.getMethod("failingOperation");
-      MethodHandle handle = MethodHandles.lookup().unreflect(method);
+      MethodHandle handle = MethodHandles.lookup()
+        .unreflect(method);
 
-      MethodInvocation invocation = new MethodInvocation(service, handle, new Object[]{}, "failing operation");
+      MethodInvocation invocation = new MethodInvocation(service, handle, new Object[] {}, "failing operation");
 
       // First call should fail
       assertThrows(RuntimeException.class, invocation::invoke);

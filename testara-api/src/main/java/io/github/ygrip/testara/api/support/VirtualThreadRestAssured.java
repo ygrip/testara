@@ -24,6 +24,12 @@ public final class VirtualThreadRestAssured {
   // A global virtual-thread-per-task executor
   private static final ExecutorService VIRTUAL_EXECUTOR = createDynamicVirtualThreadExecutor("rest-assured");
 
+  static {
+    // Tear the shared executor down only on JVM exit, never from per-scenario cleanup.
+    Runtime.getRuntime().addShutdownHook(new Thread(VirtualThreadRestAssured::shutdown,
+        "rest-assured-executor-shutdown"));
+  }
+
   private static ExecutorService createDynamicVirtualThreadExecutor(String prefix) {
     int availableCores = Runtime.getRuntime().availableProcessors();
 

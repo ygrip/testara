@@ -1,7 +1,9 @@
 package io.github.ygrip.testara.agent.skill;
 
 import io.github.ygrip.testara.agent.index.FeatureIndex;
+import io.github.ygrip.testara.agent.index.ScenarioIndex;
 import io.github.ygrip.testara.agent.index.TestaraProjectProfile;
+import io.github.ygrip.testara.agent.parser.CucumberReportParser;
 import io.github.ygrip.testara.agent.skill.run.*;
 
 import java.util.concurrent.TimeUnit;
@@ -170,7 +172,7 @@ public class TestRunSkill implements AgentSkill<String, String> {
     String summary = logSummary(safeCommand, tagExpr, logFile, exitCode, duration, exitCode == 0 ? "PASSED" : "FAILED");
     if (Files.exists(reportJson)) {
       try {
-        TestRunReport report = io.github.ygrip.testara.agent.parser.CucumberReportParser
+        TestRunReport report = CucumberReportParser
             .parseCucumberJson(reportJson, tagExpr, duration);
         return report.toMarkdown() + "\n\n" + summary;
       } catch (IOException e) {
@@ -302,7 +304,7 @@ public class TestRunSkill implements AgentSkill<String, String> {
   }
 
   private TestaraProjectProfile profileForScenario(TestaraProjectProfile base,
-      FeatureIndex feature, io.github.ygrip.testara.agent.index.ScenarioIndex scenario) {
+      FeatureIndex feature, ScenarioIndex scenario) {
     var merged = new ArrayList<>(feature.tags());
     merged.addAll(scenario.tags());
     var fakeFeature = new FeatureIndex(feature.path(), feature.featureName(),

@@ -77,7 +77,7 @@ public final class CommandExecutor {
         prop.getScanTimeout().toString())));
     prop.setMaxExecutionCacheSize(Integer.parseInt(System.getProperty("command.executor.max-execution-cache-size",
         prop.getMaxExecutionCacheSize().toString())));
-    prop.setMaxExecutionCacheSize(Integer.parseInt(System.getProperty("command.executor.max-parse-cache-size",
+    prop.setMaxParseCacheSize(Integer.parseInt(System.getProperty("command.executor.max-parse-cache-size",
         prop.getMaxParseCacheSize().toString())));
     prop.setMaxPrintableCharacters(Integer.parseInt(System.getProperty("command.executor.max-printable-characters",
         prop.getMaxPrintableCharacters().toString())));

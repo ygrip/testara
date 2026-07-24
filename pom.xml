@@ -66,17 +66,16 @@
     <classgraph.version>4.8.181</classgraph.version>
     <ashot.version>1.5.4</ashot.version>
     <reactor-kafka.version>1.3.23</reactor-kafka.version>
-    <kafka-clients.version>3.9.1</kafka-clients.version>
-    <log4j2.version>2.25.3</log4j2.version>
+    <kafka-clients.version>3.9.2</kafka-clients.version>
+    <log4j2.version>2.26.1</log4j2.version>
     <jsoup.version>1.17.2</jsoup.version>
     <mongo-db.version>5.1.0</mongo-db.version>
-    <postgresql.version>42.7.3</postgresql.version>
+    <postgresql.version>42.7.13</postgresql.version>
     <mariadb.version>3.4.0</mariadb.version>
     <mysql.version>9.4.0</mysql.version>
     <sshj.version>0.38.0</sshj.version>
     <commons-lang3.version>3.18.0</commons-lang3.version>
     <joda-time.version>2.13.0</joda-time.version>
-    <json-path.version>2.9.0</json-path.version>
     <google-zxing.version>3.5.2</google-zxing.version>
     <guava.version>33.2.1-jre</guava.version>
     <byte-buddy.version>1.14.19</byte-buddy.version>
@@ -88,10 +87,11 @@
     <commons-codec.version>1.13</commons-codec.version>
     <awaitility.version>4.2.2</awaitility.version>
     <lz4-java.version>1.8.0</lz4-java.version>
+    <yawk.lz4-java.version>1.10.1</yawk.lz4-java.version>
     <snakeyaml.version>2.0</snakeyaml.version>
     <rest-assured.version>5.5.2</rest-assured.version>
     <apache-tika.version>3.2.3</apache-tika.version>
-    <plexus-utils.version>3.0.24</plexus-utils.version>
+    <plexus-utils.version>3.6.1</plexus-utils.version>
     <maven-model.version>3.3.9</maven-model.version>
     <selenium.version>4.38.0</selenium.version>
     <appium.version>10.0.0</appium.version>
@@ -116,7 +116,7 @@
     <picocli.version>4.7.6</picocli.version>
 
     <!-- Reporting versions -->
-    <thymeleaf.version>3.1.2.RELEASE</thymeleaf.version>
+    <thymeleaf.version>3.1.5.RELEASE</thymeleaf.version>
     <thymeleaf.extras.java8time.version>3.0.4.RELEASE</thymeleaf.extras.java8time.version>
   </properties>
 
@@ -430,6 +430,11 @@
         <artifactId>snakeyaml</artifactId>
         <version>${snakeyaml.version}</version>
       </dependency>
+      <dependency>
+        <groupId>at.yawk.lz4</groupId>
+        <artifactId>lz4-java</artifactId>
+        <version>${yawk.lz4-java.version}</version>
+      </dependency>
 
       <dependency>
         <groupId>org.elasticsearch</groupId>
@@ -492,6 +497,12 @@
         <groupId>org.apache.kafka</groupId>
         <artifactId>kafka-clients</artifactId>
         <version>${kafka-clients.version}</version>
+        <exclusions>
+          <exclusion>
+            <groupId>org.lz4</groupId>
+            <artifactId>lz4-java</artifactId>
+          </exclusion>
+        </exclusions>
       </dependency>
       <dependency>
         <groupId>io.projectreactor.kafka</groupId>

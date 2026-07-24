@@ -86,8 +86,7 @@ public final class Actor {
       } catch (Exception err) {
         log.warn(
           "#Interaction skipped for {}, error : {}",
-          interaction.getClass()
-            .getSimpleName(),
+          interaction.description(),
           err.getMessage()
         );
       }
@@ -105,8 +104,7 @@ public final class Actor {
     } catch (Exception err) {
       log.warn(
         "#Observation skipped for {}, error : {}",
-        observation.getClass()
-          .getSimpleName(),
+        observation.description(),
         err.getMessage()
       );
       return null;

@@ -1,5 +1,9 @@
 package io.github.ygrip.testara.agent.cli.command;
 
+import java.nio.file.Path;
+import java.util.HashMap;
+import java.util.Map;
+
 import io.github.ygrip.testara.agent.AgentMode;
 import io.github.ygrip.testara.agent.knowledge.JsonlKnowledgeStore;
 import io.github.ygrip.testara.agent.llm.DisabledLlmClient;
@@ -9,17 +13,17 @@ import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
 import picocli.CommandLine.Parameters;
 
-import java.nio.file.Path;
-import java.util.HashMap;
-import java.util.Map;
-
-@Command(name = "/test-validation", aliases = {"test-validation"},
-    description = "List project validations, show validation detail, or generate a new ValidatorLogic class",
-    mixinStandardHelpOptions = true)
+@Command(name = "/test-validation",
+  aliases = {"test-validation"},
+  description = "List project validations, show validation detail, or generate a new ValidatorLogic class",
+  mixinStandardHelpOptions = true
+)
 public class TestValidationCommand implements Runnable {
 
-  @Parameters(index = "0", arity = "0..1",
-      description = "Description to generate a validation, 'detail:<name>' to show detail, or omit to list all")
+  @Parameters(index = "0",
+    arity = "0..1",
+    description = "Description to generate a validation, 'detail:<name>' to show detail, or omit to list all"
+  )
   private String description;
 
   @Option(names = {"--list", "-l"}, description = "List all indexed validations in this project")
@@ -28,8 +32,7 @@ public class TestValidationCommand implements Runnable {
   @Option(names = {"--detail", "-d"}, description = "Show source, when-to-use and how-to-use for a specific validation")
   private String detail;
 
-  @Option(names = "--mode", defaultValue = "auto",
-      description = "Generation mode: auto (default), json, java")
+  @Option(names = "--mode", defaultValue = "auto", description = "Generation mode: auto (default), json, java")
   private String mode;
 
   @Option(names = "--package", defaultValue = "io.github.ygrip.testara.validation")
@@ -40,15 +43,16 @@ public class TestValidationCommand implements Runnable {
 
   @Override
   public void run() {
-    Path root = projectRoot.toAbsolutePath().normalize();
+    Path root = projectRoot.toAbsolutePath()
+      .normalize();
     Map<String, String> opts = new HashMap<>();
     opts.put("mode", mode);
     opts.put("package", pkg);
-    if (detail != null) opts.put("detail", detail);
+    if (detail != null)
+      opts.put("detail", detail);
 
-    AgentContext ctx = new AgentContext(root,
-        JsonlKnowledgeStore.loadProfile(root), AgentMode.PATCH,
-        new DisabledLlmClient(), opts);
+    AgentContext ctx =
+      new AgentContext(root, JsonlKnowledgeStore.loadProfile(root), AgentMode.PATCH, new DisabledLlmClient(), opts);
 
     String input = list ? "--list" : (description != null ? description : "");
     System.out.println(new TestValidationSkill().execute(input, ctx));

@@ -108,6 +108,14 @@ See **[Testara Agent documentation](docs/agentic-skills.md)** for full skill ref
 
 ## Documentation
 
+**Start here:**
+
+- **[Architecture](docs/ARCHITECTURE.md)** — What Testara is, when to use it, the module map, core runtime concepts, and how each slice (API/UI/DB/streaming/search) plugs in
+- **[Getting Started](docs/GETTING-STARTED.md)** — Setup, first API + UI features, a cross-layer example, and the agent fast-path
+- **[Best Practices](docs/BEST-PRACTICES.md)** — The approach and conventions that keep suites portable and readable
+
+**Reference:**
+
 - **[Testara Agent](docs/agentic-skills.md)** — All 8 agentic skills, MCP tools+prompts, knowledge store, YAML config, Docker, security model
 - **[Command Engine](testara-command/README.md)** — All 50+ built-in commands, syntax reference, and how to create custom commands
 - **[Validation](testara-validation/README.md)** — All 40+ validators, usage patterns, and how to create custom validations

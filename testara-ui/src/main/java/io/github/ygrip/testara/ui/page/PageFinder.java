@@ -29,6 +29,8 @@ import io.github.ygrip.testara.core.context.TestFramework;
 import io.github.ygrip.testara.core.scan.ClassScanner;
 import io.github.ygrip.testara.core.support.CommonHelper;
 import io.github.ygrip.testara.ui.config.AbstractDriverProperties;
+import io.github.ygrip.testara.ui.driver.DriverSession;
+import io.github.ygrip.testara.ui.driver.DriverSessionManager;
 import io.github.ygrip.testara.ui.error.ElementNotFoundException;
 import io.github.ygrip.testara.ui.error.PageNotFoundException;
 import io.github.ygrip.testara.ui.model.DeviceType;
@@ -52,16 +54,49 @@ public abstract class PageFinder<P extends PageContext<?>, E, B> {
   @Setter
   @Getter
   private boolean suppressLog;
-  private P currentPage;
+  // Current-page state is NOT owned here — it belongs to the browser session. This finder is
+  // test-scoped and may be shared by two sessions in one test, so it must not hold current-page
+  // state itself (that caused cross-session bleed). It delegates to the session bound at
+  // DriverSession.finder() time, falling back to the active session on this test thread.
+  private transient DriverSession<?> boundSession;
 
-  @SuppressWarnings("unchecked")
-  public <P extends PageContext<?>> P getCurrentPage() {
-    return (P) currentPage;
+  /** Bind the owning session; called by {@code DriverSession.finder()} on each resolution. */
+  public void bindSession(DriverSession<?> session) {
+    this.boundSession = session;
   }
 
   @SuppressWarnings("unchecked")
+  public <P extends PageContext<?>> P getCurrentPage() {
+    DriverSession<?> session = resolveSession();
+    if (session == null) {
+      return null;
+    }
+    return (P) session.currentPage();
+  }
+
   public <C extends PageContext<?>> void setCurrentPage(C page) {
-    this.currentPage = (P) page;
+    DriverSession<?> session = resolveSession();
+    if (session == null) {
+      String pageName = "null";
+      if (page != null) {
+        pageName = page.getClass().getSimpleName();
+      }
+      log().warn("#setCurrentPage: no bound or active session; page '{}' not tracked", pageName);
+      return;
+    }
+    session.activatePage(page);
+  }
+
+  private DriverSession<?> resolveSession() {
+    if (boundSession != null) {
+      return boundSession;
+    }
+    try {
+      return DriverSessionManager.inThisTestThread().getCurrentDriver();
+    } catch (Exception err) {
+      log().trace("#resolveSession: no active session on this test thread", err);
+      return null;
+    }
   }
 
   public abstract Class<? extends AbstractDriverProperties> configType();

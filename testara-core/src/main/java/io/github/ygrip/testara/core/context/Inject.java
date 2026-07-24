@@ -6,13 +6,11 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 /**
- * <p>TestComponent class.</p>
- *
- * @author yunaz.ramadhan on 4/1/2026
- * @version $Id: $Id
+ * Marks an injectable field or selects the injection constructor when a
+ * component declares more than one constructor.
  */
 
-@Target(ElementType.FIELD)
+@Target({ElementType.FIELD, ElementType.CONSTRUCTOR})
 @Retention(RetentionPolicy.RUNTIME)
 public @interface Inject {
 }

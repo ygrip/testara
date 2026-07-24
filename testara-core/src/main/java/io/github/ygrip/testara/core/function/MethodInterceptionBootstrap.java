@@ -8,28 +8,28 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Bootstrap utility for method interception.
- * 
+ *
  * Provides a simple way to enable @RetryableMethod interception in the framework.
  * Call {@link #enable()} or {@link #enable(Set)} early in test initialization.
- * 
+ *
  * Usage examples:
- * 
+ *
  * <pre>
  * // Option 1: Enable with default settings (uses dynamic collector lookup)
  * MethodInterceptionBootstrap.enable();
- * 
+ *
  * // Option 2: Enable with specific package whitelist
  * MethodInterceptionBootstrap.enable(Set.of("com.mycompany.tests"));
- * 
+ *
  * // Option 3: Automatic via @TestComponent (when RetryableMethodPostProcessor is instantiated)
  * // Just use TestContext.get(RetryableMethodPostProcessor.class) - it auto-enables
  * </pre>
- * 
+ *
  * This class is thread-safe and idempotent - calling enable() multiple times is safe.
  */
 @Log4j2
 public final class MethodInterceptionBootstrap {
-  
+
   private static final AtomicBoolean ENABLED = new AtomicBoolean(false);
   private static volatile MethodInterceptionPostProcessor postProcessor;
 
@@ -40,7 +40,7 @@ public final class MethodInterceptionBootstrap {
   /**
    * Enable method interception with default settings.
    * Uses dynamic collector lookup via TestFramework.context().
-   * 
+   *
    * Safe to call multiple times - only enables once.
    */
   public static void enable() {
@@ -50,7 +50,7 @@ public final class MethodInterceptionBootstrap {
   /**
    * Enable method interception with a specific package whitelist.
    * Only classes in whitelisted packages will be checked for @RetryableMethod.
-   * 
+   *
    * @param whitelistedPackages packages to scan (null or empty for all packages)
    */
   public static void enable(Set<String> whitelistedPackages) {
@@ -63,7 +63,7 @@ public final class MethodInterceptionBootstrap {
 
   /**
    * Check if method interception is enabled.
-   * 
+   *
    * @return true if interception has been enabled
    */
   public static boolean isEnabled() {
@@ -72,7 +72,7 @@ public final class MethodInterceptionBootstrap {
 
   /**
    * Get the post processor instance (if enabled).
-   * 
+   *
    * @return the post processor, or null if not enabled
    */
   public static MethodInterceptionPostProcessor getPostProcessor() {
@@ -86,7 +86,7 @@ public final class MethodInterceptionBootstrap {
   public static void disable() {
     if (ENABLED.compareAndSet(true, false)) {
       if (postProcessor != null) {
-        postProcessor.shutdown();
+        PostProcessorRegistry.instance().unregister(postProcessor);
         postProcessor = null;
       }
     }

@@ -18,9 +18,11 @@ import io.github.ygrip.testara.ui.capability.InteractionCapability;
 import io.github.ygrip.testara.ui.capability.NavigationCapability;
 import io.github.ygrip.testara.ui.capability.ObservationCapability;
 import io.github.ygrip.testara.ui.capability.WaitCapability;
+import io.github.ygrip.testara.ui.driver.CurrentPageHolder;
 import io.github.ygrip.testara.ui.driver.DriverInstances;
 import io.github.ygrip.testara.ui.driver.DriverSession;
 import io.github.ygrip.testara.ui.driver.DriverSessionManager;
+import io.github.ygrip.testara.ui.page.PageContext;
 import io.github.ygrip.testara.ui.executor.Actor;
 import io.github.ygrip.testara.ui.executor.ActorManager;
 import io.github.ygrip.testara.ui.model.DeviceType;
@@ -80,6 +82,22 @@ public final class PlaywrightSession implements DriverSession<Browser> {
   private Boolean isMobile;
   private Boolean hasTouch;
   private boolean maximized = false;
+  private final CurrentPageHolder pageState = new CurrentPageHolder(this);
+
+  @Override
+  public PageContext<?> currentPage() {
+    return pageState.current();
+  }
+
+  @Override
+  public void activatePage(PageContext<?> page) {
+    pageState.activate(page);
+  }
+
+  @Override
+  public void clearCurrentPage() {
+    pageState.clear();
+  }
 
   /**
    * Runs browser bootstrap on the Playwright API thread. The runnable must call
@@ -365,6 +383,7 @@ public final class PlaywrightSession implements DriverSession<Browser> {
         .getInstance(PlaywrightPageFinder.class);
     }
     finder.setDeviceType(platform());
+    finder.bindSession(this);
     return finder;
   }
 
@@ -388,6 +407,7 @@ public final class PlaywrightSession implements DriverSession<Browser> {
               page = null;
               browserContext = null;
               driver = null;
+              pageState.clear();
               if (playwright != null) {
                 playwright.close();
                 playwright = null;

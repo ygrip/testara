@@ -152,7 +152,7 @@ public final class SeleniumAssertionCapability extends SeleniumElementResolver i
       namedPage.getFinder()
         .setCurrentPage(pageContext);
     } else {
-      throw new AssertionError("Page not found");
+      throw new AssertionError("Page "+ namedPage.getName() + "not found");
     }
     return this;
   }

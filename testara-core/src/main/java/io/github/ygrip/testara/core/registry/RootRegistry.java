@@ -1,5 +1,6 @@
 package io.github.ygrip.testara.core.registry;
 
+import io.github.ygrip.testara.core.error.MissingComponentException;
 import io.github.ygrip.testara.core.factory.ObjectFactory;
 import io.github.ygrip.testara.core.factory.ObjectFactoryLoader;
 import org.apache.commons.lang3.ObjectUtils;
@@ -10,12 +11,12 @@ import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Central registry for managing scoped component providers.
- * 
+ *
  * Architecture:
  * - STATIC providers/mappedTypes: Shared across ALL threads for provider registration visibility
  * - ThreadLocal scopeContexts: Each thread resolves its own scope key for proper isolation
  * - ScopedProvider.cache: Keyed by scope name, providing instance isolation per test/thread
- * 
+ *
  * This design supports:
  * - Parallel test execution (providers visible across ForkJoin pool threads)
  * - Test isolation (each test gets its own instances via unique scope keys)
@@ -27,17 +28,17 @@ public final class RootRegistry {
   // This ensures providers registered in one thread are visible in parallel test threads
   private static final Map<Class<?>, ScopedProvider<?>> providers = new ConcurrentHashMap<>();
   private static final Map<Class<?>, Class<?>> mappedTypes = new ConcurrentHashMap<>();
-  
+
   // Lazy-initialized singleton for ObjectFactory (thread-safe via holder pattern)
   private static volatile ObjectFactory sharedFactory;
   private static final Object FACTORY_LOCK = new Object();
 
   // ThreadLocal: Each thread has its own scope context for resolving scope keys
   // This ensures proper isolation - different tests on different threads get different scope keys
-  private static final ThreadLocal<ScopeContext> testScopeContext = 
-      ThreadLocal.withInitial(ScopeContextLoader::load);
-  private static final ThreadLocal<ScopeContext> threadScopeContext = 
-      ThreadLocal.withInitial(ThreadScopeContext::new);
+  private static final ThreadLocal<ScopeContext> testScopeContext =
+    ThreadLocal.withInitial(ScopeContextLoader::load);
+  private static final ThreadLocal<ScopeContext> threadScopeContext =
+    ThreadLocal.withInitial(ThreadScopeContext::new);
 
   // Singleton instance (stateless after static fields)
   private static final RootRegistry INSTANCE = new RootRegistry();
@@ -49,7 +50,7 @@ public final class RootRegistry {
   public static RootRegistry instance() {
     return INSTANCE;
   }
-  
+
   private static ObjectFactory getSharedFactory() {
     if (sharedFactory == null) {
       synchronized (FACTORY_LOCK) {
@@ -151,7 +152,7 @@ public final class RootRegistry {
   public <T> T get(Class<T> type) {
     ScopedProvider<T> provider = resolveProvider(type);
     Class<?> concreteType = resolveConcreteType(type);
-    
+
     @SuppressWarnings("unchecked")
     final Class<T> typeToInstantiate = (Class<T>) concreteType;
     return provider.get(resolveScopeName(provider), () -> getSharedFactory().getInstance(typeToInstantiate));
@@ -164,7 +165,7 @@ public final class RootRegistry {
   public <T> T get(Class<T> type, String scopeKey) {
     ScopedProvider<T> provider = resolveProvider(type);
     Class<?> concreteType = resolveConcreteType(type);
-    
+
     @SuppressWarnings("unchecked")
     final Class<T> typeToInstantiate = (Class<T>) concreteType;
     return provider.get(scopeKey, () -> getSharedFactory().getInstance(typeToInstantiate));
@@ -182,9 +183,9 @@ public final class RootRegistry {
     } else {
       provider = (ScopedProvider<T>) providers.get(type);
     }
-    
+
     if (provider == null) {
-      throw new IllegalStateException("No provider registered for " + type.getName());
+      throw new MissingComponentException(type);
     }
     return provider;
   }

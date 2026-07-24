@@ -92,19 +92,17 @@ public abstract class UserAction {
    * Prefer capabilities for agnostic behaviour.
    */
   public Object getDriver() {
-    try (var session = currentSession()) {
-      return Optional.ofNullable(session)
-        .map(DriverSession::instance)
-        .orElse(null);
-    }
+    DriverSession<?> session = currentSession();
+    return Optional.ofNullable(session)
+      .map(DriverSession::instance)
+      .orElse(null);
   }
 
   public <T> T driverOf(Class<T> type) {
-    try (var session = currentSession()) {
-      return Optional.ofNullable(session)
-        .map(driver -> session.instanceOf(type))
-        .orElse(null);
-    }
+    DriverSession<?> session = currentSession();
+    return Optional.ofNullable(session)
+      .map(driver -> session.instanceOf(type))
+      .orElse(null);
   }
 
   public void open(String page) {

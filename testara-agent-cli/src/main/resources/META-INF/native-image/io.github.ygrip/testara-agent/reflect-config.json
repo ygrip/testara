@@ -124,5 +124,83 @@
     "name": "io.github.ygrip.testara.agent.skill.TestInitSkill",
     "allDeclaredConstructors": true,
     "allPublicMethods": true
+  },
+  {
+    "name": "io.github.ygrip.testara.agent.knowledge.ProfileSerializer$CacheEnvelope",
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true,
+    "allDeclaredFields": true
+  },
+  {
+    "name": "io.github.ygrip.testara.agent.knowledge.ProfileSerializer$ProfileDto",
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true,
+    "allDeclaredFields": true
+  },
+  {
+    "name": "io.github.ygrip.testara.agent.knowledge.ProfileSerializer$CommandDto",
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true,
+    "allDeclaredFields": true
+  },
+  {
+    "name": "io.github.ygrip.testara.agent.knowledge.ProfileSerializer$ValidationDto",
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true,
+    "allDeclaredFields": true
+  },
+  {
+    "name": "io.github.ygrip.testara.agent.knowledge.ProfileSerializer$StepDefDto",
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true,
+    "allDeclaredFields": true
+  },
+  {
+    "name": "io.github.ygrip.testara.agent.knowledge.ProfileSerializer$FlavorDto",
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true,
+    "allDeclaredFields": true
+  },
+  {
+    "name": "io.github.ygrip.testara.agent.knowledge.ProfileSerializer$CatalogDto",
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true,
+    "allDeclaredFields": true
+  },
+  {
+    "name": "io.github.ygrip.testara.agent.knowledge.ProfileSerializer$FeatureDto",
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true,
+    "allDeclaredFields": true
+  },
+  {
+    "name": "io.github.ygrip.testara.agent.knowledge.ProfileSerializer$ScenarioDto",
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true,
+    "allDeclaredFields": true
+  },
+  {
+    "name": "io.github.ygrip.testara.agent.knowledge.ProfileSerializer$StepDto",
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true,
+    "allDeclaredFields": true
+  },
+  {
+    "name": "io.github.ygrip.testara.agent.knowledge.ProfileSerializer$ExamplesDto",
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true,
+    "allDeclaredFields": true
+  },
+  {
+    "name": "io.github.ygrip.testara.agent.knowledge.ProfileSerializer$TagDto",
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true,
+    "allDeclaredFields": true
+  },
+  {
+    "name": "io.github.ygrip.testara.agent.knowledge.ProfileSerializer$DriverDto",
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true,
+    "allDeclaredFields": true
   }
 ]

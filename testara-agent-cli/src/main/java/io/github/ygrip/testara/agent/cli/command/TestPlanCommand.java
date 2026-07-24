@@ -1,5 +1,10 @@
 package io.github.ygrip.testara.agent.cli.command;
 
+import java.nio.file.Path;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
 import io.github.ygrip.testara.agent.AgentMode;
 import io.github.ygrip.testara.agent.knowledge.JsonlKnowledgeStore;
 import io.github.ygrip.testara.agent.llm.DisabledLlmClient;
@@ -9,21 +14,17 @@ import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
 import picocli.CommandLine.Parameters;
 
-import java.nio.file.Path;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-
-@Command(name = "/test-plan", aliases = {"test-plan"},
-    description = "Generate a Testara-compatible Cucumber feature from user intent",
-    mixinStandardHelpOptions = true)
+@Command(name = "/test-plan",
+  aliases = {"test-plan"},
+  description = "Generate a Testara-compatible Cucumber feature from user intent",
+  mixinStandardHelpOptions = true
+)
 public class TestPlanCommand implements Runnable {
 
   @Parameters(index = "0", description = "Intent, e.g. 'Create tests for refund approval flow'")
   private String intent;
 
-  @Option(names = "--slice", defaultValue = "api",
-      description = "Layer slice: api, ui, database, streaming, fullstack")
+  @Option(names = "--slice", defaultValue = "api", description = "Layer slice: api, ui, database, streaming, fullstack")
   private String slice;
 
   @Option(names = "--domain", description = "Domain name override (auto-inferred if not set)")
@@ -35,20 +36,29 @@ public class TestPlanCommand implements Runnable {
   @Option(names = "--project", defaultValue = ".", description = "Project root")
   private Path projectRoot;
 
-  @Option(names = "--write", defaultValue = "false",
-      description = "Write the generated feature file to disk at the resolved placement path")
+  @Option(names = "--write",
+    defaultValue = "false",
+    description = "Write the generated feature file to disk at the resolved placement path"
+  )
   private boolean write;
 
   @Override
   public void run() {
-    Path root = projectRoot.toAbsolutePath().normalize();
+    Path root = projectRoot.toAbsolutePath()
+      .normalize();
     Map<String, String> opts = new HashMap<>();
-    if (write) opts.put("write", "true");
+    if (write)
+      opts.put("write", "true");
 
-    AgentContext ctx = new AgentContext(root,
-        JsonlKnowledgeStore.loadProfile(root), AgentMode.PATCH,
-        new DisabledLlmClient(), opts);
+    AgentContext ctx =
+      new AgentContext(root, JsonlKnowledgeStore.loadProfile(root), AgentMode.PATCH, new DisabledLlmClient(), opts);
     System.out.println(new TestPlanSkill().execute(
-        new TestPlanSkill.Input(intent, slice, domain, tags != null ? tags : List.of()), ctx));
+      new TestPlanSkill.Input(
+        intent,
+        slice,
+        domain,
+        tags != null ? tags : List.of()
+      ), ctx
+    ));
   }
 }

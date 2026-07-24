@@ -23,8 +23,10 @@ import io.github.ygrip.testara.ui.selenium.capability.SeleniumInteractionCapabil
 import io.github.ygrip.testara.ui.selenium.capability.SeleniumNavigationCapability;
 import io.github.ygrip.testara.ui.selenium.capability.SeleniumObservationCapability;
 import io.github.ygrip.testara.ui.selenium.capability.SeleniumWaitCapability;
+import io.github.ygrip.testara.ui.driver.CurrentPageHolder;
 import io.github.ygrip.testara.ui.driver.DriverSession;
 import io.github.ygrip.testara.ui.model.DeviceType;
+import io.github.ygrip.testara.ui.page.PageContext;
 import io.github.ygrip.testara.ui.selenium.config.SeleniumDriverProperties;
 import io.github.ygrip.testara.ui.selenium.page.SeleniumPageFinder;
 
@@ -34,6 +36,22 @@ import lombok.extern.log4j.Log4j2;
 public final class SeleniumSession implements DriverSession<WebDriver> {
   private WebDriver driver;
   private DeviceType deviceType;
+  private final CurrentPageHolder pageState = new CurrentPageHolder(this);
+
+  @Override
+  public PageContext<?> currentPage() {
+    return pageState.current();
+  }
+
+  @Override
+  public void activatePage(PageContext<?> page) {
+    pageState.activate(page);
+  }
+
+  @Override
+  public void clearCurrentPage() {
+    pageState.clear();
+  }
 
   @Override
   public WebDriver instance() {
@@ -98,6 +116,7 @@ public final class SeleniumSession implements DriverSession<WebDriver> {
         .getInstance(SeleniumPageFinder.class);
     }
     finder.setDeviceType(platform());
+    finder.bindSession(this);
     return finder;
   }
 
@@ -109,6 +128,7 @@ public final class SeleniumSession implements DriverSession<WebDriver> {
         driver.quit();
       } finally {
         driver = null;
+        pageState.clear();
       }
     }
   }

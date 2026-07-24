@@ -222,6 +222,20 @@ public final class SeeThat implements Interaction {
 
   @Override
   public void perform(InteractionContext context) {
+    // SeeThat is an assertion: any failure MUST fail the test. Actor.attemptsTo swallows
+    // Exception (but not Error), so timeouts/engine errors that surface as RuntimeException
+    // (e.g. Awaitility ConditionTimeoutException from untilClickable/untilSelected) are
+    // rethrown as AssertionError to escape that swallow.
+    try {
+      verify(context);
+    } catch (AssertionError error) {
+      throw error;
+    } catch (RuntimeException error) {
+      throw new AssertionError("Assertion failed for " + description() + " : " + error.getMessage(), error);
+    }
+  }
+
+  private void verify(InteractionContext context) {
     switch (kind) {
       case VISIBLE -> context.assertion()
         .seeThatVisible(locator);

@@ -818,7 +818,10 @@ public class RequestBuilderImpl implements RequestBuilder, RestApiFacade {
     @Override
     public void close() throws Exception {
       clearRequestState(null);
-      VirtualRestAssured.close();
+      // NOTE: do NOT shut down the shared VirtualRestAssured executor here — it is a JVM-global
+      // singleton reused by every scenario. Shutting it down from a per-instance close made all
+      // later scenarios fail with RejectedExecutionException. The executor is torn down by its own
+      // JVM shutdown hook instead.
       this.requestSpecBuilder = null; // Only null when fully destroying
       log.trace("RequestInternal fully closed and destroyed");
     }

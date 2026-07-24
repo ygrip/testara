@@ -77,7 +77,7 @@ public interface EngineFactory<T extends AbstractDriverProperties> {
 
   @SuppressWarnings("unchecked")
   default Map<String, Class<? extends AbstractDriver<?, ?>>> loadDrivers() {
-    if (DRIVERS.isEmpty()) {
+    if (!DRIVERS.containsKey(this.getClass())) {
       Stopwatch stopwatch = Stopwatch.start();
 
       T properties = config();

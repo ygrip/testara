@@ -531,6 +531,10 @@ public class UIBaseSteps {
         actualUrl,
         Matchers.matchesPattern(expectedUrl)
       );
+    } else {
+      throw new IllegalArgumentException("Unsupported url validation keyword: '" + validation
+        + "'. Expected one of: equal, equal ignore case, contains, contains ignore case, "
+        + "starts with, ends with, starts with ignore case, ends with ignore case, matches");
     }
   }
 

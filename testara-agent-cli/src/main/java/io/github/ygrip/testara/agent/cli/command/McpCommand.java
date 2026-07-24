@@ -1,15 +1,15 @@
 package io.github.ygrip.testara.agent.cli.command;
 
+import java.nio.file.Path;
+
 import io.github.ygrip.testara.agent.mcp.McpServer;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Parameters;
 
-import java.nio.file.Path;
-import java.nio.file.Paths;
-
 @Command(name = "mcp",
-    description = "Start the MCP stdio server — exposes all Testara skills as MCP tools",
-    mixinStandardHelpOptions = true)
+  description = "Start the MCP stdio server — exposes all Testara skills as MCP tools",
+  mixinStandardHelpOptions = true
+)
 public class McpCommand implements Runnable {
 
   @Parameters(index = "0", defaultValue = ".", description = "Project root to index (default: current directory)")
@@ -17,7 +17,8 @@ public class McpCommand implements Runnable {
 
   @Override
   public void run() {
-    Path root = projectRoot.toAbsolutePath().normalize();
+    Path root = projectRoot.toAbsolutePath()
+      .normalize();
     System.err.println("[testara-agent] Starting MCP server for project: " + root);
     try {
       new McpServer(root).run();
