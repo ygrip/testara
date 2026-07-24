@@ -1,0 +1,73 @@
+testara-junit5/src/main/java/io/github/ygrip/testara/engine/extension/TestaraFrameworkExtension.java
+  6d8b657d4bd54d3f 11-12
+testara-api/src/main/java/io/github/ygrip/testara/api/support/VirtualThreadRestAssured.java
+  6d8b657d4bd54d3f 27-32
+testara-ui/src/main/java/io/github/ygrip/testara/ui/interaction/SeeThat.java
+  6d8b657d4bd54d3f 225-238
+testara-ui-selenium/src/main/java/io/github/ygrip/testara/ui/selenium/driver/SeleniumSession.java
+  6d8b657d4bd54d3f 26,29,39-54,119,131
+testara-ui-cucumber/src/main/java/io/github/ygrip/testara/ui/steps/UIBaseSteps.java
+  6d8b657d4bd54d3f 534-537
+docs/BEST-PRACTICES.md
+  6d8b657d4bd54d3f 1-120
+testara-agent-cli/src/main/resources/META-INF/native-image/io.github.ygrip/testara-agent/reflect-config.json
+  6d8b657d4bd54d3f 127-204
+testara-ui/src/main/java/io/github/ygrip/testara/ui/factory/EngineFactory.java
+  6d8b657d4bd54d3f 80
+docs/GETTING-STARTED.md
+  6d8b657d4bd54d3f 1-210
+testara-agent/src/main/java/io/github/ygrip/testara/agent/skill/TestRunSkill.java
+  6d8b657d4bd54d3f 4,6
+testara-ui/src/main/java/io/github/ygrip/testara/ui/driver/DriverInstances.java
+  6d8b657d4bd54d3f 12-13
+testara-ui-appium/src/main/java/io/github/ygrip/testara/ui/appium/driver/AppiumSession.java
+  6d8b657d4bd54d3f 27,30,39,45-57,124,136
+testara-ui-playwright/src/main/java/io/github/ygrip/testara/ui/playwright/driver/PlaywrightSession.java
+  6d8b657d4bd54d3f 21,25,85-100,386,410
+testara-agent/src/test/java/io/github/ygrip/testara/agent/knowledge/ProfileSerializerTest.java
+  6d8b657d4bd54d3f 1-71
+testara-ui/src/test/java/io/github/ygrip/testara/ui/driver/CurrentPageHolderTest.java
+  6d8b657d4bd54d3f 1-74
+testara-agent/src/main/java/io/github/ygrip/testara/agent/knowledge/ProfileSerializer.java
+  6d8b657d4bd54d3f 27,56-57,72-73,78-81,99-115,122,124-129,131,133,135,144-160,167,170,173,180-186,189-190,195-235
+testara-ui/src/main/java/io/github/ygrip/testara/ui/page/PageFinder.java
+  6d8b657d4bd54d3f 32-33,57-61,63-66,70-74,78-99
+testara-cucumber/src/main/java/io/github/ygrip/testara/cucumber/factory/TestaraObjectFactory.java
+  6d8b657d4bd54d3f 24-25
+testara-command/src/main/java/io/github/ygrip/testara/command/CommandExecutor.java
+  6d8b657d4bd54d3f 80
+README.md
+  6d8b657d4bd54d3f 111-118
+testara-ui/src/main/java/io/github/ygrip/testara/ui/executor/UserAction.java
+  6d8b657d4bd54d3f 95-98,102-105
+testara-ui/src/main/java/io/github/ygrip/testara/ui/driver/CurrentPageHolder.java
+  6d8b657d4bd54d3f 1-64
+testara-ui/src/main/java/io/github/ygrip/testara/ui/driver/DriverSession.java
+  6d8b657d4bd54d3f 59-74,78
+docs/ARCHITECTURE.md
+  6d8b657d4bd54d3f 1-231
+testara-agent-mcp/src/main/java/io/github/ygrip/testara/agent/mcp/McpServer.java
+  6d8b657d4bd54d3f 26
+testara-api/src/main/java/io/github/ygrip/testara/api/RequestBuilderImpl.java
+  6d8b657d4bd54d3f 821-824
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.23",
+  "base_commit_sha": "b69c560baab29f8fbae2ce95c61b367234fba846",
+  "prompts": {
+    "6d8b657d4bd54d3f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "0c75ee04-d584-4af8-92ab-f7e87cdfdc5f",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "ygrip <yunaz.gilang@gmail.com>",
+      "messages": [],
+      "total_additions": 1134,
+      "total_deletions": 40,
+      "accepted_lines": 1128,
+      "overriden_lines": 0
+    }
+  }
+}
