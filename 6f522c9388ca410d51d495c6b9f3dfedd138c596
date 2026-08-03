@@ -1,0 +1,41 @@
+testara-agent/src/main/java/io/github/ygrip/testara/agent/skill/TestInitSkill.java
+  d168f8822473a37c 916-917
+testara-archetypes/testara-archetype-all-cucumber/src/main/resources/archetype-resources/src/test/java/__packageInPathFormat__/Junit4RunnerTests.java
+  d168f8822473a37c 11-12
+testara-agent/src/main/java/io/github/ygrip/testara/agent/skill/TestaraUiSkill.java
+  d168f8822473a37c 37-39
+testara-archetypes/testara-archetype-ui-cucumber/src/main/resources/archetype-resources/src/test/java/__packageInPathFormat__/Junit4RunnerTests.java
+  d168f8822473a37c 11-12
+testara-agent/src/main/java/io/github/ygrip/testara/agent/skill/TestCommandSkill.java
+  d168f8822473a37c 97-99
+testara-agent/src/main/java/io/github/ygrip/testara/agent/skill/PackageInference.java
+  d168f8822473a37c 1-73
+testara-agent/src/main/java/io/github/ygrip/testara/agent/skill/TestaraBootstrapSkill.java
+  d168f8822473a37c 45-52
+testara-agent/src/test/java/io/github/ygrip/testara/agent/skill/PackageInferenceTest.java
+  d168f8822473a37c 1-43
+testara-archetypes/testara-archetype-api-cucumber/src/main/resources/archetype-resources/src/test/java/__packageInPathFormat__/Junit4RunnerTests.java
+  d168f8822473a37c 11-12
+testara-agent/src/test/java/io/github/ygrip/testara/agent/skill/TestInitSkillTest.java
+  d168f8822473a37c 4-5,10-12,14,147-148,299-330
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.23",
+  "base_commit_sha": "6f522c9388ca410d51d495c6b9f3dfedd138c596",
+  "prompts": {
+    "d168f8822473a37c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "29bd1a56-1f45-48b0-9acf-f5562dd6aac6",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "ygrip <yunaz.gilang@gmail.com>",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 178,
+      "overriden_lines": 0
+    }
+  }
+}
