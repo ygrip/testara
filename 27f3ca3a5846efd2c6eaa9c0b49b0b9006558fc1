@@ -1,0 +1,54 @@
+testara-ui-playwright/src/test/java/io/github/ygrip/testara/ui/playwright/capability/PlaywrightWaitCapabilityTest.java
+  d168f8822473a37c 1-120
+testara-ui-selenium/src/main/java/io/github/ygrip/testara/ui/selenium/capability/SeleniumWaitCapability.java
+  d168f8822473a37c 48-49
+testara-ui-appium/src/test/java/io/github/ygrip/testara/ui/appium/capability/AppiumWaitCapabilityTest.java
+  d168f8822473a37c 1-120
+testara-ui/src/test/java/io/github/ygrip/testara/ui/page/NamedPageResolutionTest.java
+  d168f8822473a37c 1-100
+testara-ui/src/test/java/io/github/ygrip/testara/ui/interaction/WaitUntilUrlTimeoutTest.java
+  d168f8822473a37c 1-73
+testara-ui-selenium/src/test/java/io/github/ygrip/testara/ui/selenium/capability/SeleniumWaitCapabilityTest.java
+  d168f8822473a37c 1-120
+testara-ui/src/main/java/io/github/ygrip/testara/ui/page/NamedPage.java
+  d168f8822473a37c 39
+testara-ui-playwright/src/main/java/io/github/ygrip/testara/ui/playwright/capability/PlaywrightWaitCapability.java
+  d168f8822473a37c 39-40
+testara-ui-appium/src/main/java/io/github/ygrip/testara/ui/appium/capability/AppiumWaitCapability.java
+  d168f8822473a37c 48-50
+testara-ui/src/main/java/io/github/ygrip/testara/ui/interaction/WaitUntil.java
+  d168f8822473a37c 217-218
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.23",
+  "base_commit_sha": "27f3ca3a5846efd2c6eaa9c0b49b0b9006558fc1",
+  "prompts": {
+    "56024c3423c520b5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3eedd117-94cf-4c70-b00b-39d01e854dd6",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "ygrip <yunaz.gilang@gmail.com>",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 69,
+      "overriden_lines": 0
+    },
+    "d168f8822473a37c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "29bd1a56-1f45-48b0-9acf-f5562dd6aac6",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "ygrip <yunaz.gilang@gmail.com>",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 2939,
+      "overriden_lines": 0
+    }
+  }
+}
