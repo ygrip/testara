@@ -34,7 +34,9 @@ public class TestaraUiSkill implements AgentSkill<TestaraUiSkill.Input, String> 
   @Override
   public String execute(Input input, AgentContext context) {
     String mode = input.mode() != null ? input.mode() : "explain";
-    String basePkg = input.basePackage() != null ? input.basePackage() : "io.github.ygrip.automation";
+    String basePkg = input.basePackage() != null
+        ? input.basePackage()
+        : PackageInference.inferBasePackage(context.projectRoot()).orElse("io.github.ygrip.automation");
     boolean concise = "concise".equals(context.options().get("format"));
     boolean write = "true".equals(context.options().get("write"));
 

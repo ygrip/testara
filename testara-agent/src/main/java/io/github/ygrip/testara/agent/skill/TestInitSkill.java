@@ -25,15 +25,22 @@ public class TestInitSkill implements AgentSkill<TestInitSkill.Input, String> {
 
   private static final Logger LOG = Logger.getLogger(TestInitSkill.class.getName());
   private final TestaraVersionResolver versionResolver;
-  private final ProjectStateDetector stateDetector = new ProjectStateDetector();
-  private final ArchetypeInvoker archetypeInvoker = new ArchetypeInvoker();
+  private final ProjectStateDetector stateDetector;
+  private final ArchetypeInvoker archetypeInvoker;
 
   public TestInitSkill() {
-    this(new TestaraVersionResolver());
+    this(new TestaraVersionResolver(), new ProjectStateDetector(), new ArchetypeInvoker());
   }
 
   TestInitSkill(TestaraVersionResolver versionResolver) {
+    this(versionResolver, new ProjectStateDetector(), new ArchetypeInvoker());
+  }
+
+  TestInitSkill(TestaraVersionResolver versionResolver, ProjectStateDetector stateDetector,
+      ArchetypeInvoker archetypeInvoker) {
     this.versionResolver = versionResolver;
+    this.stateDetector = stateDetector;
+    this.archetypeInvoker = archetypeInvoker;
   }
 
   public record Input(String type, String basePackage, String engine, boolean integrateExisting,
@@ -161,7 +168,12 @@ public class TestInitSkill implements AgentSkill<TestInitSkill.Input, String> {
           + result.errors().stream().map(e -> "  - " + e).collect(Collectors.joining("\n")) + "\n";
     }
 
-    Path generatedRoot = result.generatedDir();
+    Path generatedRoot;
+    try {
+      generatedRoot = reconcileGeneratedLocation(result.generatedDir(), root);
+    } catch (IllegalStateException e) {
+      return "init_error: " + e.getMessage() + "\n";
+    }
     List<String> created = new ArrayList<>();
     List<String> skipped = new ArrayList<>();
 
@@ -187,6 +199,41 @@ public class TestInitSkill implements AgentSkill<TestInitSkill.Input, String> {
         + "configFiles: " + configFilesLine + "\n"
         + (compileResult.isEmpty() ? "" : compileResult + "\n")
         + "next: testara_bootstrap, testara_plan, testara_run\n";
+  }
+
+  /**
+   * Maven's archetype:generate always creates {@code outputDir/artifactId}, which is a sibling
+   * of the requested {@code projectRoot} whenever the artifactId differs from the root folder
+   * name. Reconcile the two so the final project always lands exactly where the caller asked.
+   */
+  private Path reconcileGeneratedLocation(Path generated, Path projectRoot) {
+    Path expected = projectRoot.toAbsolutePath().normalize();
+    Path actual = generated.toAbsolutePath().normalize();
+    if (actual.equals(expected)) return generated;
+
+    try {
+      if (!Files.exists(expected)) {
+        if (expected.getParent() != null) Files.createDirectories(expected.getParent());
+        Files.move(actual, expected);
+      } else if (isEmptyDirectory(expected)) {
+        Files.delete(expected);
+        Files.move(actual, expected);
+      } else {
+        throw new IOException("target directory already exists and is not empty");
+      }
+      return expected;
+    } catch (IOException e) {
+      throw new IllegalStateException(
+          "Archetype generated the project at '" + actual + "' but it could not be moved to the "
+              + "requested projectRoot '" + expected + "': " + e.getMessage(), e);
+    }
+  }
+
+  private boolean isEmptyDirectory(Path dir) throws IOException {
+    if (!Files.isDirectory(dir)) return false;
+    try (var stream = Files.list(dir)) {
+      return stream.findFirst().isEmpty();
+    }
   }
 
   private String applyPatch(String type, String groupId, String artifactId, String basePkg, String pkgPath, String engine,
@@ -866,7 +913,8 @@ public class TestInitSkill implements AgentSkill<TestInitSkill.Input, String> {
         @RunWith(Cucumber.class)
         @CucumberOptions(
             features = "classpath:features",
-            glue = {"io.github.ygrip.testara", "%s"}
+            glue = {"io.github.ygrip.testara", "%s"},
+            stepNotifications = true
         )
         public class Junit4RunnerTests {
         }

@@ -94,7 +94,9 @@ public class TestCommandSkill implements AgentSkill<String, String> {
       AgentContext context, boolean concise) {
     String commandName = toCommandName(description);
     String className   = toClassName(commandName) + "Command";
-    String basePackage = context.options().getOrDefault("package", "io.github.ygrip.testara.command");
+    String basePackage = context.options().containsKey("package")
+        ? context.options().get("package")
+        : PackageInference.inferBasePackage(context.projectRoot()).orElse("io.github.ygrip.testara.command");
     String returnType  = context.options().getOrDefault("returnType", "String");
 
     StringBuilder sb = new StringBuilder();

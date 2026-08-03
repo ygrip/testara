@@ -42,9 +42,14 @@ public class TestaraBootstrapSkill implements AgentSkill<TestaraBootstrapSkill.I
     String artifact = normalize(input.artifact(), "ui");
     boolean write = "true".equals(context.options().get("write"));
     boolean concise = "concise".equals(context.options().get("format"));
-    String basePackage = input.basePackage() == null || input.basePackage().isBlank()
-        ? context.options().getOrDefault("package", "io.github.ygrip.automation")
-        : input.basePackage();
+    String basePackage;
+    if (input.basePackage() != null && !input.basePackage().isBlank()) {
+      basePackage = input.basePackage();
+    } else if (context.options().containsKey("package")) {
+      basePackage = context.options().get("package");
+    } else {
+      basePackage = PackageInference.inferBasePackage(context.projectRoot()).orElse("io.github.ygrip.automation");
+    }
 
     if ("batch".equals(artifact) || "ui-batch".equals(artifact) || "batch".equals(normalize(input.mode(), ""))) {
       return uiBatch(input, context, basePackage);

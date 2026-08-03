@@ -1,11 +1,17 @@
 package io.github.ygrip.testara.agent.skill;
 
 import io.github.ygrip.testara.agent.AgentMode;
+import io.github.ygrip.testara.agent.init.ArchetypeInvoker;
+import io.github.ygrip.testara.agent.init.ProjectStateDetector;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Map;
 import java.util.regex.Pattern;
 
@@ -138,6 +144,8 @@ class TestInitSkillTest {
     assertFalse(output.contains("objectFactory = TestaraObjectFactory.class"));
     assertTrue(output.contains("features = \"classpath:features\""));
     assertTrue(output.contains("glue = {\"io.github.ygrip.testara\", \"io.github.ygrip.example\"}"));
+    // Step-level reporting is on by default so IntelliJ's JUnit4 panel shows per-step results
+    assertTrue(output.contains("stepNotifications = true"));
   }
 
   @Test
@@ -286,6 +294,38 @@ class TestInitSkillTest {
 
     assertTrue(output.contains("needs_input: testara_init_project_root"));
     assertTrue(output.contains("projectRoot"));
+  }
+
+  @Test
+  void archetypeGenerationReconcilesToRequestedProjectRootWhenArtifactIdDiffersFromFolderName() throws IOException {
+    // projectRoot (a fresh, empty @TempDir) intentionally has a different name than the
+    // artifactId below, mirroring the common case where the caller's target folder name
+    // and the Maven artifactId are chosen independently.
+    String artifactId = "custom-artifact-name";
+    ArchetypeInvoker fakeInvoker = new ArchetypeInvoker() {
+      @Override
+      public ArchetypeResult invoke(ArchetypeRequest req) {
+        try {
+          Path generated = req.outputDir().resolve(req.artifactId());
+          Files.createDirectories(generated);
+          Files.writeString(generated.resolve("pom.xml"), "<project/>");
+          return new ArchetypeResult(true, "testara-archetype-api-cucumber", generated, List.of());
+        } catch (IOException e) {
+          throw new UncheckedIOException(e);
+        }
+      }
+    };
+    TestInitSkill skill = new TestInitSkill(new TestaraVersionResolver(), new ProjectStateDetector(), fakeInvoker);
+
+    String output = skill.execute(
+        new TestInitSkill.Input("api", "io.github.ygrip.sample", "selenium", false, "io.github.ygrip", artifactId),
+        new AgentContext(projectRoot, null, AgentMode.READ_ONLY, null,
+            Map.of("write", "true", "compile", "false", "engineConfirmed", "true")));
+
+    assertTrue(output.contains("status: SUCCESS"));
+    assertTrue(output.contains("generatedAt: " + projectRoot));
+    assertFalse(Files.exists(projectRoot.resolveSibling(artifactId)));
+    assertTrue(Files.exists(projectRoot.resolve("pom.xml")));
   }
 
   private AgentContext context() {
