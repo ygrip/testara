@@ -1,0 +1,119 @@
+testara-ui-vibium/src/test/java/io/github/ygrip/testara/ui/vibium/VibiumMobileNetworkContractTest.java
+  56024c3423c520b5 1-6,8,11-13,15-21,23-40,42-194,201-208,211-229,232-234,246-247,306-307
+testara-ui-vibium/src/main/java/io/github/ygrip/testara/ui/vibium/driver/VibiumChromium.java
+  56024c3423c520b5 1-69
+testara-ui-vibium/src/main/java/io/github/ygrip/testara/ui/vibium/engine/VibiumEngine.java
+  56024c3423c520b5 1-146
+testara-ui-vibium/src/main/java/io/github/ygrip/testara/ui/vibium/locator/VibiumElement.java
+  56024c3423c520b5 1-76
+testara-ui-vibium/src/main/java/io/github/ygrip/testara/ui/vibium/capability/VibiumElementResolver.java
+  56024c3423c520b5 1-112
+testara-ui-vibium/src/main/java/io/github/ygrip/testara/ui/vibium/config/VibiumDriverProperties.java
+  56024c3423c520b5 1-40
+testara-ui-vibium/src/test/java/io/github/ygrip/testara/ui/vibium/VibiumSessionLifecycleTest.java
+  56024c3423c520b5 1-104
+testara-ui-vibium/src/test/java/io/github/ygrip/testara/ui/vibium/VibiumPageCatalogTest.java
+  56024c3423c520b5 1-96
+testara-ui-vibium/src/main/java/io/github/ygrip/testara/ui/vibium/driver/VibiumSession.java
+  56024c3423c520b5 1-306
+testara-ui-vibium/src/main/java/io/github/ygrip/testara/ui/vibium/config/VibiumRemoteConfig.java
+  56024c3423c520b5 1-19
+testara-ui-vibium/src/test/resources/configuration.properties
+  56024c3423c520b5 1-20
+testara-ui-vibium/src/main/java/io/github/ygrip/testara/ui/vibium/capability/VibiumMobileEmulation.java
+  56024c3423c520b5 1-44
+testara-ui-vibium/src/main/java/io/github/ygrip/testara/ui/vibium/locator/VibiumSelector.java
+  56024c3423c520b5 1-148
+testara-ui-vibium/src/main/resources/META-INF/services/io.github.ygrip.testara.ui.factory.EngineFactory
+  56024c3423c520b5 1
+testara-ui-vibium/src/main/java/io/github/ygrip/testara/ui/vibium/locator/VibiumLocator.java
+  56024c3423c520b5 1-85
+testara-ui-vibium/src/main/java/io/github/ygrip/testara/ui/vibium/capability/VibiumNavigationCapability.java
+  56024c3423c520b5 1-188
+testara-ui-vibium/src/main/java/io/github/ygrip/testara/ui/vibium/capability/VibiumNetworkSupport.java
+  56024c3423c520b5 1-77
+testara-ui-vibium/src/main/java/io/github/ygrip/testara/ui/vibium/config/VibiumViewportSize.java
+  56024c3423c520b5 1-14
+testara-ui-vibium/src/test/java/io/github/ygrip/testara/ui/vibium/VibiumEngineDiscoveryTest.java
+  56024c3423c520b5 1-117
+testara-ui-vibium/src/test/java/io/github/ygrip/testara/ui/vibium/VibiumLocatorConverterTest.java
+  56024c3423c520b5 1-176
+testara-ui-vibium/pom.xml
+  56024c3423c520b5 1-87
+testara-ui-vibium/src/test/resources/log4j2.xml
+  56024c3423c520b5 1-17
+testara-ui-vibium/src/main/java/io/github/ygrip/testara/ui/vibium/error/VibiumOperationException.java
+  56024c3423c520b5 1-51
+testara-ui-vibium/src/main/java/io/github/ygrip/testara/ui/vibium/capability/VibiumMobileEmulationImpl.java
+  56024c3423c520b5 1-98
+testara-ui-vibium/src/test/resources/fixtures/vibium-contract.html
+  56024c3423c520b5 1-153
+testara-ui-vibium/src/main/java/io/github/ygrip/testara/ui/vibium/error/VibiumElementResolutionException.java
+  56024c3423c520b5 1-19
+pom.xml
+  56024c3423c520b5 102,148,181-183,601-605
+  d168f8822473a37c 59-60
+testara-ui-vibium/src/test/resources/application.properties
+  56024c3423c520b5 1-12
+testara-ui-vibium/src/main/java/io/github/ygrip/testara/ui/vibium/capability/VibiumAssertionCapability.java
+  56024c3423c520b5 1-232
+testara-ui-vibium/src/main/java/io/github/ygrip/testara/ui/vibium/capability/VibiumInteractionCapability.java
+  56024c3423c520b5 1-482
+testara-ui-vibium/src/main/java/io/github/ygrip/testara/ui/vibium/capability/VibiumWaitCapability.java
+  56024c3423c520b5 1-249
+testara-ui-vibium/src/main/java/io/github/ygrip/testara/ui/vibium/locator/VibiumLocatorConverter.java
+  56024c3423c520b5 1-48
+testara-ui-vibium/src/main/java/io/github/ygrip/testara/ui/vibium/capability/VibiumObservationCapability.java
+  56024c3423c520b5 1-436
+testara-ui-vibium/src/main/java/io/github/ygrip/testara/ui/vibium/capability/VibiumNetworkSupportImpl.java
+  56024c3423c520b5 1-107
+testara-ui-vibium/src/main/java/io/github/ygrip/testara/ui/vibium/locator/CssEscaping.java
+  56024c3423c520b5 1-78
+testara-ui-vibium/src/main/java/io/github/ygrip/testara/ui/vibium/error/UnsupportedVibiumCapabilityException.java
+  56024c3423c520b5 1-21
+testara-ui-vibium/src/main/java/io/github/ygrip/testara/ui/vibium/capability/VibiumMobileCapabilityReport.java
+  56024c3423c520b5 1-26
+testara-ui-vibium/src/test/java/io/github/ygrip/testara/ui/vibium/VibiumCapabilityContractTest.java
+  56024c3423c520b5 1-532
+testara-ui-vibium/src/main/java/io/github/ygrip/testara/ui/vibium/capability/VibiumMediaEmulation.java
+  56024c3423c520b5 1-22
+testara-ui-vibium/src/main/java/io/github/ygrip/testara/ui/vibium/page/VibiumPageFinder.java
+  56024c3423c520b5 1-382
+testara-ui-vibium/src/main/java/io/github/ygrip/testara/ui/vibium/page/VibiumPage.java
+  56024c3423c520b5 1-83
+testara-ui-vibium/src/test/java/io/github/ygrip/testara/ui/vibium/VibiumSessionIsolationTest.java
+  56024c3423c520b5 1-143
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.23",
+  "base_commit_sha": "bbf228a957da758421a399c5e3a551ef48a5e678",
+  "prompts": {
+    "56024c3423c520b5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3eedd117-94cf-4c70-b00b-39d01e854dd6",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "ygrip <yunaz.gilang@gmail.com>",
+      "messages": [],
+      "total_additions": 5867,
+      "total_deletions": 233,
+      "accepted_lines": 5634,
+      "overriden_lines": 12
+    },
+    "d168f8822473a37c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "29bd1a56-1f45-48b0-9acf-f5562dd6aac6",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "ygrip <yunaz.gilang@gmail.com>",
+      "messages": [],
+      "total_additions": 4481,
+      "total_deletions": 1224,
+      "accepted_lines": 3496,
+      "overriden_lines": 0
+    }
+  }
+}
