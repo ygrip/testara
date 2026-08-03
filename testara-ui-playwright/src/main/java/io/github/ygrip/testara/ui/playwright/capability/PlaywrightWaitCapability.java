@@ -36,10 +36,9 @@ public final class PlaywrightWaitCapability extends PlaywrightElementResolver im
   public WaitPage untilPageLoaded(NamedPage namedPage) {
     return duration -> {
       PageContext<?> pageCtx = namedPage.getPage();
-      if (ObjectUtils.isNotEmpty(pageCtx)) {
-        pageCtx.isCurrentPage(duration);
+      if (ObjectUtils.isNotEmpty(pageCtx) && pageCtx.isCurrentPage(duration)) {
+        namedPage.getFinder().setCurrentPage(pageCtx);
       }
-      namedPage.getFinder().setCurrentPage(pageCtx);
       return PlaywrightWaitCapability.this;
     };
   }

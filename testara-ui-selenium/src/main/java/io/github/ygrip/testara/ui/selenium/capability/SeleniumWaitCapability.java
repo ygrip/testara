@@ -45,10 +45,9 @@ public final class SeleniumWaitCapability implements WaitCapability {
   public WaitPage untilPageLoaded(NamedPage namedPage) {
     return duration -> {
       PageContext<?> page = namedPage.getPage();
-      if (ObjectUtils.isNotEmpty(page)) {
-        page.isCurrentPage(duration);
+      if (ObjectUtils.isNotEmpty(page) && page.isCurrentPage(duration)) {
+        namedPage.getFinder().setCurrentPage(page);
       }
-      namedPage.getFinder().setCurrentPage(page);
       return SeleniumWaitCapability.this;
     };
   }

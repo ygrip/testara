@@ -36,7 +36,7 @@ public final class NamedPage {
   public PageContext<?> getPage() {
     if (ObjectUtils.isNotEmpty(pageType)) {
       try {
-        return finder.getPage(name);
+        return finder.getPage(pageType);
       } catch (Exception err) {
         return null;
       }

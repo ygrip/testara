@@ -214,7 +214,8 @@ public final class WaitUntil implements Interaction {
   }
 
   public WaitUntil withTimeout(Duration duration) {
-    return new WaitUntil(kind, locator, duration).currentPage(pageContext);
+    return new WaitUntil(kind, locator, duration).currentPage(pageContext)
+      .currentUrl(url);
   }
 
   @Override
