@@ -406,6 +406,31 @@ public class MethodInterceptionTests extends BaseTests {
       // Non-retryable service should be returned as-is
       assertThat(result, is(sameInstance(service)));
     }
+
+    @Test
+    @DisplayName("Should reuse the already-registered interception post processor instead of registering a duplicate")
+    void shouldReuseAlreadyRegisteredInterceptionPostProcessor() {
+      PostProcessorRegistry.instance().clear();
+      try {
+        MethodInvocationCollector collector = TestFramework.context().get(MethodInvocationCollector.class);
+
+        // RetryableMethodPostProcessor is TEST-scoped, so a new instance is constructed per
+        // scenario. Before the fix, each construction created and registered a brand new
+        // MethodInterceptionPostProcessor, and PostProcessorRegistry.register() only de-dupes
+        // by reference identity - so duplicates piled up in the static registry and each
+        // independently generated its own proxy Class for the same target, tripping
+        // resolveImplementationType()'s "multiple processors disagree" check.
+        RetryableMethodPostProcessor first = new RetryableMethodPostProcessor(collector);
+        int sizeAfterFirst = PostProcessorRegistry.instance().size();
+
+        RetryableMethodPostProcessor second = new RetryableMethodPostProcessor(collector);
+
+        assertThat(second.getInterceptionPostProcessor(), is(sameInstance(first.getInterceptionPostProcessor())));
+        assertThat(PostProcessorRegistry.instance().size(), is(sizeAfterFirst));
+      } finally {
+        PostProcessorRegistry.instance().clear();
+      }
+    }
   }
 
   // ========================================================================

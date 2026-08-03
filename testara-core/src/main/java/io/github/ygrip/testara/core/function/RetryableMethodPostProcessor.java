@@ -44,19 +44,42 @@ public class RetryableMethodPostProcessor {
    */
   public RetryableMethodPostProcessor(MethodInvocationCollector collector) {
     this.collector = collector;
-    this.interceptionPostProcessor = new MethodInterceptionPostProcessor();
-    
+    this.interceptionPostProcessor = resolveInterceptionPostProcessor(collector);
+
+    // Auto-enable on construction
+    enable();
+  }
+
+  /**
+   * Reuse the MethodInterceptionPostProcessor already registered with PostProcessorRegistry,
+   * if one exists, instead of constructing a new one.
+   * <p>
+   * RetryableMethodPostProcessor is TEST-scoped, so a new instance is constructed for every
+   * scenario, but MethodInterceptionPostProcessor is meant to be a single JVM-wide processor
+   * (it already does dynamic per-scenario collector lookup - see resolveCollector()).
+   * PostProcessorRegistry.register() only de-dupes by reference identity, so constructing a
+   * fresh MethodInterceptionPostProcessor per scenario would register a duplicate on every
+   * scenario, and each duplicate independently generates its own ByteBuddy proxy Class for the
+   * same target, which trips PostProcessorRegistry.resolveImplementationType()'s
+   * "multiple processors disagree" check.
+   */
+  private static MethodInterceptionPostProcessor resolveInterceptionPostProcessor(MethodInvocationCollector collector) {
+    MethodInterceptionPostProcessor existing =
+        PostProcessorRegistry.instance().findRegistered(MethodInterceptionPostProcessor.class);
+    if (existing != null) {
+      return existing;
+    }
+
+    MethodInterceptionPostProcessor created = new MethodInterceptionPostProcessor();
     // Configure the post processor with package whitelist ONLY
     // DO NOT set explicitCollectorSupplier - we want dynamic lookup at invocation time!
     // This ensures the interceptor gets the correct TEST-scoped collector for the current
     // test/thread, not the collector that was captured during framework initialization.
-    this.interceptionPostProcessor.configure(
+    created.configure(
         null,  // Use dynamic lookup via TestFramework.context().get() at invocation time
         collector.getScanLocations()
     );
-    
-    // Auto-enable on construction
-    enable();
+    return created;
   }
 
   /**

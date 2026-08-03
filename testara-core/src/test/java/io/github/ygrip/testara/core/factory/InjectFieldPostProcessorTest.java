@@ -5,6 +5,7 @@ import io.github.ygrip.testara.core.TestWith;
 import io.github.ygrip.testara.core.context.Inject;
 import io.github.ygrip.testara.core.context.TestComponent;
 import io.github.ygrip.testara.core.context.TestFramework;
+import io.github.ygrip.testara.core.error.DependencyResolutionException;
 import io.github.ygrip.testara.core.registry.RegistryScope;
 import io.github.ygrip.testara.core.registry.RootRegistry;
 import org.junit.jupiter.api.DisplayName;
@@ -17,6 +18,7 @@ import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.notNullValue;
 import static org.hamcrest.Matchers.nullValue;
 import static org.hamcrest.Matchers.sameInstance;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 @Tag("field")
 @TestWith(properties = {"classpath:application.properties", "classpath:configuration.properties"})
@@ -91,6 +93,26 @@ class InjectFieldPostProcessorTest extends BaseTests {
     }
   }
 
+  // Deliberately NOT annotated with @TestComponent - never registered with RootRegistry, so
+  // resolving it always throws MissingComponentException (a DependencyResolutionException).
+  public static class UnregisteredDependency {
+    private final String value = "unregistered";
+
+    public String getValue() {
+      return value;
+    }
+  }
+
+  @TestComponent(scope = RegistryScope.TEST)
+  public static class ServiceWithUnregisteredDependency {
+    @Inject
+    private UnregisteredDependency dependency;
+
+    public UnregisteredDependency getDependency() {
+      return dependency;
+    }
+  }
+
 
   @Nested
   @DisplayName("Field Injection")
@@ -146,6 +168,20 @@ class InjectFieldPostProcessorTest extends BaseTests {
 
       // Then: Should return the same instance unchanged
       assertThat(processed, is(sameInstance(instance)));
+    }
+
+    @Test
+    @DisplayName("should fail fast with DependencyResolutionException instead of silently leaving an unresolved field null")
+    void shouldFailFastWhenDependencyTypeIsNotRegistered() {
+      // Given: A class whose @Inject field type was never registered as a @TestComponent
+      InjectFieldPostProcessor processor = new InjectFieldPostProcessor();
+      ServiceWithUnregisteredDependency instance = new ServiceWithUnregisteredDependency();
+
+      // When/Then: post-processing throws rather than leaving `dependency` silently null
+      // (regression test for a bug where this was swallowed down to a WARN log, deferring the
+      // real error into a confusing NPE the first time the field was dereferenced)
+      assertThrows(DependencyResolutionException.class,
+          () -> processor.postProcess(instance, ServiceWithUnregisteredDependency.class));
     }
   }
 

@@ -27,6 +27,14 @@ import static org.hamcrest.core.Is.is;
 @Execution(ExecutionMode.CONCURRENT)
 @TestWith(properties = {"classpath:application.properties", "classpath:configuration.properties"})
 public class ContextTests extends BaseTests {
+  // NOTE: TestFramework now holds a single run-level TestContext (see TestFramework javadoc) -
+  // it is no longer a per-thread ThreadLocal, so concurrently running test methods can no longer
+  // each install (and observe) their own distinct TestContext via TestFramework.initialize().
+  // This test therefore keeps its own per-invocation TestContext in a thread-local and drives
+  // isolation directly through it (via distinct JUnit5ScopeContext keys), instead of round
+  // tripping through TestFramework - which still exercises the exact same DefaultTestContext /
+  // RootRegistry scope-isolation behavior this test is meant to verify.
+  private static final ThreadLocal<TestContext> CURRENT_TEST_CONTEXT = new ThreadLocal<>();
   private static final Set<TestContext> contexts = ConcurrentHashMap.newKeySet();
   // Store DataHolder instances captured during test execution (when scope is active)
   private static final Map<String, DataHolder> dataHoldersByContext = new ConcurrentHashMap<>();
@@ -35,21 +43,21 @@ public class ContextTests extends BaseTests {
   static void verify() {
     // Verify that multiple contexts were created
     assertThat(contexts.size(), greaterThan(1));
-    
+
     // Verify that DataHolder instances captured during test execution are different
     // This ensures proper isolation when dynamic scope is active
     assertThat(dataHoldersByContext.size(), greaterThan(1));
-    
+
     DataHolder firstDataHolder = dataHoldersByContext.values().stream().toList().getFirst();
     DataHolder lastDataHolder = dataHoldersByContext.values().stream().toList().getLast();
-    
+
     assertThat(firstDataHolder, is(not(equalTo(lastDataHolder))));
   }
 
   @BeforeEach
   public void beforeEach() {
     TestContext testContext = new DefaultTestContext(TestFramework.context().configuration());
-    TestFramework.initialize(testContext);
+    CURRENT_TEST_CONTEXT.set(testContext);
     JUnit5ScopeContext.enter(String.format("%s#%s", getClass().getName(), System.identityHashCode(testContext)));
   }
 
@@ -57,21 +65,23 @@ public class ContextTests extends BaseTests {
   public void afterEach() {
     // Clean up scope context to ensure proper isolation
     JUnit5ScopeContext.exit();
+    CURRENT_TEST_CONTEXT.remove();
   }
 
   @Test
   public void onSameThread() {
-    DataHolder dataHolder1 = TestFramework.context().get(DataHolder.class);
-    DataHolder dataHolder2 = TestFramework.context().get(DataHolder.class);
+    TestContext context = CURRENT_TEST_CONTEXT.get();
+    DataHolder dataHolder1 = context.get(DataHolder.class);
+    DataHolder dataHolder2 = context.get(DataHolder.class);
 
     assertThat(dataHolder1, equalTo(dataHolder2));
   }
 
   @RepeatedTest(2)
   public void onDifferentThread() throws InterruptedException {
-    TestContext context = TestFramework.context();
+    TestContext context = CURRENT_TEST_CONTEXT.get();
     contexts.add(context);
-    
+
     // Capture DataHolder during test execution when dynamic scope is active
     // This ensures we verify isolation at the right time
     DataHolder dataHolder = context.get(DataHolder.class);

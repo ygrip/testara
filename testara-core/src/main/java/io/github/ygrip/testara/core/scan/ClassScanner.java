@@ -14,6 +14,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -33,7 +34,27 @@ import java.util.stream.Collectors;
  */
 @Log4j2
 public final class ClassScanner {
-  private static final ConcurrentMap<String, CompletableFuture<List<Class<?>>>> CACHE = new ConcurrentHashMap<>();
+
+  /**
+   * Deterministic, collision-safe cache key. Replaces the old {@code String} key that was built
+   * by concatenating an optional explicit key with a {@code Set<String>.hashCode()} — that never
+   * included {@code interfaceOrSuperclass}/{@code annotationType} and folded an unstable-iteration
+   * package set into a lossy int hash, so different scans could collide and equivalent scans
+   * (same inputs, different package-set iteration order) could miss the cache.
+   * <p>
+   * The explicit {@code key} parameter (used e.g. by {@code DataHolderInstance} for
+   * "request-data"/"response-data") is retained as an extra discriminator for backward
+   * source-compatibility, even though base type + annotation type now make collisions
+   * structurally impossible without it.
+   */
+  private record ScanKey(String explicitKey, ClassLoader classLoader, Class<?> baseType,
+                         Class<? extends Annotation> annotationType, List<String> packages) {
+    ScanKey {
+      packages = packages == null ? List.of() : List.copyOf(new TreeSet<>(packages));
+    }
+  }
+
+  private static final ConcurrentMap<ScanKey, CompletableFuture<List<Class<?>>>> CACHE = new ConcurrentHashMap<>();
   private static final ExecutorService SCAN_EXECUTOR =
       Executors.newThreadPerTaskExecutor(Thread.ofVirtual().name("classgraph-scan-", 0).factory());
 
@@ -42,7 +63,7 @@ public final class ClassScanner {
   // Performance monitoring and adaptive settings
   private static final int MAX_CACHE_SIZE = 1000;
   // Configurable reject packages - loaded from configuration
-  private static final ConcurrentMap<String, Long> CACHE_USAGE_TIMESTAMPS = new ConcurrentHashMap<>();
+  private static final ConcurrentMap<ScanKey, Long> CACHE_USAGE_TIMESTAMPS = new ConcurrentHashMap<>();
 
   static {
 
@@ -77,7 +98,7 @@ public final class ClassScanner {
     // Find oldest entries
     long cutoffTime = System.currentTimeMillis() - TimeUnit.HOURS.toMillis(1); // 1 hour cutoff
 
-    Set<String> toRemove = CACHE_USAGE_TIMESTAMPS.entrySet()
+    Set<ScanKey> toRemove = CACHE_USAGE_TIMESTAMPS.entrySet()
         .stream()
         .filter(entry -> entry.getValue() < cutoffTime)
         .map(Map.Entry::getKey)
@@ -92,18 +113,25 @@ public final class ClassScanner {
     log.debug("Cleaned up {} old cache entries", toRemove.size());
   }
 
-  private CompletableFuture<List<Class<?>>> scanAsync(String key, Supplier<List<Class<?>>> scan) {
-    return CACHE.computeIfAbsent(key, k -> CompletableFuture.supplyAsync(() -> {
-      try {
-        SCAN_LIMIT.acquire();
-        return scan.get();
-      } catch (InterruptedException e) {
-        Thread.currentThread().interrupt();
-        throw new RuntimeException(e);
-      } finally {
-        SCAN_LIMIT.release();
-      }
-    }, SCAN_EXECUTOR));
+  private CompletableFuture<List<Class<?>>> scanAsync(ScanKey key, Supplier<List<Class<?>>> scan) {
+    boolean[] cacheMiss = {false};
+    CompletableFuture<List<Class<?>>> future = CACHE.computeIfAbsent(key, k -> {
+      cacheMiss[0] = true;
+      return CompletableFuture.supplyAsync(() -> {
+        try {
+          SCAN_LIMIT.acquire();
+          return scan.get();
+        } catch (InterruptedException e) {
+          Thread.currentThread().interrupt();
+          throw new RuntimeException(e);
+        } finally {
+          SCAN_LIMIT.release();
+        }
+      }, SCAN_EXECUTOR);
+    });
+    log.debug("Scan cache {} for baseType={}, annotationType={}, packages={}",
+        cacheMiss[0] ? "miss" : "hit", key.baseType(), key.annotationType(), key.packages());
+    return future;
   }
 
   /**
@@ -113,18 +141,19 @@ public final class ClassScanner {
       Class<?> interfaceOrSuperclass,
       Class<? extends Annotation> annotationClass,
       Set<String> customScanPackages) {
-    if (StringUtils.isBlank(key)) {
-      key = annotationClass.getName();
-    }
-    String enhancedCacheKey = key + "-" + String.join(",", customScanPackages).hashCode();
+    String explicitKey = StringUtils.isBlank(key) ? null : key;
+    ClassLoader classLoader = interfaceOrSuperclass != null
+        ? interfaceOrSuperclass.getClassLoader()
+        : Thread.currentThread().getContextClassLoader();
+    ScanKey cacheKey = new ScanKey(explicitKey, classLoader, interfaceOrSuperclass, annotationClass,
+        customScanPackages == null ? List.of() : List.copyOf(customScanPackages));
 
     // Update cache usage timestamp
-    CACHE_USAGE_TIMESTAMPS.put(enhancedCacheKey, System.currentTimeMillis());
+    CACHE_USAGE_TIMESTAMPS.put(cacheKey, System.currentTimeMillis());
 
     // Create async scan
-
-    return scanAsync(enhancedCacheKey,
-        () -> performOptimizedScan(enhancedCacheKey, interfaceOrSuperclass, annotationClass, customScanPackages));
+    return scanAsync(cacheKey,
+        () -> performOptimizedScan(cacheKey, interfaceOrSuperclass, annotationClass, customScanPackages));
   }
 
   /**
@@ -144,7 +173,7 @@ public final class ClassScanner {
   /**
    * Perform optimized scan with custom package locations
    */
-  private List<Class<?>> performOptimizedScan(String cacheKey,
+  private List<Class<?>> performOptimizedScan(ScanKey cacheKey,
       Class<?> interfaceOrSuperclass,
       Class<? extends Annotation> annotationClass,
       Set<String> packages) {
@@ -209,8 +238,9 @@ public final class ClassScanner {
 
     CACHE.put(cacheKey, CompletableFuture.completedFuture(result));
 
-    log.info("#Optimized scan for {} completed in {}, found {} classes in packages: {}",
-        cacheKey,
+    log.info("#Optimized scan for baseType={}, annotationType={} completed in {}, found {} classes in packages: {}",
+        cacheKey.baseType(),
+        cacheKey.annotationType(),
         DurationParser.formatDuration(stopwatch.stop().elapsed(TimeUnit.NANOSECONDS)),
         result.size(),
         packages);

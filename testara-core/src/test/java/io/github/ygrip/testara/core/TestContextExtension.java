@@ -28,26 +28,59 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.ReentrantLock;
 
 @Log4j2
 public final class TestContextExtension
     implements BeforeAllCallback, AfterAllCallback, BeforeEachCallback, AfterEachCallback, ParameterResolver {
+
+  // TestFramework now holds a single, run-wide static context (see TestFramework's javadoc) rather
+  // than a per-thread ThreadLocal, matching real Cucumber usage where exactly one framework "run"
+  // exists per JVM. Every test class carrying @TestWith goes through this one shared extension and
+  // mutates that same static state in beforeAll/afterAll. junit-platform.properties' own
+  // classes.default=same_thread setting is only a scheduling hint against forking WITHIN a class's
+  // own subtree -- it does not guarantee true mutual exclusion between sibling classes on JUnit
+  // Platform's fork-join scheduler, so two classes' beforeAll/afterAll lifecycles could still race on
+  // TestFramework.initialize()/clear() and intermittently stomp on each other. This lock provides
+  // the real guarantee directly at the one shared mutation point: only one @TestWith class's entire
+  // beforeAll -> its test methods -> afterAll lifecycle can be active at a time, regardless of how
+  // the scheduler happens to interleave sibling class tasks.
+  private static final ReentrantLock FRAMEWORK_LOCK = new ReentrantLock();
+
   @Override
   public void afterAll(ExtensionContext context) throws Exception {
-    ExtensionContext.Store store =
-        context.getStore(ExtensionContext.Namespace.create(getClass(), context.getTestClass()));
-
-    RootRegistry registry = store.get(RootRegistry.class, RootRegistry.class);
     try {
-      registry.clearScope(JUnit5ScopeContext.getClassScope(context));
-      JUnit5ScopeContext.exitClass();
-    } catch (Exception ignored) {
-      log.warn("Fail to clear test context!");
+      ExtensionContext.Store store =
+          context.getStore(ExtensionContext.Namespace.create(getClass(), context.getTestClass()));
+
+      RootRegistry registry = store.get(RootRegistry.class, RootRegistry.class);
+      try {
+        registry.clearScope(JUnit5ScopeContext.getClassScope(context));
+        JUnit5ScopeContext.exitClass();
+      } catch (Exception ignored) {
+        log.warn("Fail to clear test context!");
+      }
+    } finally {
+      // Guarded: if beforeAll threw before completing, it already released the lock itself (see
+      // below) -- only unlock here if this thread is the one currently holding it.
+      if (FRAMEWORK_LOCK.isHeldByCurrentThread()) {
+        FRAMEWORK_LOCK.unlock();
+      }
     }
   }
 
   @Override
   public void beforeAll(ExtensionContext context) throws Exception {
+    FRAMEWORK_LOCK.lock();
+    try {
+      beforeAllLocked(context);
+    } catch (Exception | Error t) {
+      FRAMEWORK_LOCK.unlock();
+      throw t;
+    }
+  }
+
+  private void beforeAllLocked(ExtensionContext context) throws Exception {
     ExtensionContext.Store store =
         context.getStore(ExtensionContext.Namespace.create(getClass(), context.getTestClass()));
 

@@ -109,6 +109,25 @@ public final class PostProcessorRegistry {
   }
 
   /**
+   * Find an already-registered processor of the given type, if any.
+   *
+   * <p>Callers that must keep at most one instance of a processor type in the registry
+   * (e.g. because the processor is meant to be a JVM-wide singleton) should check here
+   * before constructing and registering a new one - {@link #register} only de-dupes by
+   * reference identity, so two distinct instances of the same class are never recognized
+   * as duplicates.</p>
+   */
+  @SuppressWarnings("unchecked")
+  public <T extends InstancePostProcessor> T findRegistered(Class<T> processorType) {
+    for (InstancePostProcessor processor : processors) {
+      if (processorType.isInstance(processor)) {
+        return (T) processor;
+      }
+    }
+    return null;
+  }
+
+  /**
    * Remove and shut down a previously registered processor.
    */
   public void unregister(InstancePostProcessor processor) {

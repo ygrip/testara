@@ -2,6 +2,7 @@ package io.github.ygrip.testara.core.factory;
 
 import io.github.ygrip.testara.core.context.Inject;
 import io.github.ygrip.testara.core.context.TestFramework;
+import io.github.ygrip.testara.core.error.DependencyResolutionException;
 import lombok.extern.log4j.Log4j2;
 import org.apache.commons.lang3.reflect.FieldUtils;
 
@@ -94,10 +95,15 @@ public class InjectFieldPostProcessor implements InstancePostProcessor {
     for (Field field : injectableFields) {
       try {
         injectField(instance, field);
+      } catch (DependencyResolutionException e) {
+        // Genuine resolution failure (e.g. the field's type was never scanned/registered) -
+        // rethrow so PostProcessorRegistry.applyPostProcessors' own "let DependencyResolutionException
+        // propagate" contract surfaces this loudly, instead of leaving the field silently null.
+        throw e;
       } catch (Exception e) {
-        log.warn("Failed to inject field '{}' in {}: {}", 
-            field.getName(), 
-            type.getSimpleName(), 
+        log.warn("Failed to inject field '{}' in {}: {}",
+            field.getName(),
+            type.getSimpleName(),
             e.getMessage());
         log.debug("Injection failure details", e);
       }
@@ -116,25 +122,33 @@ public class InjectFieldPostProcessor implements InstancePostProcessor {
     }
     
     Class<?> fieldType = field.getType();
-    
+
+    Object dependency;
     try {
       // Get the dependency from TestContext
-      Object dependency = TestFramework.context().get(fieldType);
-      
-      if (dependency != null) {
-        FieldUtils.writeField(field, instance, dependency, true);
-        log.debug("Injected {} into {}.{}", 
-            fieldType.getSimpleName(), 
-            instance.getClass().getSimpleName(), 
-            field.getName());
-      } else {
-        log.warn("Could not resolve dependency for field '{}' of type {}", 
-            field.getName(), fieldType.getName());
-      }
+      dependency = TestFramework.context().get(fieldType);
+    } catch (DependencyResolutionException e) {
+      // The type was never registered (e.g. its owning package isn't covered by
+      // class.loader.default-scan-locations) - a real configuration error, not a transient
+      // bootstrap-timing issue. Propagate rather than leaving the field null: a silent skip
+      // here just defers this to a confusing NPE the first time the field is dereferenced.
+      throw e;
     } catch (IllegalStateException e) {
       // TestContext not initialized - this can happen during early bootstrap
-      log.debug("TestContext not available for injection of field '{}': {}", 
+      log.debug("TestContext not available for injection of field '{}': {}",
           field.getName(), e.getMessage());
+      return;
+    }
+
+    if (dependency != null) {
+      FieldUtils.writeField(field, instance, dependency, true);
+      log.debug("Injected {} into {}.{}",
+          fieldType.getSimpleName(),
+          instance.getClass().getSimpleName(),
+          field.getName());
+    } else {
+      log.warn("Could not resolve dependency for field '{}' of type {}",
+          field.getName(), fieldType.getName());
     }
   }
 
