@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <title>Vibium Contract Fixture</title>
+</head>
+<body>
+  <h1 id="marker">Vibium Contract Fixture</h1>
+  <button id="submit-button" class="btn primary" name="submit">Submit</button>
+  <a class="nav-link" href="#docs">Read the docs</a>
+  <div class="card">
+    <span class="card-title">First</span>
+    <span class="card-title">Second</span>
+  </div>
+
+  <!-- Phase 3 Part A capability-contract fixtures below: toggled via inline script so
+       untilVisible/untilInvisible/untilPresent/untilEnabled/untilDisabled/untilClickable have a
+       real state transition to observe, not just an already-settled state. -->
+  <div id="toggle-visibility" style="display:none">Now Visible</div>
+  <div id="toggle-hide">Now Hidden</div>
+  <div id="always-hidden" style="display:none">Never Shown</div>
+  <div id="always-visible">Always Visible</div>
+  <button id="toggle-enable" disabled>Toggle Enable</button>
+  <button id="always-disabled" disabled>Always Disabled</button>
+  <button id="always-enabled">Always Enabled</button>
+  <input type="checkbox" id="toggle-checkbox"/>
+  <script>
+    setTimeout(function () {
+      document.getElementById('toggle-visibility').style.display = 'block';
+    }, 300);
+    setTimeout(function () {
+      document.getElementById('toggle-hide').style.display = 'none';
+    }, 300);
+    setTimeout(function () {
+      document.getElementById('toggle-enable').removeAttribute('disabled');
+    }, 300);
+    setTimeout(function () {
+      document.getElementById('toggle-checkbox').checked = true;
+    }, 300);
+    setTimeout(function () {
+      var el = document.createElement('div');
+      el.id = 'dynamic-present';
+      el.textContent = 'Now Present';
+      document.body.appendChild(el);
+    }, 300);
+  </script>
+
+  <!-- Phase 3 Part B (Interaction/Observation) capability-contract fixtures below. -->
+  <button id="click-toggle-btn" onclick="document.getElementById('click-toggle-target').textContent='clicked'">
+    Toggle
+  </button>
+  <div id="click-toggle-target">not-clicked</div>
+
+  <input id="text-input" type="text" value="initial"/>
+  <input id="blur-input" type="text"/>
+
+  <select id="fruit-select">
+    <option value="apple-value">Apple</option>
+    <option value="banana-value">Banana</option>
+    <option value="cherry-value">Cherry</option>
+  </select>
+
+  <form id="test-form" onsubmit="event.preventDefault(); document.getElementById('form-submitted').textContent='submitted';">
+    <input id="submit-input" type="text"/>
+  </form>
+  <div id="form-submitted">not-submitted</div>
+
+  <div id="css-color-box" style="color: rgb(255, 0, 0);">Colored</div>
+
+  <div id="drag-source" style="position:absolute;top:0;left:0;width:40px;height:40px;background:red;">Src</div>
+  <div id="drag-target" style="position:absolute;top:0;left:300px;width:40px;height:40px;background:blue;">Dst</div>
+
+  <!-- Phase 3 Part C fixtures below. -->
+
+  <!-- VibiumMobileEmulation#tap: real touch tap dispatches a browser touch/pointer event; listen
+       for both touchstart (real Touch capability) and pointerdown with pointerType 'touch' (the
+       more likely signal in a headless context without a device profile enabling real Touch). -->
+  <div id="touch-target" style="width:60px;height:60px;background:#eee;">Tap me</div>
+  <div id="touch-flag">no-touch</div>
+  <script>
+    (function () {
+      var target = document.getElementById('touch-target');
+      var flag = document.getElementById('touch-flag');
+      target.addEventListener('touchstart', function () {
+        flag.textContent = 'touched';
+      }, {passive: true});
+      target.addEventListener('pointerdown', function (event) {
+        flag.textContent = 'touched';
+      });
+    })();
+  </script>
+
+  <!-- VibiumMobileEmulation#emulateMedia: a CSS media-query probe that flips text/class based on
+       prefers-color-scheme, read back via executeScript after calling emulateMedia. -->
+  <div id="media-probe">unknown</div>
+  <style>
+    @media (prefers-color-scheme: dark) {
+      #media-probe::after { content: "dark"; }
+    }
+    @media (prefers-color-scheme: light) {
+      #media-probe::after { content: "light"; }
+    }
+  </style>
+  <script>
+    (function () {
+      function readScheme() {
+        if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+          return 'dark';
+        }
+        if (window.matchMedia('(prefers-color-scheme: light)').matches) {
+          return 'light';
+        }
+        return 'unknown';
+      }
+      document.getElementById('media-probe').textContent = readScheme();
+      if (window.matchMedia) {
+        ['dark', 'light'].forEach(function (scheme) {
+          window.matchMedia('(prefers-color-scheme: ' + scheme + ')').addEventListener('change', function () {
+            document.getElementById('media-probe').textContent = readScheme();
+          });
+        });
+      }
+    })();
+  </script>
+
+  <!-- VibiumMobileEmulation#setGeolocation: consumed via navigator.geolocation.getCurrentPosition,
+       executed through executeScript/fromScript by the test itself (async, so the test polls). -->
+  <div id="geolocation-probe">no-position</div>
+
+  <!-- DOM-replaceable section for the stale-handle regression test (item d). Vibium's
+       com.vibium.Element re-runs its stored selector/index on every native call rather than
+       holding a live node reference (confirmed via javap: Element has no live-handle field, only
+       `selector`/`index`), so the real observable behavior (per the Phase 0 spike) is two-step:
+       (1) removing the matching element with nothing re-added yet makes any call on an
+       already-resolved old handle throw ElementNotFoundException; (2) re-adding a new element that
+       matches the SAME selector afterwards makes that SAME old handle transparently resolve to the
+       new node again (not throw) — it does not "remember" the original node identity. -->
+  <div id="replaceable-container">
+    <div id="replaceable-node" data-generation="original">Original Node</div>
+  </div>
+  <button id="remove-node-btn" onclick="
+    document.getElementById('replaceable-container').innerHTML = '';
+  ">Remove Node</button>
+  <button id="readd-node-btn" onclick="
+    var container = document.getElementById('replaceable-container');
+    var replaced = document.createElement('div');
+    replaced.id = 'replaceable-node';
+    replaced.setAttribute('data-generation', 'replaced');
+    replaced.textContent = 'Replaced Node';
+    container.appendChild(replaced);
+  ">Re-add Node</button>
+</body>
+</html>
