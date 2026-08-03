@@ -1,0 +1,45 @@
+testara-agent/src/main/java/io/github/ygrip/testara/agent/skill/ListUiCatalogSkill.java
+  ce1310f85a3d99a4 62
+testara-archetypes/testara-archetype-all-cucumber/src/main/resources/archetype-resources/pom.xml
+  ce1310f85a3d99a4 80-81
+testara-agent/src/main/java/io/github/ygrip/testara/agent/skill/TestInitSkill.java
+  ce1310f85a3d99a4 128,403,699-714,985-995
+testara-archetypes/testara-archetype-ui-cucumber/pom.xml
+  ce1310f85a3d99a4 16
+testara-agent/src/test/java/io/github/ygrip/testara/agent/skill/TestInitSkillTest.java
+  ce1310f85a3d99a4 202-215
+testara-agent/src/main/java/io/github/ygrip/testara/agent/skill/TestaraUiSkill.java
+  ce1310f85a3d99a4 161-171,510-517
+README.md
+  ce1310f85a3d99a4 14,39
+docs/ARCHITECTURE.md
+  ce1310f85a3d99a4 20,60-61,185,189
+testara-agent/src/main/java/io/github/ygrip/testara/agent/catalog/RuntimeCatalogIndexer.java
+  ce1310f85a3d99a4 113,133,157
+testara-agent/src/main/java/io/github/ygrip/testara/agent/catalog/GenerationGuard.java
+  ce1310f85a3d99a4 97
+testara-agent/src/main/java/io/github/ygrip/testara/agent/init/ArchetypeInvoker.java
+  ce1310f85a3d99a4 143
+testara-archetypes/testara-archetype-ui-cucumber/src/main/resources/archetype-resources/pom.xml
+  ce1310f85a3d99a4 69-70
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.23",
+  "base_commit_sha": "22e80fe81bc2be96af968e2977ac2e31f53ac4e4",
+  "prompts": {
+    "ce1310f85a3d99a4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9f4d335f-9158-44a4-9954-dd8d72d78248",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "ygrip <yunaz.gilang@gmail.com>",
+      "messages": [],
+      "total_additions": 81,
+      "total_deletions": 18,
+      "accepted_lines": 81,
+      "overriden_lines": 0
+    }
+  }
+}
