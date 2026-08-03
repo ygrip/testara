@@ -199,6 +199,21 @@ class TestInitSkillTest {
   }
 
   @Test
+  void uiPreviewSupportsVibiumEngine() {
+    String output = new TestInitSkill().execute(
+        new TestInitSkill.Input("ui", "io.github.ygrip.automation", "vibium", false,
+            "io.github.ygrip", "ui-automation"),
+        confirmedEngineContext());
+
+    assertTrue(output.contains("<artifactId>testara-ui-vibium</artifactId>"));
+    assertDependencyScope(output, "testara-ui-vibium", null);
+    assertTrue(output.contains("vibium.browser.page-scan-locations=io.github.ygrip.testara,io.github.ygrip.automation"));
+    assertEquals(1, countOccurrences(output, "automation.engine.default-engine=vibium"));
+    assertEquals(1, countOccurrences(output, "automation.engine.active-engines=vibium"));
+    assertFalse(output.contains("automation.engine.default-engine=selenium"));
+  }
+
+  @Test
   void defaultInitPreviewOmitsDemoArtifactsAndPlaceholders() {
     String output = new TestInitSkill().execute(
         new TestInitSkill.Input("fullstack", "io.github.ygrip.automation", "selenium", false,

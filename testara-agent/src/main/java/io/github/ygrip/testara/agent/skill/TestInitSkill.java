@@ -125,6 +125,7 @@ public class TestInitSkill implements AgentSkill<TestInitSkill.Input, String> {
           1. selenium  (default) — mature, wide browser/Grid support, requires WebDriver binaries
           2. playwright — faster startup, auto-manages browsers, built-in wait strategies
           3. appium — mobile automation (Android/iOS)
+          4. vibium — Chromium via Vibium, discovery-only locators
         instruction: Present these options to the user. Wait for their explicit answer. Do NOT default to any engine.
         next_step: call testara_init again with engine=<user-chosen-value> (e.g. engine=selenium).
         """.formatted(type);
@@ -399,6 +400,7 @@ public class TestInitSkill implements AgentSkill<TestInitSkill.Input, String> {
     String uiEngineDep = switch (uiEngine) {
       case "playwright" -> dep("testara-ui-playwright", null);
       case "appium"     -> dep("testara-ui-appium", null);
+      case "vibium"     -> dep("testara-ui-vibium", null);
       default           -> dep("testara-ui-selenium", null);
     };
     String sliceDep = switch (type) {
@@ -694,6 +696,22 @@ public class TestInitSkill implements AgentSkill<TestInitSkill.Input, String> {
           playwright.browser.remote-driver.default.enabled=false
           playwright.browser.remote-driver.default.uri=${UI_REMOTE_URL:http://localhost:4444/}
           %s""".formatted(basePkg, basePkg, basePkg, pageConfig);
+      case "vibium" -> """
+          # UI engine configuration
+          automation.engine.default-engine=vibium
+          automation.engine.active-engines=vibium
+          automation.engine.screenshot-strategy=ON_EACH_STEP
+          automation.engine.screenshot-output-type=IMAGE
+          automation.engine.screenshot-fps=30
+          automation.engine.force-resolution=true
+          vibium.browser.owner=testara
+          vibium.browser.headless=false
+          vibium.browser.scan-locations=io.github.ygrip.testara,%s
+          vibium.browser.page-scan-locations=io.github.ygrip.testara,%s
+          vibium.browser.action-scan-locations=io.github.ygrip.testara,%s
+          vibium.browser.remote-connect.enabled=false
+          vibium.browser.remote-connect.url=${UI_REMOTE_URL:http://localhost:4444/}
+          %s""".formatted(basePkg, basePkg, basePkg, pageConfig);
       default -> """
           # UI engine configuration
           automation.engine.default-engine=selenium
@@ -964,11 +982,17 @@ public class TestInitSkill implements AgentSkill<TestInitSkill.Input, String> {
   }
 
   private String generatePageObject(String basePkg, String engine) {
-    boolean playwright = "playwright".equalsIgnoreCase(engine);
-    String pageBaseImport = playwright
-        ? "io.github.ygrip.testara.ui.playwright.page.PlaywrightPage"
-        : "io.github.ygrip.testara.ui.selenium.page.SeleniumPage";
-    String pageBaseClass = playwright ? "PlaywrightPage" : "SeleniumPage";
+    String uiEngine = engine == null ? "selenium" : engine.toLowerCase(Locale.ROOT);
+    String pageBaseImport = switch (uiEngine) {
+      case "playwright" -> "io.github.ygrip.testara.ui.playwright.page.PlaywrightPage";
+      case "vibium"     -> "io.github.ygrip.testara.ui.vibium.page.VibiumPage";
+      default           -> "io.github.ygrip.testara.ui.selenium.page.SeleniumPage";
+    };
+    String pageBaseClass = switch (uiEngine) {
+      case "playwright" -> "PlaywrightPage";
+      case "vibium"     -> "VibiumPage";
+      default           -> "SeleniumPage";
+    };
     return """
         package %s.page;
 

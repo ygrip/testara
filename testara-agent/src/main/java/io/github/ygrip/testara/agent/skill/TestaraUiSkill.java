@@ -158,10 +158,17 @@ public class TestaraUiSkill implements AgentSkill<TestaraUiSkill.Input, String> 
     String pName = toPropertyKey(pageName);
     String pClass = toClassName(pageName) + "Page";
     String pkgPath = basePkg.replace('.', '/');
-    String pageBaseClass = "playwright".equalsIgnoreCase(engine) ? "PlaywrightPage" : "SeleniumPage";
-    String pageBaseImport = "playwright".equalsIgnoreCase(engine)
-        ? "io.github.ygrip.testara.ui.playwright.page.PlaywrightPage"
-        : "io.github.ygrip.testara.ui.selenium.page.SeleniumPage";
+    String uiEngine = engine == null ? "selenium" : engine.toLowerCase(Locale.ROOT);
+    String pageBaseClass = switch (uiEngine) {
+      case "playwright" -> "PlaywrightPage";
+      case "vibium"     -> "VibiumPage";
+      default           -> "SeleniumPage";
+    };
+    String pageBaseImport = switch (uiEngine) {
+      case "playwright" -> "io.github.ygrip.testara.ui.playwright.page.PlaywrightPage";
+      case "vibium"     -> "io.github.ygrip.testara.ui.vibium.page.VibiumPage";
+      default           -> "io.github.ygrip.testara.ui.selenium.page.SeleniumPage";
+    };
     String locators = pageLocators(pName);
 
     // application.properties (or application-{env}.properties): FULL absolute URL required.
@@ -500,6 +507,14 @@ public class TestaraUiSkill implements AgentSkill<TestaraUiSkill.Input, String> 
           appium.driver.platformName=Android
           appium.driver.deviceName=emulator-5554
           """;
+      case "vibium" -> """
+          automation.engine.default-engine=vibium
+          automation.engine.active-engines=vibium
+          vibium.browser.headless=true
+          class.loader.default-scan-locations=io.github.ygrip.testara,%s
+          vibium.browser.page-scan-locations=io.github.ygrip.testara,%s
+          vibium.browser.action-scan-locations=io.github.ygrip.testara,%s
+          """.formatted(basePkg, basePkg, basePkg);
       default -> """
           automation.engine.default-engine=selenium
           automation.engine.active-engines=selenium

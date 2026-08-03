@@ -110,6 +110,7 @@ public final class RuntimeCatalogIndexer {
     if (p.startsWith("selenium")) return "ui-selenium";
     if (p.startsWith("playwright")) return "ui-playwright";
     if (p.startsWith("appium")) return "ui-appium";
+    if (p.startsWith("vibium")) return "ui-vibium";
     if (p.startsWith("automation.engine") || p.startsWith("web")) return "ui";
     if (p.startsWith("sql")) return "sql";
     if (p.startsWith("mongo")) return "mongo";
@@ -129,6 +130,7 @@ public final class RuntimeCatalogIndexer {
       case "selenium.driver" -> List.of("selenium.driver.headless", "selenium.driver.page-scan-locations", "selenium.driver.action-scan-locations");
       case "playwright.browser" -> List.of("playwright.browser.headless", "playwright.browser.browserType");
       case "appium.driver"   -> List.of("appium.driver.platformName", "appium.driver.deviceName");
+      case "vibium.browser"  -> List.of("vibium.browser.headless", "vibium.browser.vibium-binary-path");
       case "automation.engine" -> List.of("automation.engine.default-engine", "automation.engine.active-engines");
       case "web"             -> List.of("web.page.desktop.{page-name}.url");
       case "sql"             -> List.of("sql.service.{name}.host-name", "sql.service.{name}.db-name", "sql.service.{name}.db-type");
@@ -152,6 +154,7 @@ public final class RuntimeCatalogIndexer {
         entry("ui-selenium", "selenium.driver",  "testara-ui-selenium",   "SeleniumDriverProperties", "selenium.driver.headless", "selenium.driver.page-scan-locations", "selenium.driver.action-scan-locations"),
         entry("ui-playwright","playwright.browser","testara-ui-playwright","PlaywrightDriverProperties", "playwright.browser.headless", "playwright.browser.browserType"),
         entry("ui-appium",   "appium.driver",    "testara-ui-appium",     "AppiumDriverProperties","appium.driver.platformName", "appium.driver.deviceName"),
+        entry("ui-vibium",   "vibium.browser",   "testara-ui-vibium",     "VibiumDriverProperties","vibium.browser.headless", "vibium.browser.vibium-binary-path"),
         entry("sql",         "sql",              "testara-database",      "DatabaseProperties",    "sql.service.{name}.host-name", "sql.service.{name}.db-name", "sql.service.{name}.db-type"),
         entry("mongo",       "mongo",            "testara-database",      "MongoProperties",       "mongo.service.{name}.hosts", "mongo.service.{name}.db-name"),
         entry("kafka",       "kafka",            "testara-streaming",     "KafkaProperties",       "kafka.service.{name}.servers", "kafka.service.{name}.group-id", "kafka.service.{name}.topics.{topic}"),

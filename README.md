@@ -11,7 +11,7 @@ Testara is a modular test automation framework built on Java 21 that provides a 
 ## Features
 
 - **API Testing** — RestAssured-based HTTP client with concurrent request support and WireMock integration
-- **UI Automation** — Engine-agnostic abstraction supporting Selenium, Playwright, and Appium with Screenplay-style interactions
+- **UI Automation** — Engine-agnostic abstraction supporting Selenium, Playwright, Appium, and Vibium with Screenplay-style interactions
 - **Database Testing** — MongoDB, PostgreSQL, MariaDB, and MySQL verification
 - **Streaming** — Kafka producer/consumer testing with Reactor Kafka
 - **Elasticsearch** — Search index validation and querying
@@ -36,6 +36,7 @@ Testara is a modular test automation framework built on Java 21 that provides a 
 | `testara-ui-selenium` | Selenium WebDriver engine | [UI Docs](testara-ui/README.md) |
 | `testara-ui-playwright` | Playwright engine | [UI Docs](testara-ui/README.md) |
 | `testara-ui-appium` | Appium engine for mobile testing | [UI Docs](testara-ui/README.md) |
+| `testara-ui-vibium` | Vibium engine (Chromium, discovery-only locators) | [UI Docs](testara-ui/README.md) |
 | `testara-database` | Database testing (MongoDB, PostgreSQL, MariaDB, MySQL) | — |
 | `testara-streaming` | Kafka streaming testing | — |
 | `testara-elastic` | Elasticsearch testing | — |

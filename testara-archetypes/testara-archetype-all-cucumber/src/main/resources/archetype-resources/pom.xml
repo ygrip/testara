@@ -77,6 +77,8 @@
       <artifactId>testara-ui-playwright</artifactId>
 #elseif($uiEngine == "appium")
       <artifactId>testara-ui-appium</artifactId>
+#elseif($uiEngine == "vibium")
+      <artifactId>testara-ui-vibium</artifactId>
 #else
       <artifactId>testara-ui-selenium</artifactId>
 #end

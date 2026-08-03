@@ -94,7 +94,7 @@ public final class GenerationGuard {
     if (pom == null || pom.isBlank()) return violations;
 
     for (String artifact : List.of("testara-command", "testara-validation", "testara-api", "testara-ui",
-        "testara-ui-selenium", "testara-ui-playwright", "testara-ui-appium", "testara-database",
+        "testara-ui-selenium", "testara-ui-playwright", "testara-ui-appium", "testara-ui-vibium", "testara-database",
         "testara-streaming", "testara-elastic")) {
       if (hasDependencyWithScope(pom, artifact, "test")) {
         violations.add(new Violation(Violation.Severity.ERROR, "POM",

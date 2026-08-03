@@ -59,7 +59,7 @@ public class ListUiCatalogSkill implements AgentSkill<Void, String> {
     sb.append("## Usage\n\n");
     sb.append("Configure in `application.properties` or `testara.yml`:\n\n");
     sb.append("```properties\n");
-    sb.append("testara.ui.engine=selenium        # or playwright, appium\n");
+    sb.append("testara.ui.engine=selenium        # or playwright, appium, vibium\n");
     sb.append("testara.ui.driver=chrome          # must match driver name above\n");
     sb.append("```\n");
     return sb.toString();

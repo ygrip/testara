@@ -140,7 +140,7 @@ public class ArchetypeInvoker {
   static String resolveArchetypeArtifactId(String flavor) {
     if (flavor == null) return "testara-archetype-api-cucumber";
     return switch (flavor.toLowerCase(Locale.ROOT)) {
-      case "ui", "ui-cucumber", "ui-selenium", "ui-playwright", "ui-appium" -> "testara-archetype-ui-cucumber";
+      case "ui", "ui-cucumber", "ui-selenium", "ui-playwright", "ui-appium", "ui-vibium" -> "testara-archetype-ui-cucumber";
       case "all", "fullstack", "full" -> "testara-archetype-all-cucumber";
       default -> "testara-archetype-api-cucumber";
     };

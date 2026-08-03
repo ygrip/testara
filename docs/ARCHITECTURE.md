@@ -17,7 +17,7 @@ would otherwise need four or five separate tools:
 | You want to test… | Testara slice | Engine underneath |
 |---|---|---|
 | REST APIs | `testara-api` | RestAssured (on virtual threads) |
-| Web / mobile UI | `testara-ui` (+ `-selenium` / `-playwright` / `-appium`) | engine-agnostic adapter |
+| Web / mobile UI | `testara-ui` (+ `-selenium` / `-playwright` / `-appium` / `-vibium`) | engine-agnostic adapter |
 | SQL / NoSQL data | `testara-database` | JDBC + Mongo driver |
 | Kafka streams | `testara-streaming` | Reactor Kafka |
 | Search indices | `testara-elastic` | Elasticsearch client |
@@ -57,7 +57,8 @@ testara-core          Foundation: config binding, class scanning, SPI factories,
   ├── testara-ui            Engine-agnostic UI core (Page, Actor, capabilities)
   │     ├── testara-ui-selenium
   │     ├── testara-ui-playwright
-  │     └── testara-ui-appium
+  │     ├── testara-ui-appium
+  │     └── testara-ui-vibium
   ├── testara-database      Mongo / Postgres / MariaDB / MySQL
   ├── testara-streaming     Kafka producer/consumer
   ├── testara-elastic       Elasticsearch
@@ -181,11 +182,11 @@ UIBaseSteps (cucumber)
        └─ Actor.attemptsTo(Interaction...) / observe(Observation) / executeTask("<task>")
             └─ InteractionContext → DriverSession.capability(X)
                  └─ engine Capability impl (Navigation/Interaction/Assertion/Wait/Observation)
-                      └─ real Playwright Page / Selenium WebDriver / Appium driver
+                      └─ real Playwright Page / Selenium WebDriver / Appium driver / Vibium Page
 ```
 
 - **`@Page` model**: a page object extends the engine base (`PlaywrightPage`/`SeleniumPage`/
-  `AppiumPage` → `PageContext`). The page **URL lives in properties**
+  `AppiumPage`/`VibiumPage` → `PageContext`). The page **URL lives in properties**
   (`web.page.<device>.<name>.url`, bound by `WebPageDataProperties`), *not* hardcoded in the
   annotation — `@Page(url=...)` defaults to `""` and should stay empty.
 - **Screenplay**: `Actor.attemptsTo(Interaction...)` (Click, Enter, Navigate, WaitUntil, SeeThat…),

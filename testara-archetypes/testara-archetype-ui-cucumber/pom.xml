@@ -13,7 +13,7 @@
   <artifactId>testara-archetype-ui-cucumber</artifactId>
   <packaging>maven-archetype</packaging>
   <name>Testara UI Cucumber Archetype</name>
-  <description>Archetype for creating a Testara UI automation project with Cucumber. Supports selenium (default), playwright, and appium engines.</description>
+  <description>Archetype for creating a Testara UI automation project with Cucumber. Supports selenium (default), playwright, appium, and vibium engines.</description>
 
   <build>
     <extensions>
