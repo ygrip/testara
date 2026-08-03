@@ -1,0 +1,102 @@
+testara-cucumber/src/main/java/io/github/ygrip/testara/cucumber/scope/JUnit4ScopeContext.java
+  d168f8822473a37c 5-6,16-20,27,33-69,72-74
+testara-cucumber/src/test/java/io/github/ygrip/testara/cucumber/scope/JUnit4ScopeContextTests.java
+  d168f8822473a37c 1-80
+testara-cucumber/pom.xml
+  d168f8822473a37c 61-65
+testara-junit5/src/test/resources/features/step_notifications_nine_steps.feature
+  d168f8822473a37c 1-15
+testara-cucumber/src/main/java/io/github/ygrip/testara/cucumber/factory/TestaraObjectFactory.java
+  56024c3423c520b5 25,224-234,258-261
+  d168f8822473a37c 7,9,11,56-60,62,64-67,78-80,82,91-115,118-127,135,138,167,169,172-177,291,329-332,334,344,418,428,439
+testara-junit5/src/test/java/io/github/ygrip/testara/engine/deferredrerun/DeferredRerunGlue.java
+  d168f8822473a37c 1-69
+testara-cucumber/src/main/java/io/github/ygrip/testara/cucumber/hooks/TestaraLifecycleHooks.java
+  d168f8822473a37c 55-63,95-108,110-112,114-118
+testara-junit5/src/main/java/io/github/ygrip/testara/engine/factory/TestaraCucumberObjectFactory.java
+  56024c3423c520b5 80,83-92,98,101,103,105
+testara-junit5/src/test/java/io/github/ygrip/testara/engine/context/CucumberScopeContextTests.java
+  d168f8822473a37c 1-61
+testara-cucumber/src/test/resources/application.properties
+  d168f8822473a37c 1
+testara-junit5/src/test/java/io/github/ygrip/testara/engine/deferredrerun/DeferredRerunEngineTest.java
+  d168f8822473a37c 1-326
+testara-junit5/src/main/java/io/github/ygrip/testara/engine/extension/TestaraFrameworkExtension.java
+  d168f8822473a37c 25,27,29,50-52,54,58-63,67-94,98-109,114-123,128-148,161-171,277-278,289,320,327,335,364-378
+testara-junit5/src/main/java/io/github/ygrip/testara/engine/descriptor/TestaraNodeDescriptor.java
+  d168f8822473a37c 9,34,102-113,137-161,164-172,222-235,237
+testara-cucumber/src/test/resources/junit-platform.properties
+  d168f8822473a37c 1-4
+testara-cucumber/src/test/java/io/github/ygrip/testara/cucumber/factory/TestaraObjectFactoryScopeTests.java
+  d168f8822473a37c 1-2,5,7-17,19-144,175
+  56024c3423c520b5 3-4,6,18,145-174
+testara-junit5/src/test/resources/features/deferred_rerun_six_steps.feature
+  d168f8822473a37c 1-9
+testara-cucumber/src/test/resources/configuration.properties
+  d168f8822473a37c 1-7
+testara-junit5/src/test/resources/features/deferred_rerun_recovers.feature
+  d168f8822473a37c 1-6
+testara-junit5/src/test/java/io/github/ygrip/testara/engine/extension/TestaraFrameworkExtensionScopeTests.java
+  d168f8822473a37c 1-165
+testara-junit5/src/main/java/io/github/ygrip/testara/engine/DeferredRerunManager.java
+  d168f8822473a37c 16,28,64,265-270,307-308,349-350,369,438-441,510-512,637-652,677-682,686-687,692-700,704,720,722-728,733-734,793-803,805-806,812,814-824,985-986
+testara-junit5/src/main/java/io/github/ygrip/testara/engine/context/TestaraCucumberEngineExecutionContext.java
+  d168f8822473a37c 45,61,63,80-85,96,104-134,267-275,278-280,286,296,303-304,306,308,315-317,326-331,334-338,355-357,361-362,431-435,437-438,450-454,539-543,545-557,559
+testara-junit5/src/main/java/io/github/ygrip/testara/engine/TestaraTestCaseResultObserver.java
+  d168f8822473a37c 19,25-28,31-32,36-40,46-64,73-74,77,90-97,101-126,128-148,153-156,158-182,186-191,193-196,200-204,218-225,227-237
+testara-junit5/src/test/resources/junit-platform.properties
+  d168f8822473a37c 1-7
+testara-junit5/src/test/resources/features/step_notifications.feature
+  d168f8822473a37c 1-11
+testara-junit5/pom.xml
+  d168f8822473a37c 80-84
+testara-junit5/src/test/java/io/github/ygrip/testara/engine/testsupport/MapConfigurationParameters.java
+  d168f8822473a37c 1-41
+testara-junit5/src/test/resources/configuration.properties
+  d168f8822473a37c 1-7
+testara-junit5/src/test/java/io/github/ygrip/testara/engine/testsupport/FakeTestDescriptor.java
+  d168f8822473a37c 1-21
+testara-junit5/src/test/java/io/github/ygrip/testara/engine/deferredrerun/recover/DeferredRerunRecoverGlue.java
+  d168f8822473a37c 1-46
+testara-junit5/src/test/java/io/github/ygrip/testara/engine/stepnotif/StepNotificationGlue.java
+  d168f8822473a37c 1-106
+testara-junit5/src/test/resources/application.properties
+  d168f8822473a37c 1
+testara-junit5/src/test/java/io/github/ygrip/testara/engine/stepnotif/StepNotificationEngineTest.java
+  d168f8822473a37c 1-353
+testara-junit5/src/main/java/io/github/ygrip/testara/engine/context/CucumberScopeContext.java
+  d168f8822473a37c 5-6,16-26,33,39-69,97-99
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.23",
+  "base_commit_sha": "b257486b4668a0fe2d0c8436626e7d41d7ccc3b8",
+  "prompts": {
+    "56024c3423c520b5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3eedd117-94cf-4c70-b00b-39d01e854dd6",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "ygrip <yunaz.gilang@gmail.com>",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 69,
+      "overriden_lines": 0
+    },
+    "d168f8822473a37c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "29bd1a56-1f45-48b0-9acf-f5562dd6aac6",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "ygrip <yunaz.gilang@gmail.com>",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 2396,
+      "overriden_lines": 0
+    }
+  }
+}
