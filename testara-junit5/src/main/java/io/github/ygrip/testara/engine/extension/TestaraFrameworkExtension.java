@@ -22,8 +22,11 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
@@ -44,40 +47,105 @@ import java.util.concurrent.atomic.AtomicBoolean;
 @Log4j2
 public class TestaraFrameworkExtension implements TestaraExtension {
 
+  // Guards the one-time framework initialization race. The CAS "winner" runs
+  // initializeFramework(); "losers" (concurrent beforeAll invocations, if any) must wait for the
+  // winner to actually finish rather than proceeding as if the framework were already ready.
   private static final AtomicBoolean INITIALIZED = new AtomicBoolean(false);
+  private static volatile CompletableFuture<Void> FRAMEWORK_READY = new CompletableFuture<>();
   private static volatile TestConfiguration configuration;
   private static volatile TestContext testContext;
+
+  // Effective execution mode + the shared run-scope key, determined once in beforeAll and used
+  // by beforeEach/afterEach/afterAll to pick the correct scope-binding strategy: one shared TEST
+  // scope for the whole run when sequential, one isolated TEST scope per scenario when parallel.
+  private static volatile boolean parallelMode;
+  private static volatile String runScopeKey;
 
   @Override
   public void beforeAll(TestaraExtensionContext context) throws Exception {
     if (INITIALIZED.compareAndSet(false, true)) {
-      initializeFramework(context);
+      try {
+        initializeFramework(context);
+        parallelMode = isParallelExecutionEnabled(context);
+        if (parallelMode) {
+          log.debug("Parallel execution detected - each scenario will get its own TEST scope key");
+        } else {
+          runScopeKey = CucumberScopeContext.startNewRun();
+          log.debug("Sequential execution detected - sharing one TEST scope for the whole run: {}", runScopeKey);
+        }
+        FRAMEWORK_READY.complete(null);
+      } catch (Exception e) {
+        FRAMEWORK_READY.completeExceptionally(e);
+        throw e;
+      } catch (Error e) {
+        FRAMEWORK_READY.completeExceptionally(e);
+        throw e;
+      }
+    } else {
+      try {
+        FRAMEWORK_READY.get(60, TimeUnit.SECONDS);
+      } catch (ExecutionException ee) {
+        throw new IllegalStateException("Testara framework initialization failed", ee.getCause());
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+        throw new IllegalStateException("Interrupted waiting for Testara framework initialization", e);
+      } catch (TimeoutException e) {
+        throw new IllegalStateException("Timed out waiting for Testara framework initialization", e);
+      }
     }
+  }
+
+  /**
+   * Determine whether parallel execution is enabled, reading from the same merged
+   * {@code ConfigurationParameters} the Testara Cucumber engine itself uses
+   * (see {@code TestaraCucumberEngineOptions.isParallelExecutionEnabled()}) — the extension's
+   * {@link TestaraExtensionContext#getConfigurationParameter(String)} delegates to the exact
+   * same per-run {@code TestaraCucumberEngineOptions} instance the engine constructed, so both
+   * agree on parallel-mode by construction.
+   */
+  private boolean isParallelExecutionEnabled(TestaraExtensionContext context) {
+    return context.getConfigurationParameter("cucumber.execution.parallel.enabled")
+        .map(Boolean::parseBoolean)
+        .orElse(false);
   }
 
   @Override
   public void beforeEach(TestaraExtensionContext context) throws Exception {
-    // Enter scenario scope
-    String scopeId = context.getUniqueId();
-    CucumberScopeContext.enterScenario(scopeId);
-    log.debug("Entered scenario scope: {}", scopeId);
+    if (parallelMode) {
+      // Parallel: isolate each concurrently running scenario with its own TEST scope key.
+      String scopeId = context.getUniqueId();
+      CucumberScopeContext.enterScenario(scopeId);
+      log.debug("Entered scenario scope (parallel): {}", scopeId);
+    } else {
+      // Sequential: bind (idempotently) to the single TEST scope shared by the whole run.
+      CucumberScopeContext.enterRunScope();
+      log.debug("Bound to shared run scope (sequential): {}", runScopeKey);
+    }
   }
 
   @Override
   public void afterEach(TestaraExtensionContext context) throws Exception {
-    // Exit scenario scope and clear scoped instances
-    String scopeId = context.getUniqueId();
-    try {
-      // Use getCurrentScopeKey() which includes the prefix, matching the cache key
-      // This ensures the correct scope is cleared after each scenario
-      String scopeKey = CucumberScopeContext.getCurrentScopeKey();
-      RootRegistry.instance().clearScope(scopeKey);
-      log.debug("Cleared scope: {}", scopeKey);
-    } catch (Exception e) {
-      log.warn("Failed to clear scenario scope: {}", e.getMessage());
-    } finally {
-      CucumberScopeContext.exitScenario();
-      log.debug("Exited scenario scope: {}", scopeId);
+    if (parallelMode) {
+      // Parallel: this scenario is done - clear its isolated instances and unbind immediately so
+      // the ThreadLocal doesn't leak into whatever scenario the pooled worker thread runs next.
+      String scopeId = context.getUniqueId();
+      try {
+        // Use getCurrentScopeKey() which includes the prefix, matching the cache key
+        // This ensures the correct scope is cleared after each scenario
+        String scopeKey = CucumberScopeContext.getCurrentScopeKey();
+        RootRegistry.instance().clearScope(scopeKey);
+        log.debug("Cleared scope: {}", scopeKey);
+      } catch (Exception e) {
+        log.warn("Failed to clear scenario scope: {}", e.getMessage());
+      } finally {
+        CucumberScopeContext.exitScenario();
+        log.debug("Exited scenario scope: {}", scopeId);
+      }
+    } else {
+      // Sequential: never clear the shared run scope between scenarios - it (and its TEST-scoped
+      // instances, e.g. DataHolder/PageFinder) must survive for the entire run. Leave the
+      // ThreadLocal binding in place; the next scenario's beforeEach rebinds the same key anyway.
+      log.debug("Sequential scenario finished; retaining shared run scope: {}", runScopeKey);
     }
   }
 
@@ -88,6 +156,19 @@ public class TestaraFrameworkExtension implements TestaraExtension {
       ResourceShutdownRegistry.shutdownAll();
     } catch (Exception e) {
       log.warn("Error during resource shutdown: {}", e.getMessage());
+    }
+
+    // Sequential mode: the shared run scope is only ever cleared here, once, at the end of the
+    // whole run - never in between scenarios.
+    if (!parallelMode && runScopeKey != null) {
+      try {
+        RootRegistry.instance().clearScope(runScopeKey);
+        log.debug("Cleared run scope at end of run: {}", runScopeKey);
+      } catch (Exception e) {
+        log.warn("Failed to clear run scope: {}", e.getMessage());
+      } finally {
+        CucumberScopeContext.exitScenario();
+      }
     }
 
     // Clean up feature-level scope if set
@@ -193,13 +274,8 @@ public class TestaraFrameworkExtension implements TestaraExtension {
    * Uses configuration parameters from the test engine.
    */
   private TestConfiguration loadConfiguration(TestaraExtensionContext context) {
-    // Check for property files configuration
-    String propertyLocations = context.getConfigurationParameter("testara.configuration.location")
-        .orElse("classpath:*.properties");
-
-    System.setProperty("configuration.location", propertyLocations);
-
-    log.debug("Loading configuration from: {}", propertyLocations);
+    TestConfigurationLoader.resolveConfigurationLocation(
+        context.getConfigurationParameter("testara.configuration.location").orElse(null));
     return TestConfigurationLoader.load();
   }
 
@@ -210,7 +286,7 @@ public class TestaraFrameworkExtension implements TestaraExtension {
     List<Class<?>> configurations = scanner.scan(LoadProperties.class).get(10, TimeUnit.SECONDS);
 
     for (Class<?> configType : configurations) {
-      if (!RootRegistry.instance().hasInstance(configType)) {
+      if (!RootRegistry.instance().hasProvider(configType)) {
         Object instance = config.get(configType);
         RootRegistry.instance().register(instance, RegistryScope.GLOBAL);
         log.trace("Registered configuration: {}", configType.getSimpleName());
@@ -241,14 +317,14 @@ public class TestaraFrameworkExtension implements TestaraExtension {
         continue;
       }
 
-      if (!RootRegistry.instance().hasInstance(componentType)) {
+      if (!RootRegistry.instance().hasProvider(componentType)) {
         componentsByScope.get(scope).add(componentType);
       }
     }
 
     // Register GLOBAL scope components first
     componentsByScope.get(RegistryScope.GLOBAL).forEach(componentType -> {
-      if (!RootRegistry.instance().hasInstance(componentType, RegistryScope.GLOBAL.name())) {
+      if (!RootRegistry.instance().hasProvider(componentType)) {
         RootRegistry.instance().register(componentType, RegistryScope.GLOBAL);
         log.trace("Registered GLOBAL component: {}", componentType.getSimpleName());
       }
@@ -256,7 +332,7 @@ public class TestaraFrameworkExtension implements TestaraExtension {
 
     // Register TEST scope components (they'll be instantiated per scenario)
     componentsByScope.get(RegistryScope.TEST).forEach(componentType -> {
-      if (!RootRegistry.instance().hasInstance(componentType)) {
+      if (!RootRegistry.instance().hasProvider(componentType)) {
         RootRegistry.instance().register(componentType, RegistryScope.TEST);
         log.trace("Registered TEST component: {}", componentType.getSimpleName());
       }
@@ -284,5 +360,21 @@ public class TestaraFrameworkExtension implements TestaraExtension {
    */
   public static boolean isInitialized() {
     return INITIALIZED.get();
+  }
+
+  /**
+   * Reset all static framework state. Intended for tests only — allows simulating multiple
+   * independent engine runs (e.g. one sequential, one parallel) within the same JVM, since
+   * a completed {@link CompletableFuture} cannot be "un-completed" and must be replaced.
+   */
+  public static void resetFramework() {
+    INITIALIZED.set(false);
+    FRAMEWORK_READY = new CompletableFuture<>();
+    parallelMode = false;
+    runScopeKey = null;
+    configuration = null;
+    testContext = null;
+    TestFramework.clear();
+    RootRegistry.clearAll();
   }
 }

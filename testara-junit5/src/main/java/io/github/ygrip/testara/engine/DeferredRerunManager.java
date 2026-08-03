@@ -13,6 +13,7 @@ import io.github.ygrip.testara.engine.extension.TestaraExtension;
 import io.github.ygrip.testara.engine.extension.TestaraExtensionContext;
 import io.github.ygrip.testara.engine.model.RerunStrategy;
 import io.github.ygrip.testara.engine.option.TestaraCucumberEngineOptions;
+import io.github.ygrip.testara.engine.support.ExceptionHandler;
 import io.github.ygrip.testara.engine.support.TestDescriptorOrderUtils;
 import io.cucumber.core.feature.FeatureWithLines;
 import io.cucumber.core.gherkin.Feature;
@@ -24,6 +25,7 @@ import lombok.extern.log4j.Log4j2;
 import org.apache.commons.io.FilenameUtils;
 import org.junit.platform.engine.ConfigurationParameters;
 import org.junit.platform.engine.TestDescriptor;
+import org.junit.platform.engine.TestExecutionResult;
 import org.junit.platform.engine.UniqueId;
 
 import java.io.File;
@@ -59,7 +61,7 @@ public final class DeferredRerunManager {
   private final ExecutorService worker;
   private final boolean useVirtualThreads;
   private boolean deferredRerunExecuted = false;
-  
+
   // Captured TestContext for propagation to rerun threads
   // Thread pool threads may be created before framework initialization,
   // so we need to manually propagate the context
@@ -260,7 +262,12 @@ public final class DeferredRerunManager {
           break;
         }
 
-      } catch (Exception e) {
+      } catch (Throwable e) {
+        // Widened from Exception to Throwable: real Cucumber step failures are almost always
+        // org.opentest4j.AssertionFailedError (or another AssertionError subclass), which extends
+        // Error, not Exception. Catching only Exception here let a normal failing assertion escape
+        // this loop entirely, silently abandoning every remaining scenario/attempt in this batch and
+        // the deferred-rerun manual executionFinished reporting added in executeScenarioRerun below.
         log.error("Error during deferred rerun attempt #{} ({}) : {}", attempt, executionMode, e.getMessage());
 
         // Still finish the context to ensure report is written
@@ -297,7 +304,8 @@ public final class DeferredRerunManager {
       AtomicInteger failedScenarios) {
 
     // Parse all failed scenarios and organize them by priority
-    List<ScenarioRerunInfo> allFailedScenarios = parseAndOrganizeFailedScenarios(failedFeatures, featureResolver);
+    List<ScenarioRerunInfo> allFailedScenarios =
+        parseAndOrganizeFailedScenarios(failedFeatures, featureResolver, originalContext);
 
     // Sort scenarios by priority (critical scenarios first)
     allFailedScenarios.sort(new ScenarioRerunComparator());
@@ -338,7 +346,8 @@ public final class DeferredRerunManager {
    * Parse failed features and create ScenarioRerunInfo objects for better organization
    */
   private List<ScenarioRerunInfo> parseAndOrganizeFailedScenarios(List<FeatureWithLines> failedFeatures,
-      TestaraFeatureResolver featureResolver) {
+      TestaraFeatureResolver featureResolver,
+      TestaraCucumberEngineExecutionContext originalContext) {
     List<ScenarioRerunInfo> scenarios = new ArrayList<>();
 
     for (FeatureWithLines failedFeature : failedFeatures) {
@@ -357,7 +366,7 @@ public final class DeferredRerunManager {
         for (Integer line : failedFeature.lines()) {
           Pickle pickle = findPickleAtLine(feature, line);
           if (pickle != null) {
-            TestaraNodeDescriptor.PickleDescriptor descriptor = createPickleDescriptor(pickle, feature);
+            TestaraNodeDescriptor.PickleDescriptor descriptor = createPickleDescriptor(pickle, feature, originalContext);
             scenarios.add(new ScenarioRerunInfo(failedFeature, feature, pickle, descriptor, line));
           } else {
             log.warn("No pickle found at line {} in feature {}", line, failedFeature.uri());
@@ -426,7 +435,10 @@ public final class DeferredRerunManager {
           } else {
             stillFailing.add(scenario);
           }
-        } catch (Exception e) {
+        } catch (Throwable e) {
+          // Widened from Exception: executeScenarioRerun itself now catches Throwable and never
+          // rethrows, but this is kept as defense in depth against a real assertion failure
+          // (AssertionFailedError extends Error, not Exception) escaping some other way.
           stillFailing.add(scenario);
         }
       } else {
@@ -495,7 +507,9 @@ public final class DeferredRerunManager {
         } else {
           stillFailing.add(scenario);
         }
-      } catch (Exception ignored) {
+      } catch (Throwable ignored) {
+        // Widened from Exception: see the comment in executeScenariosInParallel's exclusive-scenario
+        // branch above -- a real assertion failure is an Error, not an Exception.
         stillFailing.add(scenario);
       }
     }
@@ -620,6 +634,22 @@ public final class DeferredRerunManager {
       CucumberExecutionContext rerunContext,
       int attempt) {
 
+    // Only the LAST configured attempt is definitive -- mirrors the immediate-rerun path
+    // (TestaraCucumberEngineExecutionContext#rerunFailedTestCase): an earlier deferred attempt that
+    // is itself about to be superseded by a later one must not have its own outcome/steps reported.
+    boolean isFinalAttempt = attempt == options.maxRetryFailedScenarios();
+
+    // This rerun runs through cucumber-core's CucumberExecutionContext directly, entirely outside
+    // JUnit Platform's own node-tree walk (NodeTestTask), so there is no automatic
+    // executionStarted/executionFinished wrapping it the way there is for the original attempt's
+    // PickleDescriptor#execute() -- this method is the sole reporter of THIS scenario-level
+    // start/finish pair for this retry. The original attempt already reported its own
+    // start/finish separately (through JUnit Platform's normal wrapping of its failing execute()
+    // call), so a scenario that goes through a deferred retry ends up reported twice for the same
+    // UniqueId across the whole run -- once for the original failing attempt, once here for the
+    // retry. That is expected and accepted (see TestaraCucumberEngineExecutionContext#runTestCase),
+    // not something this method tries to merge into a single report.
+    originalContext.getListener().executionStarted(scenarioInfo.descriptor);
     try {
       // CRITICAL: Ensure TestFramework context is available in this thread
       // Thread pool threads may have been created before framework initialization,
@@ -631,7 +661,6 @@ public final class DeferredRerunManager {
       TestaraExtensionContext extensionContext =
           new TestaraExtensionContext(scenarioInfo.descriptor, originalContext.getOptions());
       List<TestaraExtension> extensions = originalContext.getExtensions();
-
 
       try {
         for (TestaraExtension extension : extensions) {
@@ -645,24 +674,36 @@ public final class DeferredRerunManager {
 
         // Execute the scenario using the separate rerun context
         rerunContext.runTestCase((runner) -> {
+          // Live mode (not buffered): unlike runTestCase's ORIGINAL attempt under DEFERRED (whose
+          // fate is unknown until it actually blocks or not), each individual deferred-retry attempt
+          // here has its own fate already certain in advance from isFinalAttempt alone -- an early
+          // PASS is always shown live regardless (the batch's own attempt loop stops retrying this
+          // scenario as soon as one attempt passes, so an early-passing attempt is never actually
+          // superseded even when it is not the last configured one).
           TestaraTestCaseResultObserver observer = TestaraTestCaseResultObserver.observe(runner.getBus(),
               scenarioInfo.descriptor,
               originalContext.getListener(),
-              originalContext.getOptions().stepNotifications());
-
-          observer.isRerun(true);
+              originalContext.getOptions().stepNotifications())
+              .reportFinalOutcome(isFinalAttempt);
 
           try {
             runner.runPickle(scenarioInfo.pickle);
             observer.assertTestCasePassed();
-          } catch (Exception error) {
+            // Passed -> this attempt is always the true, definitive outcome for its own steps,
+            // regardless of attempt number (no further attempt will ever run for this scenario).
+            observer.finish();
+          } catch (Throwable error) {
+            // Widened from Exception: assertTestCasePassed() rethrows the scenario's real failure
+            // as-is, and a real Cucumber step assertion (org.opentest4j.AssertionFailedError, or any
+            // other AssertionError subclass) is an Error, not an Exception. Catching only Exception
+            // here meant observer.finish(...) was skipped and the failure propagated uncaught out of
+            // this whole rerun attempt (and, further up, out of the entire deferred-rerun batch).
             log.error("Error re-running scenario {} : {}",
                 scenarioInfo.descriptor.getDisplayName(),
                 error.getMessage());
-            observer.close();
+            observer.finish();
             throw error;
           }
-          observer.close();
         });
       } finally {
         for (TestaraExtension extension : extensions) {
@@ -676,12 +717,21 @@ public final class DeferredRerunManager {
       }
 
       log.debug("Deferred rerun attempt #{} for scenario {} - SUCCESS", attempt, scenarioInfo.pickle.getName());
+      originalContext.getListener().executionFinished(scenarioInfo.descriptor, TestExecutionResult.successful());
       return new ScenarioRerunResult(true);
-    } catch (Exception e) {
+    } catch (Throwable e) {
+      // Widened from Exception: a real Cucumber step assertion failure (org.opentest4j
+      // .AssertionFailedError, or any other AssertionError subclass) is an Error, not an Exception.
+      // Catching only Exception here meant the manual executionFinished report below -- the fix for
+      // the deferred rerun's own attempt never reporting a real duration/outcome at all -- was
+      // itself skipped whenever a scenario failed the normal way, and the failure then propagated
+      // uncaught out of this whole method into the calling batch loop.
       log.debug("Deferred rerun attempt #{} for scenario {} - FAILED: {}",
           attempt,
           scenarioInfo.pickle.getName(),
           e.getMessage());
+      Throwable trimmed = ExceptionHandler.trimStackTrace(e);
+      originalContext.getListener().executionFinished(scenarioInfo.descriptor, TestExecutionResult.failed(trimmed));
       return new ScenarioRerunResult(false);
     }
   }
@@ -740,21 +790,38 @@ public final class DeferredRerunManager {
   }
 
   /**
-   * Create a PickleDescriptor for a scenario following the same pattern as TestaraFeatureResolver
+   * Resolve the PickleDescriptor for a scenario to rerun.
+   * <p>
+   * The unique id computed here is deterministic and identical to the one produced during real
+   * discovery (see {@link TestaraFeatureResolver#createFeatureDescriptor}), so it is first used to
+   * look up the REAL, originally-discovered {@link TestaraNodeDescriptor.PickleDescriptor} instance
+   * via {@link TestaraCucumberEngineExecutionContext#findPickleDescriptor(UniqueId)}. Reusing that
+   * SAME object (rather than fabricating a brand new, disconnected one that only coincidentally
+   * shares the same id) is what lets the deferred rerun report through the one logical scenario
+   * node JUnit Platform already knows about, instead of surfacing as a second, orphaned entry.
+   * A fresh descriptor is only fabricated as a last-resort fallback if the real one cannot be found
+   * (e.g. discovery pruning removed it from the tree).
    */
-  private TestaraNodeDescriptor.PickleDescriptor createPickleDescriptor(Pickle pickle, Feature feature) {
+  private TestaraNodeDescriptor.PickleDescriptor createPickleDescriptor(Pickle pickle, Feature feature,
+      TestaraCucumberEngineExecutionContext originalContext) {
     TestaraFeatureOrigin origin = TestaraFeatureOrigin.fromUri(feature.getUri());
 
     // Create a temporary parent UniqueId for the scenario
     UniqueId parentId =
         forEngine("testara-cucumber").append("feature", feature.getUri().toString());
+    UniqueId scenarioId = origin.scenarioSegment(parentId, createNodeFromPickle(pickle));
 
-    return new TestaraNodeDescriptor.PickleDescriptor(options,
-        origin,
-        origin.scenarioSegment(parentId, createNodeFromPickle(pickle)),
-        pickle.getName(),
-        origin.nodeSource(createNodeFromPickle(pickle)),
-        pickle);
+    return originalContext.findPickleDescriptor(scenarioId)
+        .orElseGet(() -> {
+          log.warn("Could not find originally-discovered PickleDescriptor for {}, falling back to a "
+              + "freshly built one; the rerun may report as a separate node from the original attempt", scenarioId);
+          return new TestaraNodeDescriptor.PickleDescriptor(options,
+              origin,
+              scenarioId,
+              pickle.getName(),
+              origin.nodeSource(createNodeFromPickle(pickle)),
+              pickle);
+        });
   }
 
   /**
@@ -915,4 +982,6 @@ public final class DeferredRerunManager {
       return success;
     }
   }
+
+
 }

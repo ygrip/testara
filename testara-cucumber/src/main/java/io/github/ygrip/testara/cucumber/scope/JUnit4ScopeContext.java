@@ -2,6 +2,8 @@ package io.github.ygrip.testara.cucumber.scope;
 
 import io.github.ygrip.testara.core.registry.ScopeContext;
 
+import java.util.UUID;
+
 /**
  * ScopeContext implementation for JUnit 4 Cucumber runner.
  * <p>
@@ -11,20 +13,65 @@ import io.github.ygrip.testara.core.registry.ScopeContext;
  * <p>
  * This is registered via SPI and is used when running Cucumber
  * with JUnit 4's {@code @RunWith(Cucumber.class)}.
+ * <p>
+ * Two distinct scope-binding modes are supported, mirroring the JUnit5 engine's
+ * {@code CucumberScopeContext}: a shared {@link #runScopeKey() run scope} for sequential
+ * execution (one TEST scope for the whole run) and a per-scenario scope
+ * (via {@link #enterScenario(String)}) for parallel execution.
  */
 public final class JUnit4ScopeContext implements ScopeContext {
 
   private static final String DEFAULT_SCOPE = "junit4-default";
   private static final String SCOPE_PREFIX = "junit4-";
 
-  // Thread-local for scenario scope
+  // Thread-local for scenario scope (or the shared run-scope id)
   private static final ThreadLocal<String> CURRENT_SCENARIO = new InheritableThreadLocal<>();
 
   // Thread-local for test class scope (if needed)
   private static final ThreadLocal<String> CURRENT_TEST_CLASS = new InheritableThreadLocal<>();
 
+  // Raw run-scope id shared by every scenario in a sequential run. Regenerated once per
+  // framework (re)initialization via startNewRun().
+  private static volatile String runScopeId = "run-" + UUID.randomUUID();
+
   /**
-   * Enter scenario scope (called before each scenario).
+   * JUnit4 Cucumber has no per-run {@code ConfigurationParameters} the way the JUnit5 engine
+   * does (see {@code TestaraCucumberEngineOptions.isParallelExecutionEnabled()}), so the same
+   * {@code cucumber.execution.parallel.enabled} property is read directly from system
+   * properties here.
+   */
+  public static boolean isParallelExecutionEnabled() {
+    return Boolean.parseBoolean(System.getProperty("cucumber.execution.parallel.enabled", "false"));
+  }
+
+  /**
+   * Generate a fresh run-scope id. Call once per framework (re)initialization.
+   *
+   * @return the resulting raw run-scope key
+   */
+  public static String startNewRun() {
+    runScopeId = "run-" + UUID.randomUUID();
+    return runScopeId;
+  }
+
+  /**
+   * @return the current raw run-scope key shared by all scenarios in a sequential run
+   */
+  public static String runScopeKey() {
+    return runScopeId;
+  }
+
+  /**
+   * Bind the current thread to the shared run-scope key (sequential execution). Idempotent.
+   */
+  public static void enterRunScope() {
+    CURRENT_SCENARIO.set(runScopeId);
+  }
+
+  /**
+   * Enter scenario scope (called before each scenario). Only meaningful for <b>parallel</b>
+   * execution — each concurrently running scenario must get its own isolated TEST scope key.
+   * For sequential execution use {@link #enterRunScope()} instead.
    *
    * @param scenarioId unique identifier for the scenario
    */

@@ -4,8 +4,11 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.slf4j.Logger;
@@ -19,6 +22,7 @@ import io.github.ygrip.testara.core.context.TestContext;
 import io.github.ygrip.testara.core.context.TestContextProvider;
 import io.github.ygrip.testara.core.context.TestContextProviderLoader;
 import io.github.ygrip.testara.core.context.TestFramework;
+import io.github.ygrip.testara.core.error.DependencyResolutionException;
 import io.github.ygrip.testara.core.factory.DefaultObjectFactory;
 import io.github.ygrip.testara.core.factory.ObjectFactory;
 import io.github.ygrip.testara.core.function.MethodInvocationCollector;
@@ -49,11 +53,21 @@ import io.github.ygrip.testara.cucumber.scope.JUnit4ScopeContext;
 public class TestaraObjectFactory implements io.cucumber.core.backend.ObjectFactory {
 
   private static final Logger log = LoggerFactory.getLogger(TestaraObjectFactory.class);
+
+  // Guards the one-time framework initialization race across the repeated start() calls
+  // Cucumber-JVM makes (start()/stop() run once per scenario for JUnit4's ObjectFactory
+  // contract). The CAS "winner" runs initializeFramework(); "losers" must wait for the winner
+  // to actually finish instead of proceeding as if the framework were already ready.
   private static final AtomicBoolean FRAMEWORK_INITIALIZED = new AtomicBoolean(false);
+  private static volatile CompletableFuture<Void> FRAMEWORK_READY = new CompletableFuture<>();
+
+  // Effective execution mode + shared run-scope key, determined once when the framework
+  // initializes and consulted on every start()/stop() call.
+  private static volatile boolean parallelMode;
+  private static volatile String runScopeKey;
 
   private final Map<Class<?>, Object> scenarioInstances = new ConcurrentHashMap<>();
   private ObjectFactory delegateFactory;
-  private String currentScenarioId;
 
   /**
    * Reset the framework state.
@@ -61,7 +75,11 @@ public class TestaraObjectFactory implements io.cucumber.core.backend.ObjectFact
    */
   public static void resetFramework() {
     FRAMEWORK_INITIALIZED.set(false);
+    FRAMEWORK_READY = new CompletableFuture<>();
+    parallelMode = false;
+    runScopeKey = null;
     TestFramework.clear();
+    RootRegistry.clearAll();
   }
 
   @Override
@@ -70,12 +88,43 @@ public class TestaraObjectFactory implements io.cucumber.core.backend.ObjectFact
 
     // Initialize framework on first start (once per test run)
     if (FRAMEWORK_INITIALIZED.compareAndSet(false, true)) {
-      initializeFramework();
+      try {
+        initializeFramework();
+        parallelMode = JUnit4ScopeContext.isParallelExecutionEnabled();
+        if (parallelMode) {
+          log.debug("Parallel execution detected - TestaraLifecycleHooks owns per-scenario scope binding");
+        } else {
+          runScopeKey = JUnit4ScopeContext.startNewRun();
+          log.debug("Sequential execution detected - sharing one TEST scope for the whole run: {}", runScopeKey);
+        }
+        FRAMEWORK_READY.complete(null);
+      } catch (RuntimeException | Error e) {
+        FRAMEWORK_READY.completeExceptionally(e);
+        throw e;
+      }
+    } else {
+      try {
+        FRAMEWORK_READY.get(60, TimeUnit.SECONDS);
+      } catch (ExecutionException ee) {
+        throw new IllegalStateException("Testara framework initialization failed", ee.getCause());
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+        throw new IllegalStateException("Interrupted waiting for Testara framework initialization", e);
+      } catch (TimeoutException e) {
+        throw new IllegalStateException("Timed out waiting for Testara framework initialization", e);
+      }
     }
 
-    // Generate unique scenario ID for scope isolation
-    currentScenarioId = "junit4-scenario-" + System.nanoTime();
-    JUnit4ScopeContext.enterScenario(currentScenarioId);
+    // Scope binding:
+    // - Sequential: bind the shared run-scope key here. ObjectFactory.start() runs before
+    //   Cucumber-JVM invokes @Before hooks, so binding eagerly here (and idempotently again in
+    //   TestaraLifecycleHooks.beforeScenario()) is safe and doesn't depend on hook ordering.
+    // - Parallel: do NOT generate or bind a scope key here — start() has no access to the real
+    //   Scenario/scenario.getId() (ObjectFactory.start() takes no Scenario parameter), so
+    //   TestaraLifecycleHooks.beforeScenario() exclusively owns per-scenario scope binding.
+    if (!parallelMode) {
+      JUnit4ScopeContext.enterRunScope();
+    }
 
     // Load delegate factory via SPI
     // This will return SpringObjectFactory if Spring is available and initialized
@@ -83,10 +132,10 @@ public class TestaraObjectFactory implements io.cucumber.core.backend.ObjectFact
     delegateFactory.start();
 
     log.debug(
-      "TestaraObjectFactory started with delegate: {}, scope: {}",
+      "TestaraObjectFactory started with delegate: {}, parallelMode: {}",
       delegateFactory.getClass()
         .getSimpleName(),
-      currentScenarioId
+      parallelMode
     );
   }
 
@@ -115,29 +164,23 @@ public class TestaraObjectFactory implements io.cucumber.core.backend.ObjectFact
 
   @Override
   public void stop() {
-    log.debug("Stopping TestaraObjectFactory for scenario: {}", currentScenarioId);
+    log.debug("Stopping TestaraObjectFactory");
 
-    // Clear scenario-scoped instances
+    // Clear scenario-scoped instances local to this factory instance
     scenarioInstances.clear();
 
-    // Clear registry scope for this scenario
-    if (currentScenarioId != null) {
-      try {
-        RootRegistry.instance()
-          .clearScope(currentScenarioId);
-      } catch (Exception e) {
-        log.warn("Failed to clear scenario scope: {}", e.getMessage());
-      }
-    }
-
-    // Exit scenario scope
+    // Scope instance cleanup is owned elsewhere, not here:
+    // - Parallel mode: TestaraLifecycleHooks.afterScenario() already cleared the per-scenario
+    //   scope (Cucumber-JVM runs @After hooks before ObjectFactory.stop()).
+    // - Sequential mode: the shared run scope must survive across scenarios and is only ever
+    //   cleared once, at the very end of the run - never here.
+    // Only remove this thread's scope binding; the next scenario's start() rebinds as needed.
     JUnit4ScopeContext.exitScenario();
 
     if (delegateFactory != null) {
       delegateFactory.stop();
     }
 
-    currentScenarioId = null;
     log.debug("TestaraObjectFactory stopped");
   }
 
@@ -178,6 +221,17 @@ public class TestaraObjectFactory implements io.cucumber.core.backend.ObjectFact
         return TestFramework.context()
           .factory()
           .getInstance(type);
+      } catch (DependencyResolutionException e) {
+        // A genuine resolution failure (e.g. the type's owning package isn't covered by
+        // class.loader.default-scan-locations, or a required dependency was never registered)
+        // is a real configuration error - not something a different factory implementation
+        // (Spring delegate, RootRegistry, DefaultObjectFactory) would fix, and never something
+        // silent direct instantiation should paper over. Propagate immediately instead of
+        // cascading through fallbacks that would just mask it and hand back an uninjected,
+        // silently-broken instance (see class javadoc / the WARN below for the symptom this
+        // used to produce: "All factory methods failed ... using direct instantiation" with no
+        // indication of why).
+        throw e;
       } catch (Exception e) {
         log.debug("TestFramework factory failed for {}: {}", type.getName(), e.getMessage());
         // Continue to next option
@@ -201,6 +255,10 @@ public class TestaraObjectFactory implements io.cucumber.core.backend.ObjectFact
       if (registryFactory.supports(type)) {
         return registryFactory.getInstance(type);
       }
+    } catch (DependencyResolutionException e) {
+      // Same reasoning as the TestFramework factory branch above: a real configuration error,
+      // not something DefaultObjectFactory/direct instantiation should silently paper over.
+      throw e;
     } catch (Exception e) {
       log.debug("RootRegistry factory failed for {}: {}", type.getName(), e.getMessage());
     }
@@ -230,9 +288,7 @@ public class TestaraObjectFactory implements io.cucumber.core.backend.ObjectFact
 
     try {
       // Load configuration
-      String propertyLocations = System.getProperty("configuration.location", "classpath:*.properties");
-      System.setProperty("configuration.location", propertyLocations);
-
+      TestConfigurationLoader.resolveConfigurationLocation(null);
       TestConfiguration configuration = TestConfigurationLoader.load();
 
       // Create TestContext via SPI
@@ -270,8 +326,12 @@ public class TestaraObjectFactory implements io.cucumber.core.backend.ObjectFact
       log.debug("Testara Framework initialized for JUnit 4");
 
     } catch (Exception e) {
+      // Requirement: do not silently swallow framework initialization failures and continue
+      // using fallback object creation - fail clearly so start()'s caller (and any other
+      // scenario waiting on FRAMEWORK_READY) sees the failure instead of a half-initialized,
+      // silently-reset framework.
       log.error("Failed to initialize Testara Framework: {}", e.getMessage(), e);
-      FRAMEWORK_INITIALIZED.set(false);
+      throw new IllegalStateException("Failed to initialize Testara Framework for JUnit 4", e);
     }
   }
 
@@ -281,7 +341,7 @@ public class TestaraObjectFactory implements io.cucumber.core.backend.ObjectFact
 
     for (Class<?> configType : configurations) {
       if (!RootRegistry.instance()
-        .hasInstance(configType)) {
+        .hasProvider(configType)) {
         Object instance = config.get(configType);
         RootRegistry.instance()
           .register(instance, RegistryScope.GLOBAL);
@@ -355,7 +415,7 @@ public class TestaraObjectFactory implements io.cucumber.core.backend.ObjectFact
       }
 
       if (!RootRegistry.instance()
-        .hasInstance(componentType)) {
+        .hasProvider(componentType)) {
         componentsByScope.get(scope)
           .add(componentType);
       }
@@ -365,7 +425,7 @@ public class TestaraObjectFactory implements io.cucumber.core.backend.ObjectFact
     componentsByScope.get(RegistryScope.GLOBAL)
       .forEach(componentType -> {
         if (!RootRegistry.instance()
-          .hasInstance(componentType, RegistryScope.GLOBAL.name())) {
+          .hasProvider(componentType)) {
           RootRegistry.instance()
             .register(componentType, RegistryScope.GLOBAL);
           log.trace("Registered GLOBAL component: {}", componentType.getSimpleName());
@@ -376,7 +436,7 @@ public class TestaraObjectFactory implements io.cucumber.core.backend.ObjectFact
     componentsByScope.get(RegistryScope.TEST)
       .forEach(componentType -> {
         if (!RootRegistry.instance()
-          .hasInstance(componentType)) {
+          .hasProvider(componentType)) {
           RootRegistry.instance()
             .register(componentType, RegistryScope.TEST);
           log.trace("Registered TEST component: {}", componentType.getSimpleName());

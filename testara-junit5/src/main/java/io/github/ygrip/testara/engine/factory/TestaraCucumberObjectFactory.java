@@ -77,27 +77,32 @@ public class TestaraCucumberObjectFactory implements io.cucumber.core.backend.Ob
 
   /**
    * Create an instance using the framework's ObjectFactory.
-   * Falls back to direct instantiation if framework is not initialized.
+   * Falls back to direct instantiation only when the framework is not yet initialized.
    */
   private <T> T createInstance(Class<T> type) {
+    if (isFrameworkInitialized()) {
+      // The framework is up - a resolution failure here (e.g. a missing scan-location
+      // surfacing as DependencyResolutionException) is a real configuration error, not a
+      // bootstrap-timing issue. Let it propagate: silently falling back to plain reflection
+      // would bypass every InstancePostProcessor (including @Inject field injection) and hand
+      // the caller a step instance whose @Inject fields are silently null, deferring the real
+      // error into a confusing NPE the first time the field is used.
+      return TestFramework.context().factory().getInstance(type);
+    }
+
     try {
-      // Try to get from TestFramework if initialized
-      if (isFrameworkInitialized()) {
-        return TestFramework.context().factory().getInstance(type);
-      }
-      
       // Try delegate factory
       if (delegateFactory != null) {
         return delegateFactory.getInstance(type);
       }
-      
+
       // Fallback to RootRegistry factory
       return RootRegistry.instance().factory().getInstance(type);
-      
+
     } catch (Exception e) {
-      log.debug("Framework creation failed for {}, using direct instantiation: {}", 
+      log.debug("Framework creation failed for {} before the framework was initialized, using direct instantiation: {}",
           type.getName(), e.getMessage());
-      
+
       // Last resort: direct instantiation
       try {
         return type.getDeclaredConstructor().newInstance();

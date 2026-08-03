@@ -6,6 +6,7 @@ import io.github.ygrip.testara.engine.extension.TestaraExtensionContext;
 import io.github.ygrip.testara.engine.context.TestaraCucumberEngineExecutionContext;
 import io.github.ygrip.testara.engine.option.TestaraCucumberEngineOptions;
 import io.cucumber.core.gherkin.Pickle;
+import io.cucumber.core.gherkin.Step;
 import io.cucumber.core.resource.ClasspathSupport;
 import lombok.SneakyThrows;
 import lombok.extern.log4j.Log4j2;
@@ -30,6 +31,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -97,6 +99,18 @@ public abstract class TestaraNodeDescriptor extends AbstractTestDescriptor imple
     private final Pickle pickle;
     private final Set<TestTag> tags;
     private final Set<ExclusiveResource> exclusiveResources = new LinkedHashSet<>(0);
+    // Ordered step-level descriptors used for live per-step notifications. They are parented to
+    // this descriptor but deliberately NOT added as static children: JUnit Platform's NodeTestTask
+    // re-executes every static child after the parent's execute() returns, which would run each
+    // StepDescriptor's inherited no-op Node and overwrite the real per-step status/duration with a
+    // fabricated successful result. Instead these are registered dynamically and reported in real
+    // time from TestaraTestCaseResultObserver as Cucumber's step events fire.
+    private final List<TestaraNodeDescriptor> stepDescriptors = new ArrayList<>();
+    // Guards listener.dynamicTestRegistered(...) from firing more than once for the same step
+    // descriptors: a rerun constructs a brand new TestaraTestCaseResultObserver (and thus would
+    // otherwise re-run registerStepDescriptors()) against this SAME PickleDescriptor instance for
+    // every retry attempt.
+    private final AtomicBoolean stepsAnnounced = new AtomicBoolean(false);
 
     public PickleDescriptor(TestaraCucumberEngineOptions options,
         TestaraFeatureOrigin origin,
@@ -120,6 +134,42 @@ public abstract class TestaraNodeDescriptor extends AbstractTestDescriptor imple
       });
       this.exclusiveResources.addAll(getExclusiveResourcesByTags(getOptions().getConfigurationParameters(),
           pickle).values());
+      if (options.stepNotifications()) {
+        buildStepDescriptors(options, origin, pickle);
+      }
+    }
+
+    private void buildStepDescriptors(TestaraCucumberEngineOptions options, TestaraFeatureOrigin origin, Pickle pickle) {
+      for (Step step : pickle.getSteps()) {
+        StepDescriptor stepDescriptor = new StepDescriptor(options,
+            origin,
+            origin.stepSegment(getUniqueId(), step),
+            step.getText(),
+            origin.stepSource(step));
+        stepDescriptor.setParent(this);
+        this.stepDescriptors.add(stepDescriptor);
+      }
+    }
+
+    /**
+     * The ordered, per-step descriptors for this scenario when step notifications are enabled.
+     * These are parented to this descriptor but are not static children; callers report them via
+     * {@link org.junit.platform.engine.EngineExecutionListener#dynamicTestRegistered} plus the
+     * live execution events.
+     */
+    public List<TestaraNodeDescriptor> getStepDescriptors() {
+      return this.stepDescriptors;
+    }
+
+    /**
+     * Returns {@code true} on the first call and {@code false} on every subsequent call, so that
+     * {@link org.junit.platform.engine.EngineExecutionListener#dynamicTestRegistered} is only ever
+     * invoked once per step descriptor across the scenario's lifetime, even though a rerun
+     * constructs a brand new {@code TestaraTestCaseResultObserver} (and thus a new registration
+     * pass) against this same descriptor for every retry attempt.
+     */
+    public boolean claimStepAnnouncement() {
+      return this.stepsAnnounced.compareAndSet(false, true);
     }
 
     @Override
@@ -169,8 +219,22 @@ public abstract class TestaraNodeDescriptor extends AbstractTestDescriptor imple
               Collections::unmodifiableSet));
     }
 
+    /**
+     * {@code CONTAINER} (not {@code CONTAINER_AND_TEST}) when step notifications are enabled.
+     * IntelliJ's JUnit5 test-tree renders a {@code CONTAINER_AND_TEST} node as two separate rows by
+     * design (one as a leaf test, one as a container with children) -- that IDE rendering behavior,
+     * not a reporting/timing defect, was the actual cause of a scenario appearing twice in the tree.
+     * {@code CONTAINER} still self-reports its own execution result correctly: JUnit Platform's
+     * {@code NodeTestTask} does not branch on {@code Type} at all when executing or reporting a node
+     * (verified against junit-platform-engine 1.14.2 sources) -- it always calls {@code node.execute}
+     * and unconditionally reports {@code executionStarted}/{@code executionFinished} for this
+     * descriptor based on whatever the collected throwable says, regardless of type. {@link
+     * #mayRegisterTests()} (which already returns {@code stepNotifications()}) keeps {@link
+     * TestDescriptor#containsTests} true for this node even though it now reports {@code isTest() ==
+     * false} and has no static step children, so it is not pruned.
+     */
     public Type getType() {
-      return getOptions().stepNotifications() ? Type.CONTAINER_AND_TEST : Type.TEST;
+      return getOptions().stepNotifications() ? Type.CONTAINER : Type.TEST;
     }
 
     public SkipResult shouldBeSkipped(TestaraCucumberEngineExecutionContext context) {

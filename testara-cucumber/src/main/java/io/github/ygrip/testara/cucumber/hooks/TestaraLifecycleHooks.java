@@ -52,8 +52,15 @@ public class TestaraLifecycleHooks {
 
     log.debug("Before scenario: {} ({})", scenarioName, shortId);
 
-    // Enter scenario scope
-    JUnit4ScopeContext.enterScenario(scenarioId);
+    // Enter scenario scope. Sequential runs share one TEST scope for the whole run;
+    // parallel runs isolate each concurrently running scenario with its own scope key.
+    if (JUnit4ScopeContext.isParallelExecutionEnabled()) {
+      JUnit4ScopeContext.enterScenario(scenarioId);
+      log.debug("Entered per-scenario scope (parallel): {}", scenarioId);
+    } else {
+      JUnit4ScopeContext.enterRunScope();
+      log.debug("Bound to shared run scope (sequential): {}", JUnit4ScopeContext.runScopeKey());
+    }
 
     log.info("""
       
@@ -85,24 +92,30 @@ public class TestaraLifecycleHooks {
       ═══════════════════════════════════════════════════════════════
       """, shortId, featureName, scenario.getName(), scenario.getStatus());
 
-    try {
-      // Clear scenario scope from registry
-      String currentScope = JUnit4ScopeContext.getCurrentScenario();
-      if (currentScope != null) {
-        RootRegistry.instance().clearScope(currentScope);
-        log.trace("Cleared scenario scope: {}", currentScope);
+    if (JUnit4ScopeContext.isParallelExecutionEnabled()) {
+      try {
+        // Clear this scenario's isolated scope from registry
+        String currentScope = JUnit4ScopeContext.getCurrentScenario();
+        if (currentScope != null) {
+          RootRegistry.instance().clearScope(currentScope);
+          log.trace("Cleared scenario scope: {}", currentScope);
+        }
+      } catch (Exception e) {
+        log.warn("Failed to clear scenario scope: {}", e.getMessage());
+      } finally {
+        // Exit scenario scope so the ThreadLocal doesn't leak into whatever scenario this
+        // pooled worker thread runs next.
+        JUnit4ScopeContext.exitScenario();
       }
-    } catch (Exception e) {
-      log.warn("Failed to clear scenario scope: {}", e.getMessage());
-    } finally {
-      // Exit scenario scope
-      JUnit4ScopeContext.exitScenario();
-
-      // Clear MDC logging context
-      MDC.remove(MDC_SCENARIO);
-      MDC.remove(MDC_SCENARIO_ID);
-      MDC.remove(MDC_FEATURE);
+    } else {
+      // Sequential: the shared run scope must survive across scenarios - never clear it here.
+      log.trace("Sequential scenario finished; retaining shared run scope: {}", JUnit4ScopeContext.runScopeKey());
     }
+
+    // Clear MDC logging context
+    MDC.remove(MDC_SCENARIO);
+    MDC.remove(MDC_SCENARIO_ID);
+    MDC.remove(MDC_FEATURE);
   }
 
   /**

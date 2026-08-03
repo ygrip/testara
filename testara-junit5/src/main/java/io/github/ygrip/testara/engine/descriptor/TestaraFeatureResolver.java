@@ -117,16 +117,6 @@ public final class TestaraFeatureResolver {
               namingStrategy == CUSTOM ? pickle.getName() : namingStrategy.name(node),
               source.nodeSource(node),
               pickle);
-          if (options.stepNotifications()) {
-            pickle.getSteps().forEach(step -> {
-              TestDescriptor stepDescriptor = new TestaraNodeDescriptor.StepDescriptor(options,
-                  source,
-                  source.stepSegment(descriptor.getUniqueId(), step),
-                  step.getText(),
-                  source.stepSource(step));
-              descriptor.addChild(stepDescriptor);
-            });
-          }
           parent.addChild(descriptor);
           return descriptor;
         },
@@ -156,14 +146,6 @@ public final class TestaraFeatureResolver {
                     namingStrategy == CUSTOM ? pickle.getName() : namingStrategy.name(example),
                     source.nodeSource(example),
                     pickle);
-                pickle.getSteps().forEach(step -> {
-                  TestDescriptor stepDescriptor = new TestaraNodeDescriptor.StepDescriptor(options,
-                      source,
-                      source.stepSegment(scenarioDescriptor.getUniqueId(), step),
-                      step.getText(),
-                      source.stepSource(step));
-                  scenarioDescriptor.addChild(stepDescriptor);
-                });
                 parent.addChild(scenarioDescriptor);
               });
             });
