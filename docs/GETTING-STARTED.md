@@ -45,7 +45,7 @@ Import the BOM (aligns every module version), then declare only the slices you n
 In `src/test/resources/junit-platform.properties`:
 
 ```properties
-cucumber.object-factory=io.github.ygrip.testara.factory.TestaraObjectFactory
+cucumber.object-factory=io.github.ygrip.testara.cucumber.factory.TestaraObjectFactory
 cucumber.glue=io.github.ygrip.testara
 ```
 
