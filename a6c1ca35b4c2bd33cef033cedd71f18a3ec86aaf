@@ -1,0 +1,62 @@
+testara-core/src/test/resources/junit-platform.properties
+  d168f8822473a37c 1-8,11
+testara-core/src/test/java/io/github/ygrip/testara/core/function/MethodInterceptionTests.java
+  56024c3423c520b5 409-433
+testara-core/src/test/java/io/github/ygrip/testara/core/context/ContextTests.java
+  d168f8822473a37c 30-37,46,50,53,60,68,73-75,82,84
+testara-core/src/test/java/io/github/ygrip/testara/core/scan/ClassScannerCacheKeyTests.java
+  d168f8822473a37c 1-133
+testara-core/src/main/java/io/github/ygrip/testara/core/config/TestConfigurationLoader.java
+  d168f8822473a37c 3-5,8,11,22-37
+testara-core/src/main/java/io/github/ygrip/testara/core/factory/InjectFieldPostProcessor.java
+  56024c3423c520b5 5,98-102,104-106,125-126,129-135,138,140-151
+testara-core/src/test/java/io/github/ygrip/testara/core/factory/InjectFieldPostProcessorTest.java
+  56024c3423c520b5 8,21,96-115,172-185
+testara-core/src/test/java/io/github/ygrip/testara/core/TestContextExtension.java
+  d168f8822473a37c 31,36-49,53-68,74-83
+testara-core/src/test/java/io/github/ygrip/testara/core/config/TestConfigurationLoaderTests.java
+  d168f8822473a37c 1-75
+testara-core/src/test/java/io/github/ygrip/testara/core/context/TestFrameworkVisibilityTests.java
+  d168f8822473a37c 1-70
+testara-core/src/main/java/io/github/ygrip/testara/core/scan/ClassScanner.java
+  d168f8822473a37c 17,37-57,66,101,116-134,144-149,152,155-156,176,241-243
+testara-core/src/main/java/io/github/ygrip/testara/core/function/RetryableMethodPostProcessor.java
+  56024c3423c520b5 47-73,78,82
+testara-core/src/main/java/io/github/ygrip/testara/core/context/TestFramework.java
+  d168f8822473a37c 5,7-18,20-21,27-31,35,51-54
+testara-core/src/main/java/io/github/ygrip/testara/core/factory/PostProcessorRegistry.java
+  56024c3423c520b5 112-129
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.23",
+  "base_commit_sha": "a6c1ca35b4c2bd33cef033cedd71f18a3ec86aaf",
+  "prompts": {
+    "56024c3423c520b5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3eedd117-94cf-4c70-b00b-39d01e854dd6",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "ygrip <yunaz.gilang@gmail.com>",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 208,
+      "overriden_lines": 0
+    },
+    "d168f8822473a37c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "29bd1a56-1f45-48b0-9acf-f5562dd6aac6",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "ygrip <yunaz.gilang@gmail.com>",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 3387,
+      "overriden_lines": 0
+    }
+  }
+}
