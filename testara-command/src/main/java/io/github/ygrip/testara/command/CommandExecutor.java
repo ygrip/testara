@@ -31,6 +31,7 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -56,7 +57,8 @@ public final class CommandExecutor {
   // Enhanced data structures for better performance
   private static final CopyOnWriteArrayList<PopulatedTag> COMMANDS_LIST = new CopyOnWriteArrayList<>();
   private static final Map<String, Class<? extends CommandLogic<?>>> REGISTERED_COMMANDS = new ConcurrentHashMap<>();
-  private static final ConcurrentMap<String, CommandModel> PARSE_CACHE = new ConcurrentHashMap<>();
+  private static final Object PARSE_CACHE_LOCK = new Object();
+  private static volatile Map<String, CommandModel> parseCache;
   private static final ConcurrentMap<String, Object> EXECUTION_CACHE = new ConcurrentHashMap<>();
   // Cache configuration
   private static final CommandExecutorProperties properties;
@@ -268,9 +270,9 @@ public final class CommandExecutor {
     final var properties = properties();
 
     // Check parse cache first
-    if (properties.getCacheEnabled() && PARSE_CACHE.size() < properties.getMaxParseCacheSize()) {
+    if (properties.getCacheEnabled()) {
       String cacheKey = (parent != null ? parent + ":" : "") + stringInput;
-      CommandModel cached = PARSE_CACHE.get(cacheKey);
+      CommandModel cached = parseCache().get(cacheKey);
       if (cached != null) {
         return cached;
       }
@@ -278,13 +280,44 @@ public final class CommandExecutor {
 
     CommandModel result = parseCommandInternal(stringInput, parent);
 
-    // Cache the result
-    if (properties.getCacheEnabled() && PARSE_CACHE.size() < properties.getMaxParseCacheSize()) {
+    // Cache the result; the backing map evicts the least-recently-used entry once it is full,
+    // so the cache stays bounded instead of getting stuck once it reaches maxParseCacheSize.
+    if (properties.getCacheEnabled()) {
       String cacheKey = (parent != null ? parent + ":" : "") + stringInput;
-      PARSE_CACHE.put(cacheKey, result);
+      parseCache().put(cacheKey, result);
     }
 
     return result;
+  }
+
+  /**
+   * Lazily builds the bounded, LRU-evicting parse cache, sized from {@link CommandExecutorProperties#getMaxParseCacheSize()}.
+   */
+  private static Map<String, CommandModel> parseCache() {
+    Map<String, CommandModel> cache = parseCache;
+    if (cache == null) {
+      synchronized (PARSE_CACHE_LOCK) {
+        cache = parseCache;
+        if (cache == null) {
+          final int maxSize = Math.max(1, properties().getMaxParseCacheSize());
+          cache = Collections.synchronizedMap(new LinkedHashMap<>(16, 0.75f, true) {
+            @Override
+            protected boolean removeEldestEntry(Map.Entry<String, CommandModel> eldest) {
+              return size() > maxSize;
+            }
+          });
+          parseCache = cache;
+        }
+      }
+    }
+    return cache;
+  }
+
+  /**
+   * Number of entries currently in the parse cache. Visible for tests to assert eviction bounds.
+   */
+  static int parseCacheSize() {
+    return parseCache().size();
   }
 
   /**
@@ -584,7 +617,19 @@ public final class CommandExecutor {
    * Clear all caches
    */
   public static void clearAllCaches() {
-    PARSE_CACHE.clear();
+    Map<String, CommandModel> cache = parseCache;
+    if (cache != null) {
+      cache.clear();
+    }
+    EXECUTION_CACHE.clear();
+  }
+
+  /**
+   * Clears only the execution-result cache. Intended to be called once per test scenario/run so
+   * that cached results for context-sensitive commands (env/config/test-data specific) don't leak
+   * into the next scenario; the parse cache is left intact since parsing is purely syntactic.
+   */
+  public static void clearExecutionCache() {
     EXECUTION_CACHE.clear();
   }
 }

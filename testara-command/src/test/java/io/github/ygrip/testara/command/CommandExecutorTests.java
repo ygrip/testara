@@ -38,6 +38,7 @@ import static org.hamcrest.Matchers.instanceOf;
 import static org.hamcrest.Matchers.lessThanOrEqualTo;
 import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.notNullValue;
+import static org.hamcrest.Matchers.sameInstance;
 import static org.hamcrest.core.Is.is;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -276,6 +277,18 @@ public class CommandExecutorTests extends BaseTests {
         CommandModel.builder().command("substring").parameters(Arrays.asList("automation", randomCommand)).build();
     boolean nonCacheAble = CommandExecutor.isCacheableCommand(nonCacheAblesubString);
     assertThat(nonCacheAble, equalTo(false));
+  }
+
+  @Test
+  void parseCacheStaysBoundedAndKeepsServingHitsPastCapacity() {
+    for (int i = 0; i < 1200; i++) {
+      CommandExecutor.parseCommand("substring(cache-fill-" + i + ",1)");
+    }
+    assertThat(CommandExecutor.parseCacheSize(), lessThanOrEqualTo(1000));
+
+    CommandModel first = CommandExecutor.parseCommand("substring(cache-fill-final,1)");
+    CommandModel second = CommandExecutor.parseCommand("substring(cache-fill-final,1)");
+    assertThat(second, sameInstance(first));
   }
 
   @Test
