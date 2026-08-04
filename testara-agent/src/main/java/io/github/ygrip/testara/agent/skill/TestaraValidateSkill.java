@@ -205,9 +205,10 @@ public class TestaraValidateSkill implements AgentSkill<Void, String> {
       return out;
     }
 
-    // Check UI: selenium or playwright scan locations present
+    // Check UI: selenium, playwright, appium, or vibium scan locations present
     boolean hasUiEngine = props.keySet().stream()
-        .anyMatch(k -> k.startsWith("selenium.driver") || k.startsWith("playwright.browser"));
+        .anyMatch(k -> k.startsWith("selenium.driver") || k.startsWith("playwright.browser")
+            || k.startsWith("appium.driver") || k.startsWith("vibium.browser"));
     boolean hasDefaultEngine = props.containsKey("automation.engine.default-engine");
     if (hasUiEngine || hasDefaultEngine) {
       boolean hasPageUrl = props.keySet().stream().anyMatch(k -> k.matches("web\\.page\\..+\\.url"));

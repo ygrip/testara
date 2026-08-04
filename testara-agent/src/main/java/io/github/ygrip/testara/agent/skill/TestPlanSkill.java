@@ -767,7 +767,8 @@ public class TestPlanSkill implements AgentSkill<TestPlanSkill.Input, String> {
         || lower.contains("producer") || lower.contains("streaming")) return "kafka";
     if (lower.contains("ui") || lower.contains("page") || lower.contains("click")
         || lower.contains("button") || lower.contains("login") || lower.contains("browser")
-        || lower.contains("selenium") || lower.contains("playwright")) return "ui";
+        || lower.contains("selenium") || lower.contains("playwright")
+        || lower.contains("appium") || lower.contains("vibium")) return "ui";
     return "api"; // default
   }
 
