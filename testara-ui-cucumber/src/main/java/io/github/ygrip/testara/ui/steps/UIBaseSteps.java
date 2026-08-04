@@ -364,41 +364,38 @@ public class UIBaseSteps {
 
   @When("{actor} wait until {string} is {elementState}")
   public void waitUntilElementIs(String identifier, String element, String condition) throws Throwable {
-    try {
-      switch (condition) {
-        case "enabled":
-          ActorManager.currentActor()
-            .attemptsTo(WaitUntil.enabled(element));
-          break;
-        case "visible":
-          ActorManager.currentActor()
-            .attemptsTo(WaitUntil.visible(element));
-          break;
-        case "disabled":
-          ActorManager.currentActor()
-            .attemptsTo(WaitUntil.disabled(element));
-          break;
-        case "not visible", "not present":
-          ActorManager.currentActor()
-            .attemptsTo(WaitUntil.hidden(element));
-          break;
-        case "clickable":
-          ActorManager.currentActor()
-            .attemptsTo(WaitUntil.clickable(element));
-          break;
-        case "present":
-          ActorManager.currentActor()
-            .attemptsTo(WaitUntil.present(element));
-          break;
-        case "selected":
-          ActorManager.currentActor()
-            .attemptsTo(WaitUntil.selected(element));
-          break;
-        default:
-          break;
-      }
-    } catch (Exception exception) {
-      log.warn("Element located by {} is not {}", element, condition, exception.getCause());
+    switch (condition.trim().toLowerCase()) {
+      case "enabled":
+        ActorManager.currentActor()
+          .attemptsTo(WaitUntil.enabled(element));
+        break;
+      case "visible":
+        ActorManager.currentActor()
+          .attemptsTo(WaitUntil.visible(element));
+        break;
+      case "disabled":
+        ActorManager.currentActor()
+          .attemptsTo(WaitUntil.disabled(element));
+        break;
+      case "not visible", "not present":
+        ActorManager.currentActor()
+          .attemptsTo(WaitUntil.hidden(element));
+        break;
+      case "clickable":
+        ActorManager.currentActor()
+          .attemptsTo(WaitUntil.clickable(element));
+        break;
+      case "present":
+        ActorManager.currentActor()
+          .attemptsTo(WaitUntil.present(element));
+        break;
+      case "selected":
+        ActorManager.currentActor()
+          .attemptsTo(WaitUntil.selected(element));
+        break;
+      default:
+        throw new IllegalArgumentException("Unsupported wait-until state: '" + condition
+          + "'. Expected one of: enabled, visible, disabled, not visible, clickable, present, not present, selected");
     }
   }
 
