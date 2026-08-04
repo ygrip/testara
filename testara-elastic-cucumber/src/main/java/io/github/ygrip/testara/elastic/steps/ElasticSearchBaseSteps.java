@@ -275,11 +275,13 @@ public class ElasticSearchBaseSteps {
     List<SortBuilder<?>> sorts = new ArrayList<>();
     if (CommonHelper.isBlank(mappedSort)) {
       String sortBy = MapperHelper.toString(data.getOrDefault("sortBy", null));
-      String[] keywords = sortBy.split(":");
-      if (keywords.length == 1) {
-        sorts.add(SortBuilders.fieldSort(keywords[0].trim()));
-      } else if (keywords.length > 1) {
-        sorts.add(SortBuilders.fieldSort(keywords[0].trim()).order(SortOrder.fromString(keywords[1].trim())));
+      if (!CommonHelper.isBlank(sortBy)) {
+        String[] keywords = sortBy.split(":");
+        if (keywords.length == 1) {
+          sorts.add(SortBuilders.fieldSort(keywords[0].trim()));
+        } else if (keywords.length > 1) {
+          sorts.add(SortBuilders.fieldSort(keywords[0].trim()).order(SortOrder.fromString(keywords[1].trim())));
+        }
       }
     } else {
       sorts = elasticSearchHelper.parseSortBuilder(mappedSort);

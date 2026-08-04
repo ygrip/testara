@@ -4,7 +4,7 @@ import io.cucumber.plugin.ConcurrentEventListener;
 import io.cucumber.plugin.event.EventPublisher;
 import io.cucumber.plugin.event.PickleStepTestStep;
 import io.cucumber.plugin.event.TestCaseFinished;
-import io.cucumber.plugin.event.TestStepFinished;
+import io.cucumber.plugin.event.TestStepStarted;
 import io.github.ygrip.testara.ui.context.StepContext;
 
 
@@ -12,11 +12,11 @@ public final class StepListener implements ConcurrentEventListener {
 
   @Override
   public void setEventPublisher(EventPublisher publisher) {
-    publisher.registerHandlerFor(TestStepFinished.class, this::handleStep);
+    publisher.registerHandlerFor(TestStepStarted.class, this::handleStep);
     publisher.registerHandlerFor(TestCaseFinished.class, this::handleScenario);
   }
 
-  private void handleStep(TestStepFinished event) {
+  private void handleStep(TestStepStarted event) {
     // Ignore hooks (Before/After)
     if (!(event.getTestStep() instanceof PickleStepTestStep step)) {
       return;
