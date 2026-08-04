@@ -2,14 +2,24 @@ package io.github.ygrip.testara.agent.parser;
 
 import io.github.ygrip.testara.agent.skill.run.TestRunReport;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
+import javax.xml.parsers.DocumentBuilder;
+import javax.xml.parsers.DocumentBuilderFactory;
+import javax.xml.parsers.ParserConfigurationException;
+
+import org.w3c.dom.Document;
+import org.w3c.dom.Element;
+import org.w3c.dom.NodeList;
+import org.xml.sax.SAXException;
+
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.*;
-import java.util.logging.Logger;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Parses Cucumber execution reports (cucumber.json and JUnit XML) into
@@ -17,66 +27,44 @@ import java.util.regex.Pattern;
  */
 public final class CucumberReportParser {
 
-  private static final Logger LOG = Logger.getLogger(CucumberReportParser.class.getName());
-
-  // cucumber.json patterns
-  private static final Pattern JSON_STATUS   = Pattern.compile("\"status\"\\s*:\\s*\"(passed|failed|pending|skipped)\"");
-  private static final Pattern JSON_NAME     = Pattern.compile("\"name\"\\s*:\\s*\"([^\"]+)\"");
-  private static final Pattern JSON_URI      = Pattern.compile("\"uri\"\\s*:\\s*\"([^\"]+)\"");
-  private static final Pattern JSON_LINE     = Pattern.compile("\"line\"\\s*:\\s*(\\d+)");
-  private static final Pattern JSON_KEYWORD  = Pattern.compile("\"keyword\"\\s*:\\s*\"([^\"]+)\"");
-  private static final Pattern JSON_MESSAGE  = Pattern.compile("\"message\"\\s*:\\s*\"([^\"]+)\"");
-  private static final Pattern JSON_ELEMENT  = Pattern.compile("\"elements\"\\s*:\\s*\\[");
-
-  // JUnit XML patterns
-  private static final Pattern JUNIT_TESTCASE = Pattern.compile(
-      "<testcase\\s+(?:[^>]*\\s)?name=\"([^\"]+)\"(?:[^>]*\\s)?classname=\"([^\"]+)\"[^>]*>");
-  private static final Pattern JUNIT_FAILURE = Pattern.compile(
-      "<failure[^>]*message=\"([^\"]+)\"[^>]*>");
-  private static final Pattern JUNIT_TESTSUITE = Pattern.compile(
-      "<testsuite[^>]*tests=\"(\\d+)\"[^>]*failures=\"(\\d+)\"[^>]*skipped=\"(\\d+)\"[^>]*time=\"([^\"]+)\"[^>]*>");
+  private static final ObjectMapper MAPPER = new ObjectMapper();
 
   private CucumberReportParser() { /* utility */ }
 
   /**
    * Parse a cucumber.json file and return a structured TestRunReport.
+   * A scenario's own outcome is derived from its steps' statuses (standard cucumber.json only
+   * carries a status per step, never per scenario): any failed step fails the scenario, otherwise
+   * any skipped/pending/undefined step marks it skipped, otherwise it passed.
    */
   public static TestRunReport parseCucumberJson(Path reportFile, String tagExpression,
       long durationMs) throws IOException {
-    String json = Files.readString(reportFile, StandardCharsets.UTF_8);
+    JsonNode root = MAPPER.readTree(reportFile.toFile());
 
     int passed = 0, failed = 0, skipped = 0;
     List<TestRunReport.FailedScenario> failedScenarios = new ArrayList<>();
 
-    // Count statuses
-    Matcher statusMatcher = JSON_STATUS.matcher(json);
-    while (statusMatcher.find()) {
-      switch (statusMatcher.group(1)) {
-        case "passed"  -> passed++;
-        case "failed"  -> failed++;
-        case "skipped", "pending" -> skipped++;
+    for (JsonNode feature : root) {
+      String featureUri = feature.path("uri").asText("unknown");
+      for (JsonNode element : feature.path("elements")) {
+        String keyword = element.path("keyword").asText("");
+        if (!"Scenario".equals(keyword) && !"Scenario Outline".equals(keyword)) {
+          continue; // skip Background and other non-scenario elements
+        }
+
+        ScenarioOutcome outcome = scenarioOutcome(element);
+        switch (outcome.status) {
+          case FAILED -> failed++;
+          case SKIPPED -> skipped++;
+          case PASSED -> passed++;
+        }
+
+        if (outcome.status == ScenarioStatus.FAILED) {
+          String name = element.path("name").asText("unknown");
+          failedScenarios.add(new TestRunReport.FailedScenario(
+              featureUri, name, outcome.errorMessage != null ? outcome.errorMessage : "Unknown error"));
+        }
       }
-    }
-
-    // Extract failed scenario details by parsing scenario blocks
-    // Find scenarios with failed status and extract their name + feature URI
-    Pattern scenarioBlock = Pattern.compile(
-        "\"keyword\"\\s*:\\s*\"(?:Scenario|Scenario Outline)\"[^}]*\"name\"\\s*:\\s*\"([^\"]+)\"[^}]*\"status\"\\s*:\\s*\"failed\"",
-        Pattern.DOTALL);
-
-    Matcher scenarioMatcher = scenarioBlock.matcher(json);
-    while (scenarioMatcher.find()) {
-      String name = scenarioMatcher.group(1);
-      // Find the feature URI for context
-      String featureUri = findFeatureUri(json, scenarioMatcher.start());
-
-      // Find the error message
-      String error = findErrorMessage(json, scenarioMatcher.start());
-
-      failedScenarios.add(new TestRunReport.FailedScenario(
-          featureUri != null ? featureUri : "unknown",
-          name,
-          error != null ? error : "Unknown error"));
     }
 
     String status = failed > 0 ? "FAILED" : "PASSED";
@@ -87,36 +75,73 @@ public final class CucumberReportParser {
         List.copyOf(failedScenarios));
   }
 
+  private enum ScenarioStatus { PASSED, FAILED, SKIPPED }
+
+  private record ScenarioOutcome(ScenarioStatus status, String errorMessage) { }
+
+  private static ScenarioOutcome scenarioOutcome(JsonNode scenarioElement) {
+    boolean anyFailed = false;
+    boolean anySkipped = false;
+    String errorMessage = null;
+    for (JsonNode step : scenarioElement.path("steps")) {
+      JsonNode result = step.path("result");
+      String stepStatus = result.path("status").asText("");
+      switch (stepStatus) {
+        case "failed" -> {
+          anyFailed = true;
+          if (errorMessage == null) {
+            errorMessage = result.path("error_message").asText(null);
+          }
+        }
+        case "pending", "skipped", "undefined" -> anySkipped = true;
+        default -> { /* passed or unrecognized: no-op */ }
+      }
+    }
+    if (anyFailed) {
+      return new ScenarioOutcome(ScenarioStatus.FAILED, errorMessage);
+    }
+    return new ScenarioOutcome(anySkipped ? ScenarioStatus.SKIPPED : ScenarioStatus.PASSED, null);
+  }
+
   /**
-   * Parse a JUnit XML report.
+   * Parse a JUnit XML report using a real DOM parser so failures are scoped to the
+   * {@code <testcase>} they actually belong to, instead of a proximity heuristic over the raw XML.
    */
   public static TestRunReport parseJunitXml(Path reportFile, String tagExpression,
       long durationMs) throws IOException {
-    String xml = Files.readString(reportFile, StandardCharsets.UTF_8);
+    Document doc;
+    try {
+      DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
+      factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
+      DocumentBuilder builder = factory.newDocumentBuilder();
+      doc = builder.parse(reportFile.toFile());
+    } catch (ParserConfigurationException | SAXException e) {
+      throw new IOException("Failed to parse JUnit XML report: " + reportFile, e);
+    }
 
     int total = 0, failed = 0, skipped = 0;
-
-    Matcher suiteMatch = JUNIT_TESTSUITE.matcher(xml);
-    while (suiteMatch.find()) {
-      total   += Integer.parseInt(suiteMatch.group(1));
-      failed  += Integer.parseInt(suiteMatch.group(2));
-      skipped += Integer.parseInt(suiteMatch.group(3));
+    NodeList testsuites = doc.getElementsByTagName("testsuite");
+    for (int i = 0; i < testsuites.getLength(); i++) {
+      Element suite = (Element) testsuites.item(i);
+      total += intAttr(suite, "tests");
+      failed += intAttr(suite, "failures");
+      skipped += intAttr(suite, "skipped");
     }
 
     int passed = total - failed - skipped;
     List<TestRunReport.FailedScenario> failedScenarios = new ArrayList<>();
 
-    // Extract failed test case names
-    Matcher tcMatch = JUNIT_TESTCASE.matcher(xml);
-    while (tcMatch.find()) {
-      String name = tcMatch.group(1);
-      String className = tcMatch.group(2);
-      // Check if this test case has a failure element nearby
-      Matcher failMatch = JUNIT_FAILURE.matcher(xml.substring(tcMatch.start()));
-      if (failMatch.find() && failMatch.start() < 2000) { // within reasonable proximity
-        failedScenarios.add(new TestRunReport.FailedScenario(
-            className, name, failMatch.group(1)));
+    NodeList testcases = doc.getElementsByTagName("testcase");
+    for (int i = 0; i < testcases.getLength(); i++) {
+      Element testcase = (Element) testcases.item(i);
+      NodeList failures = testcase.getElementsByTagName("failure");
+      if (failures.getLength() == 0) {
+        continue;
       }
+      Element failure = (Element) failures.item(0);
+      String message = failure.hasAttribute("message") ? failure.getAttribute("message") : "Unknown error";
+      failedScenarios.add(new TestRunReport.FailedScenario(
+          testcase.getAttribute("classname"), testcase.getAttribute("name"), message));
     }
 
     String status = failed > 0 ? "FAILED" : "PASSED";
@@ -125,35 +150,28 @@ public final class CucumberReportParser {
         List.copyOf(failedScenarios));
   }
 
+  private static int intAttr(Element element, String name) {
+    if (!element.hasAttribute(name)) {
+      return 0;
+    }
+    try {
+      return Integer.parseInt(element.getAttribute(name));
+    } catch (NumberFormatException e) {
+      return 0;
+    }
+  }
+
   /**
    * Auto-detect report format and parse accordingly.
    */
   public static TestRunReport parse(Path reportFile, String tagExpression,
       long durationMs) throws IOException {
-    String content = Files.readString(reportFile, StandardCharsets.UTF_8);
-    if (content.strip().startsWith("{")) {
+    String content = Files.readString(reportFile, StandardCharsets.UTF_8).strip();
+    if (content.startsWith("{") || content.startsWith("[")) {
       return parseCucumberJson(reportFile, tagExpression, durationMs);
-    } else if (content.strip().startsWith("<")) {
+    } else if (content.startsWith("<")) {
       return parseJunitXml(reportFile, tagExpression, durationMs);
     }
     throw new IOException("Unknown report format in " + reportFile);
-  }
-
-  // ── Helpers ──────────────────────────────────────────────────────
-
-  private static String findFeatureUri(String json, int fromIndex) {
-    // Search backwards for the nearest "uri" before this scenario
-    String before = json.substring(0, Math.max(0, fromIndex));
-    Matcher m = JSON_URI.matcher(before);
-    String last = null;
-    while (m.find()) last = m.group(1);
-    return last;
-  }
-
-  private static String findErrorMessage(String json, int fromIndex) {
-    // Search forward for the nearest "message" after this position
-    String after = json.substring(fromIndex, Math.min(json.length(), fromIndex + 5000));
-    Matcher m = JSON_MESSAGE.matcher(after);
-    return m.find() ? m.group(1) : null;
   }
 }

@@ -37,7 +37,7 @@ public final class JavaCompilationGuard {
     if (javaSource == null || patch == null) return false;
     String pkg = extractPackage(javaSource);
     if (pkg == null) return false;
-    String pathStr = patch.path().toString().replace('/', '.');
+    String pathStr = patch.path().toString().replace('\\', '.').replace('/', '.');
     return pathStr.contains(pkg);
   }
 

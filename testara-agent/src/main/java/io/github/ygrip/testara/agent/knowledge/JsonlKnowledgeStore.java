@@ -3,6 +3,9 @@ package io.github.ygrip.testara.agent.knowledge;
 import io.github.ygrip.testara.agent.index.ProjectIndexer;
 import io.github.ygrip.testara.agent.index.TestaraProjectProfile;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
@@ -27,6 +30,7 @@ import java.util.stream.Stream;
 public final class JsonlKnowledgeStore implements ProjectKnowledgeService {
 
   private static final Logger LOG = Logger.getLogger(JsonlKnowledgeStore.class.getName());
+  private static final ObjectMapper MAPPER = new ObjectMapper();
   private static final int SCHEMA_VERSION = 1;
   private static final String KNOWLEDGE_DIR = ".testara-agent/knowledge";
   private static final String MANIFEST = "manifest.json";
@@ -231,23 +235,42 @@ public final class JsonlKnowledgeStore implements ProjectKnowledgeService {
     Map<Path, FileFingerprint> map = new LinkedHashMap<>();
     Path file = dir.resolve(FINGERPRINTS);
     if (!Files.exists(file)) return map;
+
+    List<String> lines;
     try {
-      for (String line : Files.readAllLines(file, StandardCharsets.UTF_8)) {
-        line = line.strip();
-        if (line.isEmpty()) continue;
+      lines = Files.readAllLines(file, StandardCharsets.UTF_8);
+    } catch (IOException e) {
+      LOG.fine("Cannot read fingerprints: " + e.getMessage());
+      return map;
+    }
+
+    for (String line : lines) {
+      line = line.strip();
+      if (line.isEmpty()) continue;
+      try {
         var entry = parseSimpleJson(line);
         String path = entry.get("path");
+        if (path == null) continue;
         String type = entry.getOrDefault("type", "OTHER");
         long size = Long.parseLong(entry.getOrDefault("size", "0"));
         long mod = Long.parseLong(entry.getOrDefault("lastModifiedMillis", "0"));
         String sha256 = entry.getOrDefault("sha256", "");
         map.put(Path.of(path),
-            new FileFingerprint(Path.of(path), FileType.valueOf(type), size, mod, sha256));
+            new FileFingerprint(Path.of(path), fileTypeOrDefault(type), size, mod, sha256));
+      } catch (RuntimeException e) {
+        // A single malformed line must not drop every fingerprint that follows it.
+        LOG.fine("Skipping malformed fingerprint line: " + e.getMessage());
       }
-    } catch (IOException | IllegalArgumentException e) {
-      LOG.fine("Cannot read fingerprints: " + e.getMessage());
     }
     return map;
+  }
+
+  private static FileType fileTypeOrDefault(String type) {
+    try {
+      return FileType.valueOf(type);
+    } catch (IllegalArgumentException e) {
+      return FileType.OTHER;
+    }
   }
 
   private void saveManifest(Path dir, ProjectKnowledgeSnapshot snapshot) {
@@ -278,22 +301,15 @@ public final class JsonlKnowledgeStore implements ProjectKnowledgeService {
     }
   }
 
-  // ── Minimal JSON parser (no Jackson dependency) ──────────────────
+  // ── JSON parsing ──────────────────────────────────────────────────
 
-  @SuppressWarnings("java:S5852")
   static Map<String, String> parseSimpleJson(String json) {
     Map<String, String> map = new LinkedHashMap<>();
-    String content = json.strip();
-    if (content.startsWith("{") && content.endsWith("}")) {
-      content = content.substring(1, content.length() - 1);
-    }
-    for (String pair : content.split(",(?=(?:[^\"]*\"[^\"]*\")*[^\"]*$)")) {
-      String[] kv = pair.split(":", 2);
-      if (kv.length == 2) {
-        String key = kv[0].strip().replaceAll("^\"|\"$", "");
-        String val = kv[1].strip().replaceAll("^\"|\"$", "");
-        map.put(key, val);
-      }
+    try {
+      JsonNode node = MAPPER.readTree(json);
+      node.fields().forEachRemaining(e -> map.put(e.getKey(), e.getValue().asText()));
+    } catch (IOException e) {
+      LOG.fine("Cannot parse JSON: " + e.getMessage());
     }
     return map;
   }

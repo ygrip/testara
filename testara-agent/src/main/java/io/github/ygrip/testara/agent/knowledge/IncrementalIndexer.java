@@ -64,8 +64,8 @@ public final class IncrementalIndexer {
 
   private boolean requiresFullReindex(ProjectFingerprint oldFp,
       ProjectFingerprint newFp) {
-    // If any BUILD or CONFIG file changed, full reindex
-    return oldFp.fingerprints().entrySet().stream().anyMatch(e -> {
+    // If any BUILD or CONFIG file changed or was removed, full reindex
+    boolean changedOrRemoved = oldFp.fingerprints().entrySet().stream().anyMatch(e -> {
       var old = e.getValue();
       var neu = newFp.fingerprints().get(e.getKey());
       if (neu == null) return true; // file removed
@@ -75,5 +75,13 @@ public final class IncrementalIndexer {
       }
       return false;
     });
+    if (changedOrRemoved) {
+      return true;
+    }
+
+    // A newly added BUILD or CONFIG file is invisible when only scanning the old fingerprint set.
+    return newFp.fingerprints().entrySet().stream().anyMatch(e ->
+        !oldFp.fingerprints().containsKey(e.getKey())
+            && (e.getValue().type() == FileType.BUILD || e.getValue().type() == FileType.CONFIG));
   }
 }
