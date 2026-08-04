@@ -1,0 +1,23 @@
+testara-api-cucumber/src/main/java/io/github/ygrip/testara/api/steps/ApiBaseSteps.java
+  ce1310f85a3d99a4 262-265
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.23",
+  "base_commit_sha": "fadb96bb085e69c76579e328622f1281db002764",
+  "prompts": {
+    "ce1310f85a3d99a4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9f4d335f-9158-44a4-9954-dd8d72d78248",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "ygrip <yunaz.gilang@gmail.com>",
+      "messages": [],
+      "total_additions": 4,
+      "total_deletions": 1,
+      "accepted_lines": 4,
+      "overriden_lines": 0
+    }
+  }
+}
