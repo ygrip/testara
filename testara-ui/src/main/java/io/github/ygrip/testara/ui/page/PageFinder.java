@@ -6,7 +6,6 @@ import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
 import java.util.AbstractMap;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -387,22 +386,23 @@ public abstract class PageFinder<P extends PageContext<?>, E, B> {
   // ==================== LOCATOR RESOLUTION ====================
 
   private Map.Entry<String, Selector> parseElementSelector(String element) {
-    String[] parts = element.split(":");
-    Selector selector;
-
-    if (parts.length > 1) {
-      selector = CommonHelper.searchEnum(
-        Selector.class,
-        parts[0].trim()
-          .replace("-", "")
-      );
-      element = String.join(":", Arrays.copyOfRange(parts, 1, parts.length));
-    } else {
-      selector = null;
-      element = String.join(":", parts);
+    int prefixEnd = element.indexOf(':');
+    if (prefixEnd < 0) {
+      return new AbstractMap.SimpleEntry<>(element, null);
     }
 
-    return new AbstractMap.SimpleEntry<>(element, selector);
+    Selector selector = CommonHelper.searchEnum(
+      Selector.class,
+      element.substring(0, prefixEnd).trim()
+        .replace("-", "")
+    );
+
+    if (selector == null) {
+      // Unprefixed value (e.g. an xpath/css selector that itself contains a colon) - keep it whole.
+      return new AbstractMap.SimpleEntry<>(element, null);
+    }
+
+    return new AbstractMap.SimpleEntry<>(element.substring(prefixEnd + 1), selector);
   }
 
   protected Locator resolveLocator(String element) {
