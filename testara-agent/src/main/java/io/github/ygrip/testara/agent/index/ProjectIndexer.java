@@ -95,14 +95,17 @@ public class ProjectIndexer {
   // ── Source root collection ────────────────────────────────────────
 
   private List<Path> collectJavaSourceRoots(Path root, List<String> modules) {
+    // scanJavaFiles(root) already walks the entire subtree under root, so a module directory only
+    // needs its own entry here if it's NOT nested under root (e.g. a "../sibling-module" reference)
+    // - otherwise every file under it would be visited twice: once via root, once via its own entry.
     List<Path> roots = new ArrayList<>();
     roots.add(root);
+    Path normalizedRoot = root.toAbsolutePath().normalize();
     for (String module : modules) {
-      Path moduleDir = root.resolve(module);
-      Path mainSrc = moduleDir.resolve("src/main/java");
-      Path testSrc = moduleDir.resolve("src/test/java");
-      if (Files.exists(mainSrc)) roots.add(mainSrc.getParent().getParent().getParent()); // module root
-      else roots.add(moduleDir);
+      Path moduleDir = root.resolve(module).toAbsolutePath().normalize();
+      if (!moduleDir.startsWith(normalizedRoot)) {
+        roots.add(moduleDir);
+      }
     }
     return List.copyOf(roots);
   }
@@ -247,6 +250,7 @@ public class ProjectIndexer {
   // ── Step definition scanning ──────────────────────────────────────
 
   private List<StepDefinitionIndex> scanStepDefinitions(List<Path> roots) {
+    Set<String> seen = new HashSet<>();
     List<StepDefinitionIndex> defs = new ArrayList<>();
     for (Path root : roots) {
       for (Path javaFile : scanJavaFiles(root)) {
@@ -255,7 +259,9 @@ public class ProjectIndexer {
           String className = extractClassName(content);
           Matcher m = STEP_ANNOTATION.matcher(content);
           while (m.find()) {
-            defs.add(new StepDefinitionIndex(m.group(1), m.group(2), javaFile, className, ""));
+            if (seen.add(javaFile + ":" + m.group(2))) {
+              defs.add(new StepDefinitionIndex(m.group(1), m.group(2), javaFile, className, ""));
+            }
           }
         } catch (IOException e) {
           LOG.fine("Cannot read " + javaFile);
@@ -329,6 +335,7 @@ public class ProjectIndexer {
   // ── Driver scanning ───────────────────────────────────────────────
 
   private List<DriverIndex> scanDrivers(List<Path> roots) {
+    Set<String> seen = new HashSet<>();
     List<DriverIndex> drivers = new ArrayList<>();
     for (Path root : roots) {
       for (Path javaFile : scanJavaFiles(root)) {
@@ -349,7 +356,7 @@ public class ProjectIndexer {
             Matcher browserMatcher = DRIVER_BROWSER.matcher(block);
             String browser = browserMatcher.find() ? browserMatcher.group(1) : "";
             String className = extractClassName(content);
-            if (!name.isBlank()) {
+            if (!name.isBlank() && seen.add(javaFile + ":" + name)) {
               drivers.add(new DriverIndex(name, engine, platforms, browser, javaFile, className));
             }
           }
