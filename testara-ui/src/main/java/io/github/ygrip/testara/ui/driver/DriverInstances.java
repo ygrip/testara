@@ -157,6 +157,8 @@ public final class DriverInstances {
 
     public void forDriver(DriverSession<?> driver) {
       DriverInstances.this.driverMap.put(this.driverName, driver);
+      DriverInstances.this.driversUsedInCurrentThread.get()
+        .add(this.driverName);
     }
   }
 }
