@@ -1,0 +1,25 @@
+testara-agent/src/main/java/io/github/ygrip/testara/agent/knowledge/JsonlKnowledgeStore.java
+  ce1310f85a3d99a4 136,141-143,152-175,177,195-196,243,245,272-273
+testara-agent/src/test/java/io/github/ygrip/testara/agent/knowledge/JsonlKnowledgeStoreFingerprintTest.java
+  ce1310f85a3d99a4 1-51
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.23",
+  "base_commit_sha": "a327846f1c73e08b6a0c85730cdacab0b1f30b21",
+  "prompts": {
+    "ce1310f85a3d99a4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9f4d335f-9158-44a4-9954-dd8d72d78248",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "ygrip <yunaz.gilang@gmail.com>",
+      "messages": [],
+      "total_additions": 86,
+      "total_deletions": 12,
+      "accepted_lines": 86,
+      "overriden_lines": 0
+    }
+  }
+}
