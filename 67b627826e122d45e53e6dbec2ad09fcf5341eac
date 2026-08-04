@@ -1,0 +1,27 @@
+testara-api/src/test/resources/application.properties
+  ce1310f85a3d99a4 23-32
+testara-api/src/test/java/io/github/ygrip/testara/api/ApiTest.java
+  ce1310f85a3d99a4 21-22,27,29,113-123
+testara-api/src/main/java/io/github/ygrip/testara/api/RequestBuilderImpl.java
+  ce1310f85a3d99a4 48-50,672,685,699-712,719,738-740
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.23",
+  "base_commit_sha": "67b627826e122d45e53e6dbec2ad09fcf5341eac",
+  "prompts": {
+    "ce1310f85a3d99a4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9f4d335f-9158-44a4-9954-dd8d72d78248",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "ygrip <yunaz.gilang@gmail.com>",
+      "messages": [],
+      "total_additions": 56,
+      "total_deletions": 9,
+      "accepted_lines": 48,
+      "overriden_lines": 0
+    }
+  }
+}
