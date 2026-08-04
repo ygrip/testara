@@ -1,0 +1,25 @@
+testara-agent/src/main/java/io/github/ygrip/testara/agent/index/ProjectIndexer.java
+  ce1310f85a3d99a4 98-100,103,105-108,253,262-264,338,359
+testara-agent/src/test/java/io/github/ygrip/testara/agent/index/ProjectIndexerTest.java
+  ce1310f85a3d99a4 1-55
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.23",
+  "base_commit_sha": "79eaea7031c28f4557bea37d48bdbdcbeb159554",
+  "prompts": {
+    "ce1310f85a3d99a4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9f4d335f-9158-44a4-9954-dd8d72d78248",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "ygrip <yunaz.gilang@gmail.com>",
+      "messages": [],
+      "total_additions": 70,
+      "total_deletions": 8,
+      "accepted_lines": 69,
+      "overriden_lines": 0
+    }
+  }
+}
