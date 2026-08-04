@@ -1,5 +1,8 @@
 package io.github.ygrip.testara.agent.skill.run;
 
+import java.nio.file.Path;
+import java.util.List;
+
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -59,5 +62,43 @@ class MavenCommandBuilderTest {
   void acceptsParenthesizedExpression() {
     String cmd = builder.build("@checkout and (@P0 or @critical)");
     assertTrue(cmd.contains("@checkout"), "Should accept parenthesized expression");
+  }
+
+  @Test
+  void buildsArgvAsDiscreteTokensNoShellQuoting() {
+    List<String> argv = builder.buildArgv("@smoke and @api", null, true);
+    assertEquals(List.of("verify", "-Dcucumber.filter.tags=@smoke and @api"), argv);
+  }
+
+  @Test
+  void buildsArgvWithModule() {
+    List<String> argv = builder.buildArgv("@payment", "automation-tests", false);
+    assertEquals(List.of("test", "-pl", "automation-tests", "-Dcucumber.filter.tags=@payment"), argv);
+  }
+
+  @Test
+  void buildArgvRejectsUnsafeTagExpression() {
+    assertThrows(IllegalArgumentException.class, () -> builder.buildArgv("@smoke; rm -rf /", null, true));
+  }
+
+  @Test
+  void buildsRerunArgvUsingNativeFeaturePathSyntax() {
+    Path rerunFile = Path.of("target/rerun/rerun.txt");
+    List<String> argv = builder.buildRerunArgv(rerunFile, null, true);
+    assertEquals(List.of("verify", "-Dcucumber.features=@target/rerun/rerun.txt"), argv);
+  }
+
+  @Test
+  void buildsRerunArgvWithModule() {
+    Path rerunFile = Path.of("target/rerun/rerun.txt");
+    List<String> argv = builder.buildRerunArgv(rerunFile, "api-tests", false);
+    assertEquals(List.of("test", "-pl", "api-tests", "-Dcucumber.features=@target/rerun/rerun.txt"), argv);
+  }
+
+  @Test
+  void buildRerunArgvRejectsUnsafeModuleName() {
+    Path rerunFile = Path.of("target/rerun/rerun.txt");
+    assertThrows(IllegalArgumentException.class,
+        () -> builder.buildRerunArgv(rerunFile, "module; rm -rf /", true));
   }
 }

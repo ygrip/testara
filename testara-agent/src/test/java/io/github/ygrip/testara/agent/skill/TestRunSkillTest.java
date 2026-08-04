@@ -100,6 +100,31 @@ class TestRunSkillTest {
     assertFalse(output.contains("needs_input"));
   }
 
+  @Test
+  void rerunFailedUsesNativeRerunFileFeaturePathNotTagFilter() throws IOException {
+    Path rerunFile = projectRoot.resolve("target/rerun/rerun.txt");
+    Files.createDirectories(rerunFile.getParent());
+    Files.writeString(rerunFile, "src/test/resources/features/login.feature:12\n");
+
+    Map<String, String> opts = Map.of("dryRun", "true", "rerunFailed", "true");
+    String output = new TestRunSkill().execute("rerun", new AgentContext(projectRoot,
+        emptyProfile(), AgentMode.READ_ONLY, null, opts));
+
+    assertTrue(output.contains("-Dcucumber.features=@" + rerunFile),
+        "rerun must use Cucumber's native @<rerun-file> feature-path, not -Dcucumber.filter.tags");
+    assertFalse(output.contains("-Dcucumber.filter.tags"));
+  }
+
+  @Test
+  void rerunFailedReportsClearlyWhenNoRerunFileExists() {
+    Map<String, String> opts = Map.of("dryRun", "true", "rerunFailed", "true");
+    String output = new TestRunSkill().execute("rerun", new AgentContext(projectRoot,
+        emptyProfile(), AgentMode.READ_ONLY, null, opts));
+
+    assertTrue(output.contains("No previous test failures found"));
+    assertTrue(output.contains("target/rerun/rerun.txt"));
+  }
+
   private AgentContext executeContext(TestaraProjectProfile profile) {
     return new AgentContext(projectRoot, profile, AgentMode.READ_ONLY, null,
         Map.of("dryRun", "false", "execute", "true"));

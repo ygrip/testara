@@ -1,5 +1,7 @@
 package io.github.ygrip.testara.agent.safety;
 
+import java.util.List;
+
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -71,5 +73,32 @@ class TestExecutionGuardTest {
     assertFalse(TestExecutionGuard.isValidTagExpression("@smoke && echo"));
     assertFalse(TestExecutionGuard.isValidTagExpression(""));
     assertFalse(TestExecutionGuard.isValidTagExpression(null));
+  }
+
+  @Test
+  void acceptsSafeArgvWithAbsoluteMvnwPath() {
+    assertNull(TestExecutionGuard.validateArgv(
+        List.of("/Users/dev/project/mvnw", "verify", "-Dcucumber.filter.tags=@smoke")));
+    assertNull(TestExecutionGuard.validateArgv(List.of("mvn", "verify")));
+  }
+
+  @Test
+  void rejectsArgvWithNonMavenExecutable() {
+    String error = TestExecutionGuard.validateArgv(List.of("rm", "-rf", "/"));
+    assertNotNull(error);
+    assertTrue(error.contains("must invoke"));
+  }
+
+  @Test
+  void rejectsArgvContainingShellMetacharacters() {
+    String error = TestExecutionGuard.validateArgv(List.of("mvn", "test", "&& rm -rf /"));
+    assertNotNull(error);
+    assertTrue(error.contains("blocked shell pattern"));
+  }
+
+  @Test
+  void rejectsBlankArgv() {
+    assertNotNull(TestExecutionGuard.validateArgv(null));
+    assertNotNull(TestExecutionGuard.validateArgv(List.of()));
   }
 }

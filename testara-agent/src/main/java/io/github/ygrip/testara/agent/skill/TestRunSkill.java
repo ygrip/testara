@@ -4,6 +4,7 @@ import io.github.ygrip.testara.agent.index.FeatureIndex;
 import io.github.ygrip.testara.agent.index.ScenarioIndex;
 import io.github.ygrip.testara.agent.index.TestaraProjectProfile;
 import io.github.ygrip.testara.agent.parser.CucumberReportParser;
+import io.github.ygrip.testara.agent.safety.TestExecutionGuard;
 import io.github.ygrip.testara.agent.skill.run.*;
 
 import java.util.concurrent.TimeUnit;
@@ -27,6 +28,7 @@ import java.util.stream.Collectors;
 public class TestRunSkill implements AgentSkill<String, String> {
 
   private static final Logger LOG = Logger.getLogger(TestRunSkill.class.getName());
+  private static final String RERUN_FILE_PATH = "target/rerun/rerun.txt";
 
   private final TagExpressionResolver resolver;
   private final MavenCommandBuilder cmdBuilder;
@@ -52,16 +54,23 @@ public class TestRunSkill implements AgentSkill<String, String> {
     boolean rerunFail = "true".equals(opts.getOrDefault("rerunFailed", "false"));
     String module     = opts.getOrDefault("module", null);
 
-    // Rerun-failed: read Cucumber rerun file or previous report
+    // Rerun-failed: read Cucumber's rerun file
     if (rerunFail) {
-      String rerunResult = buildRerunExpression(context.projectRoot());
-      if (rerunResult != null) {
-        String command = cmdBuilder.build(rerunResult, module, true);
-        return new TestRunPlan("rerun-failed", rerunResult, 0, 0, command, List.of()).toMarkdown()
-            + "\n> **Rerun-failed** uses Cucumber rerun file or previous report.\n";
+      Path rerunFile = findRerunFile(context.projectRoot());
+      if (rerunFile != null) {
+        List<String> argv = cmdBuilder.buildRerunArgv(rerunFile, module, true);
+        String display = "mvn " + String.join(" ", argv);
+        TestRunPlan plan = new TestRunPlan("rerun-failed", "@" + rerunFile, 0, 0, display, List.of());
+        if (dryRun || !execute) return plan.toMarkdown();
+        boolean runEnabled = !"false".equalsIgnoreCase(System.getenv("TESTARA_AGENT_RUN_ENABLED"));
+        if (!runEnabled) {
+          return plan.toMarkdown() + "\n> **Execution blocked.** Set TESTARA_AGENT_RUN_ENABLED=true to allow test execution.\n";
+        }
+        return plan.toMarkdown() + "\n> **Rerun-failed** uses Cucumber's native rerun-file feature-path.\n\n"
+            + executeAndReport(argv, "@" + rerunFile, context.projectRoot());
       }
-      return "No previous test failures found. Check that target/rerun.txt or "
-          + "target/cucumber.json exists from a previous test run.\n";
+      return "No previous test failures found. Check that " + RERUN_FILE_PATH
+          + " exists from a previous test run.\n";
     }
 
     String tagExpr = resolver.resolve(input, profile);
@@ -92,7 +101,8 @@ public class TestRunSkill implements AgentSkill<String, String> {
     if (!runEnabled) {
       return plan.toMarkdown() + "\n> **Execution blocked.** Set TESTARA_AGENT_RUN_ENABLED=true to allow test execution.\n";
     }
-    return executeAndReport(command, tagExpr, context.projectRoot());
+    List<String> argv = cmdBuilder.buildArgv(tagExpr, module, true);
+    return executeAndReport(argv, tagExpr, context.projectRoot());
   }
 
   private String unresolvedPrompt(String input, AgentContext context, TestaraProjectProfile profile) {
@@ -137,18 +147,26 @@ public class TestRunSkill implements AgentSkill<String, String> {
     return sb.toString();
   }
 
-  private String executeAndReport(String command, String tagExpr, Path projectRoot) {
+  private String executeAndReport(List<String> argv, String tagExpr, Path projectRoot) {
     long start = System.currentTimeMillis();
     int exitCode;
     // Choose mvnw or mvn
-    java.nio.file.Path mvnw = projectRoot.resolve("mvnw");
-    String mvnExec = java.nio.file.Files.exists(mvnw) ? mvnw.toAbsolutePath().toString() : "mvn";
-    String safeCommand = command.replace("mvn ", mvnExec + " ");
+    Path mvnw = projectRoot.resolve("mvnw");
+    String mvnExec = Files.exists(mvnw) ? mvnw.toAbsolutePath().toString() : "mvn";
+    List<String> fullCommand = new ArrayList<>();
+    fullCommand.add(mvnExec);
+    fullCommand.addAll(argv);
+    String displayCommand = String.join(" ", fullCommand);
+
+    String guardError = TestExecutionGuard.validateArgv(fullCommand);
+    if (guardError != null) {
+      return "Execution blocked by safety guard: " + guardError + "\n";
+    }
+
     Path logFile = runLogFile(projectRoot);
     try {
       Files.createDirectories(logFile.getParent());
-      String[] cmd = {"sh", "-c", safeCommand};
-      ProcessBuilder pb = new ProcessBuilder(cmd)
+      ProcessBuilder pb = new ProcessBuilder(fullCommand)
           .directory(projectRoot.toFile())
           .redirectErrorStream(true)
           .redirectOutput(logFile.toFile());
@@ -157,7 +175,7 @@ public class TestRunSkill implements AgentSkill<String, String> {
       if (!finished) {
         process.destroyForcibly();
         long duration = System.currentTimeMillis() - start;
-        return logSummary(safeCommand, tagExpr, logFile, -1, duration, "TIMEOUT")
+        return logSummary(displayCommand, tagExpr, logFile, -1, duration, "TIMEOUT")
             + "\nTest execution exceeded 15-minute limit.\n";
       }
       exitCode = process.exitValue();
@@ -169,7 +187,7 @@ public class TestRunSkill implements AgentSkill<String, String> {
 
     // Try Cucumber JSON / JUnit XML report parsing
     Path reportJson = projectRoot.resolve("target/cucumber.json");
-    String summary = logSummary(safeCommand, tagExpr, logFile, exitCode, duration, exitCode == 0 ? "PASSED" : "FAILED");
+    String summary = logSummary(displayCommand, tagExpr, logFile, exitCode, duration, exitCode == 0 ? "PASSED" : "FAILED");
     if (Files.exists(reportJson)) {
       try {
         TestRunReport report = CucumberReportParser
@@ -260,47 +278,13 @@ public class TestRunSkill implements AgentSkill<String, String> {
   }
 
   /**
-   * Build a rerun expression from Cucumber's rerun file or previous JSON report.
-   * Returns null if no previous failure data is found.
+   * Locate Cucumber's rerun file (written to {@link #RERUN_FILE_PATH} by the
+   * {@code cucumber.plugin=...,rerun:target/rerun/rerun.txt} plugin TestInitSkill configures),
+   * or {@code null} if no previous run produced one.
    */
-  private String buildRerunExpression(Path projectRoot) {
-    // 1. Try Cucumber rerun file
-    Path rerunFile = projectRoot.resolve("target/rerun.txt");
-    if (Files.exists(rerunFile)) {
-      try {
-        return Files.readString(rerunFile, StandardCharsets.UTF_8).strip();
-      } catch (IOException e) {
-        LOG.fine("Cannot read rerun file: " + e.getMessage());
-      }
-    }
-
-    // 2. Try parsing previous cucumber.json for failed scenario locations
-    Path reportJson = projectRoot.resolve("target/cucumber.json");
-    if (Files.exists(reportJson)) {
-      try {
-        String json = Files.readString(reportJson, StandardCharsets.UTF_8);
-        List<String> failedLocations = new ArrayList<>();
-        // Extract failed scenario URIs from cucumber JSON
-        Pattern uriPattern = Pattern.compile("\"uri\"\\s*:\\s*\"([^\"]+)\"");
-        Pattern failedLine = Pattern.compile("\"line\"\\s*:\\s*(\\d+)");
-        Matcher uriMatcher = uriPattern.matcher(json);
-        Matcher lineMatcher = failedLine.matcher(json);
-
-        // Collect URIs and lines; pair by position (naive approach)
-        List<String> uris = new ArrayList<>();
-        List<Integer> lines = new ArrayList<>();
-        while (uriMatcher.find()) uris.add(uriMatcher.group(1));
-        while (lineMatcher.find()) lines.add(Integer.parseInt(lineMatcher.group(1)));
-
-        // Fallback: if no granular data, return empty
-        if (!uris.isEmpty()) {
-          return "@target/rerun.txt"; // signals Cucumber to use its own rerun
-        }
-      } catch (IOException e) {
-        LOG.fine("Cannot parse cucumber.json for rerun: " + e.getMessage());
-      }
-    }
-    return null;
+  private Path findRerunFile(Path projectRoot) {
+    Path rerunFile = projectRoot.resolve(RERUN_FILE_PATH);
+    return Files.exists(rerunFile) ? rerunFile : null;
   }
 
   private TestaraProjectProfile profileForScenario(TestaraProjectProfile base,
