@@ -1,0 +1,25 @@
+testara-agent/src/main/java/io/github/ygrip/testara/agent/skill/TestPlanSkill.java
+  ce1310f85a3d99a4 770-771
+testara-agent/src/main/java/io/github/ygrip/testara/agent/skill/TestaraValidateSkill.java
+  ce1310f85a3d99a4 208,210-211
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.23",
+  "base_commit_sha": "bd8852580f69059a4823fd9a6870c7d648064b98",
+  "prompts": {
+    "ce1310f85a3d99a4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9f4d335f-9158-44a4-9954-dd8d72d78248",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "ygrip <yunaz.gilang@gmail.com>",
+      "messages": [],
+      "total_additions": 5,
+      "total_deletions": 3,
+      "accepted_lines": 5,
+      "overriden_lines": 0
+    }
+  }
+}
