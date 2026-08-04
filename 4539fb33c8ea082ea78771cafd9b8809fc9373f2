@@ -1,0 +1,33 @@
+testara-agent/src/test/java/io/github/ygrip/testara/agent/skill/TestRunSkillTest.java
+  ce1310f85a3d99a4 103-127
+testara-agent/src/main/java/io/github/ygrip/testara/agent/safety/TestExecutionGuard.java
+  ce1310f85a3d99a4 5,46-73
+testara-agent/src/main/java/io/github/ygrip/testara/agent/skill/run/MavenCommandBuilder.java
+  ce1310f85a3d99a4 3-5,31-66,72-75
+testara-agent/src/test/java/io/github/ygrip/testara/agent/skill/run/MavenCommandBuilderTest.java
+  ce1310f85a3d99a4 3-5,66-103
+testara-agent/src/main/java/io/github/ygrip/testara/agent/skill/TestRunSkill.java
+  ce1310f85a3d99a4 7,31,57,59-70,72-73,104-105,150,154-165,169,178,190,281-283,285-287
+testara-agent/src/test/java/io/github/ygrip/testara/agent/safety/TestExecutionGuardTest.java
+  ce1310f85a3d99a4 3-4,77-103
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.23",
+  "base_commit_sha": "4539fb33c8ea082ea78771cafd9b8809fc9373f2",
+  "prompts": {
+    "ce1310f85a3d99a4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9f4d335f-9158-44a4-9954-dd8d72d78248",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "ygrip <yunaz.gilang@gmail.com>",
+      "messages": [],
+      "total_additions": 210,
+      "total_deletions": 59,
+      "accepted_lines": 208,
+      "overriden_lines": 0
+    }
+  }
+}
