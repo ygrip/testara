@@ -1,0 +1,35 @@
+testara-agent/src/test/java/io/github/ygrip/testara/agent/parser/CucumberReportParserTest.java
+  ce1310f85a3d99a4 1-134
+testara-agent/src/main/java/io/github/ygrip/testara/agent/knowledge/JsonlKnowledgeStore.java
+  ce1310f85a3d99a4 6-8,33,238-239,241-250,253,259-262,268-273,304,308-312
+testara-agent/src/test/java/io/github/ygrip/testara/agent/safety/JavaCompilationGuardTest.java
+  ce1310f85a3d99a4 1-50
+testara-agent/src/main/java/io/github/ygrip/testara/agent/parser/CucumberReportParser.java
+  ce1310f85a3d99a4 5-16,21-22,30,36-38,42,47-66,78-103,107-108,112-120,123-128,134-139,141-144,153-161,169-170
+testara-agent/src/test/java/io/github/ygrip/testara/agent/knowledge/JsonlKnowledgeStoreJsonParsingTest.java
+  ce1310f85a3d99a4 1-38
+testara-agent/src/main/java/io/github/ygrip/testara/agent/knowledge/IncrementalIndexer.java
+  ce1310f85a3d99a4 67-68,78-85
+testara-agent/src/main/java/io/github/ygrip/testara/agent/safety/JavaCompilationGuard.java
+  ce1310f85a3d99a4 40
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.23",
+  "base_commit_sha": "77ea5db2f8ba4e348db22634924ab5ccbc44cbeb",
+  "prompts": {
+    "ce1310f85a3d99a4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9f4d335f-9158-44a4-9954-dd8d72d78248",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "ygrip <yunaz.gilang@gmail.com>",
+      "messages": [],
+      "total_additions": 379,
+      "total_deletions": 115,
+      "accepted_lines": 375,
+      "overriden_lines": 0
+    }
+  }
+}
