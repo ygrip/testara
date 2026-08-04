@@ -1,0 +1,27 @@
+testara-command/src/main/java/io/github/ygrip/testara/command/CommandExecutor.java
+  ce1310f85a3d99a4 34,60-61,275,283-285,287,293-320,620-632
+testara-cucumber/src/main/java/io/github/ygrip/testara/cucumber/hooks/CommandCacheHooks.java
+  ce1310f85a3d99a4 1-13
+testara-command/src/test/java/io/github/ygrip/testara/command/CommandExecutorTests.java
+  ce1310f85a3d99a4 41,283-293
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.23",
+  "base_commit_sha": "e74ca2e09456099c30112e8c60670374d6b5d74e",
+  "prompts": {
+    "ce1310f85a3d99a4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9f4d335f-9158-44a4-9954-dd8d72d78248",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "ygrip <yunaz.gilang@gmail.com>",
+      "messages": [],
+      "total_additions": 78,
+      "total_deletions": 7,
+      "accepted_lines": 77,
+      "overriden_lines": 0
+    }
+  }
+}
