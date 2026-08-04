@@ -259,7 +259,10 @@ public class ApiBaseSteps {
             builder.fileName(multiPartSpecBuilder.getFileName());
           }
           TestApi.rest().setMultiPartData(builder.build());
-        } catch (Exception ignored) {
+        } catch (Exception e) {
+          throw new RuntimeException(
+              "Failed to build multipart data for controlName='" + multiPartSpecBuilder.getControlName()
+                  + "', content='" + content + "': " + e.getMessage(), e);
         }
       }
     }
