@@ -133,17 +133,14 @@ public final class JsonlKnowledgeStore implements ProjectKnowledgeService {
     Map<Path, FileFingerprint> fps = new LinkedHashMap<>();
     try (Stream<Path> walk = Files.walk(projectRoot, 8)) {
       walk.filter(Files::isRegularFile)
-          .filter(p -> !p.toString().contains("/target/")
-              && !p.toString().contains("/.testara-agent/")
-              && !p.toString().contains("/.git/")
-              && !p.toString().contains("/node_modules/"))
+          .filter(p -> !isExcluded(p))
           .forEach(p -> {
             try {
               long size = Files.size(p);
               long mod = Files.getLastModifiedTime(p).toMillis();
-              FileType type = classify(projectRoot.relativize(p));
-              fps.put(projectRoot.relativize(p),
-                  new FileFingerprint(projectRoot.relativize(p), type, size, mod, ""));
+              Path rel = projectRoot.relativize(p);
+              FileType type = classify(rel);
+              fps.put(rel, new FileFingerprint(rel, type, size, mod, hashContent(p)));
             } catch (IOException ignored) { /* skip unreadable */ }
           });
     } catch (IOException e) {
@@ -152,8 +149,32 @@ public final class JsonlKnowledgeStore implements ProjectKnowledgeService {
     return ProjectFingerprint.of(fps, computeHash(fps));
   }
 
+  /** Normalizes to '/'-separated form first so exclusion still matches on Windows. */
+  private static boolean isExcluded(Path p) {
+    String normalized = p.toString().replace('\\', '/');
+    return normalized.contains("/target/")
+        || normalized.contains("/.testara-agent/")
+        || normalized.contains("/.git/")
+        || normalized.contains("/node_modules/");
+  }
+
+  /**
+   * SHA-256 of the file's content. size+mtime alone miss size+mtime-preserving edits (a VCS
+   * checkout that doesn't touch mtimes, or two edits landing within the same filesystem
+   * timestamp granularity) - actual content is the only reliable freshness signal.
+   */
+  private static String hashContent(Path p) {
+    try {
+      MessageDigest md = MessageDigest.getInstance("SHA-256");
+      md.update(Files.readAllBytes(p));
+      return bytesToHex(md.digest());
+    } catch (IOException | NoSuchAlgorithmException e) {
+      return "";
+    }
+  }
+
   private static FileType classify(Path rel) {
-    String s = rel.toString();
+    String s = rel.toString().replace('\\', '/');
     if (s.equals("pom.xml") || s.equals("build.gradle")) return FileType.BUILD;
     if (s.endsWith(".feature")) return FileType.FEATURE;
     if (s.endsWith(".java") && s.contains("Command")) return FileType.COMMAND;
@@ -171,7 +192,8 @@ public final class JsonlKnowledgeStore implements ProjectKnowledgeService {
       MessageDigest md = MessageDigest.getInstance("SHA-256");
       fps.values().stream()
           .sorted(Comparator.comparing(f -> f.path().toString()))
-          .forEach(f -> md.update((f.path() + ":" + f.size() + ":" + f.lastModifiedMillis()).getBytes(StandardCharsets.UTF_8)));
+          .forEach(f -> md.update((f.path() + ":" + f.size() + ":" + f.lastModifiedMillis() + ":" + f.sha256())
+              .getBytes(StandardCharsets.UTF_8)));
       return bytesToHex(md.digest());
     } catch (NoSuchAlgorithmException e) {
       return String.valueOf(fps.hashCode());
@@ -218,8 +240,9 @@ public final class JsonlKnowledgeStore implements ProjectKnowledgeService {
         String type = entry.getOrDefault("type", "OTHER");
         long size = Long.parseLong(entry.getOrDefault("size", "0"));
         long mod = Long.parseLong(entry.getOrDefault("lastModifiedMillis", "0"));
+        String sha256 = entry.getOrDefault("sha256", "");
         map.put(Path.of(path),
-            new FileFingerprint(Path.of(path), FileType.valueOf(type), size, mod, ""));
+            new FileFingerprint(Path.of(path), FileType.valueOf(type), size, mod, sha256));
       }
     } catch (IOException | IllegalArgumentException e) {
       LOG.fine("Cannot read fingerprints: " + e.getMessage());
@@ -246,8 +269,8 @@ public final class JsonlKnowledgeStore implements ProjectKnowledgeService {
       List<String> lines = fp.fingerprints().values().stream()
           .sorted(Comparator.comparing(f -> f.path().toString()))
           .map(f -> String.format(
-              "{\"path\":\"%s\",\"type\":\"%s\",\"size\":%d,\"lastModifiedMillis\":%d}",
-              f.path(), f.type(), f.size(), f.lastModifiedMillis()))
+              "{\"path\":\"%s\",\"type\":\"%s\",\"size\":%d,\"lastModifiedMillis\":%d,\"sha256\":\"%s\"}",
+              f.path(), f.type(), f.size(), f.lastModifiedMillis(), f.sha256()))
           .collect(Collectors.toList());
       Files.write(dir.resolve(FINGERPRINTS), lines, StandardCharsets.UTF_8);
     } catch (IOException e) {
