@@ -18,11 +18,15 @@ import org.junit.jupiter.api.RepeatedTest;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.extension.RegisterExtension;
 
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
 import java.util.Map;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.containing;
 import static com.github.tomakehurst.wiremock.client.WireMock.get;
+import static com.github.tomakehurst.wiremock.client.WireMock.getRequestedFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.ok;
+import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
 import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.wireMockConfig;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.equalTo;
@@ -105,5 +109,16 @@ public class ApiTest extends BaseTests {
     assertThat(dataHolder.getResponse("$['factResponse']['value']").getValue(), equalTo(mappedResponse.get("value")));
     assertThat(dataHolder.getResponse("$['factResponse']['timestamp']").getValue(),
         equalTo(mappedResponse.get("timestamp")));
+  }
+
+  @RepeatedTest(3)
+  public void sendsBasicAuthHeaderWhenConfigured() throws Throwable {
+    wiremock.stubFor(get("/secure").willReturn(ok().withBody("{}")));
+
+    TestApi.rest("auth-api").process(Method.GET, "/secure");
+
+    String expected = "Basic " + Base64.getEncoder()
+        .encodeToString("testuser:testpass".getBytes(StandardCharsets.UTF_8));
+    wiremock.verify(getRequestedFor(urlEqualTo("/secure")).withHeader("Authorization", containing(expected)));
   }
 }

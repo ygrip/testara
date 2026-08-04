@@ -45,6 +45,9 @@ import io.github.ygrip.testara.core.registry.RegistryScope;
 import io.github.ygrip.testara.core.support.CommonHelper;
 import io.github.ygrip.testara.core.transformer.TransformerService;
 
+import io.restassured.authentication.AuthenticationScheme;
+import io.restassured.authentication.BasicAuthScheme;
+import io.restassured.authentication.PreemptiveBasicAuthScheme;
 import io.restassured.builder.MultiPartSpecBuilder;
 import io.restassured.builder.RequestSpecBuilder;
 import io.restassured.config.HttpClientConfig;
@@ -666,6 +669,7 @@ public class RequestBuilderImpl implements RequestBuilder, RestApiFacade {
     private final String basePath;
     private final Integer port;
     private final ProxySpecification proxy;
+    private final AuthenticationScheme auth;
     private RequestSpecBuilder requestSpecBuilder;
 
     RequestInternal(ApiModel model, RestAssuredConfig config) {
@@ -678,6 +682,7 @@ public class RequestBuilderImpl implements RequestBuilder, RestApiFacade {
       String basePath = "";
       Integer port = null;
       ProxySpecification proxy = null;
+      AuthenticationScheme auth = null;
 
       if (model != null) {
         baseUri = isBlank(model.getHost()) ? "http://localhost" : model.getHost();
@@ -691,12 +696,27 @@ public class RequestBuilderImpl implements RequestBuilder, RestApiFacade {
             proxy.withAuth(proxyModel.getUsername(), proxyModel.getPassword());
           }
         }
+
+        if (model.isUseBasicAuthentication()) {
+          if (model.isUsePreemptiveAuthentication()) {
+            PreemptiveBasicAuthScheme scheme = new PreemptiveBasicAuthScheme();
+            scheme.setUserName(model.getUsername());
+            scheme.setPassword(model.getPassword());
+            auth = scheme;
+          } else {
+            BasicAuthScheme scheme = new BasicAuthScheme();
+            scheme.setUserName(model.getUsername());
+            scheme.setPassword(model.getPassword());
+            auth = scheme;
+          }
+        }
       }
 
       this.baseUri = baseUri;
       this.basePath = basePath;
       this.port = port;
       this.proxy = proxy;
+      this.auth = auth;
       this.defaultContentType = getDefaultContentType(model);
       this.requestSpecBuilder = rebuild(config);
     }
@@ -714,6 +734,9 @@ public class RequestBuilderImpl implements RequestBuilder, RestApiFacade {
       }
       if (!isBlank(this.proxy)) {
         request.setProxy(this.proxy);
+      }
+      if (this.auth != null) {
+        request.setAuth(this.auth);
       }
       return request;
     }
