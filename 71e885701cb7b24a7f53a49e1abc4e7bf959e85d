@@ -1,0 +1,57 @@
+testara-ui-cucumber/src/main/java/io/github/ygrip/testara/ui/hooks/DriverResetHooks.java
+  1a6ae739a90fa1a6 1-53
+testara-ui/src/main/resources/META-INF/services/io.github.ygrip.testara.core.concurrency.ThreadContextPropagator
+  1a6ae739a90fa1a6 1
+testara-core/src/main/java/io/github/ygrip/testara/core/concurrency/ThreadContextPropagatorLoader.java
+  1a6ae739a90fa1a6 1-18
+testara-ui/src/main/java/io/github/ygrip/testara/ui/executor/ActorManager.java
+  1a6ae739a90fa1a6 26-28
+testara-ui/src/main/java/io/github/ygrip/testara/ui/driver/DriverInstances.java
+  1a6ae739a90fa1a6 22-23,25-37
+testara-ui/src/test/java/io/github/ygrip/testara/ui/driver/DriverInstancesTest.java
+  1a6ae739a90fa1a6 10,66-84
+testara-core/src/test/resources/META-INF/services/io.github.ygrip.testara.core.concurrency.ThreadContextPropagator
+  1a6ae739a90fa1a6 1
+testara-core/src/main/java/io/github/ygrip/testara/core/concurrency/ThreadContextPropagator.java
+  1a6ae739a90fa1a6 1-33
+testara-core/src/test/java/io/github/ygrip/testara/core/concurrency/ExecutorFactoryThreadContextPropagationTest.java
+  1a6ae739a90fa1a6 1-59
+testara-ui/src/main/java/io/github/ygrip/testara/ui/driver/DriverSessionManager.java
+  1a6ae739a90fa1a6 1-109
+testara-validation/src/main/java/io/github/ygrip/testara/validation/ValidatorHelper.java
+  1a6ae739a90fa1a6 185-186,224-225
+testara-ui/src/main/java/io/github/ygrip/testara/ui/executor/UiThreadContextPropagator.java
+  1a6ae739a90fa1a6 1-38
+testara-ui/src/main/java/io/github/ygrip/testara/ui/config/EngineProperties.java
+  1a6ae739a90fa1a6 8,23
+testara-core/src/test/java/io/github/ygrip/testara/core/concurrency/FakeThreadContextPropagator.java
+  1a6ae739a90fa1a6 1-26
+testara-ui/src/test/java/io/github/ygrip/testara/ui/executor/ActorManagerTest.java
+  1a6ae739a90fa1a6 10,20,55-70
+testara-core/src/main/java/io/github/ygrip/testara/core/concurrency/ExecutorFactory.java
+  1a6ae739a90fa1a6 6,28,305-335
+testara-ui/src/test/java/io/github/ygrip/testara/ui/executor/UiThreadContextPropagatorTest.java
+  1a6ae739a90fa1a6 1-80
+testara-ui/src/main/java/io/github/ygrip/testara/ui/model/DriverResetMode.java
+  1a6ae739a90fa1a6 1-16
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.23",
+  "base_commit_sha": "71e885701cb7b24a7f53a49e1abc4e7bf959e85d",
+  "prompts": {
+    "1a6ae739a90fa1a6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f7133a67-e10e-469c-aa85-d2bd57924e41",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "ygrip <yunaz.gilang@gmail.com>",
+      "messages": [],
+      "total_additions": 954,
+      "total_deletions": 595,
+      "accepted_lines": 901,
+      "overriden_lines": 0
+    }
+  }
+}
