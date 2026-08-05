@@ -19,10 +19,22 @@ public final class DriverInstances {
   }
 
   public DriverSession<?> getCurrentDriver() {
-    if (this.currentDriver == null) {
-      return null;
+    if (this.currentDriver != null) {
+      return this.driverMap.get(this.currentDriver);
     }
-    return this.driverMap.get(this.currentDriver);
+    // No explicit "active" pointer set (e.g. a driver was registered without a follow-up
+    // setCurrentActiveDriver() call). Adopt the first still-active registered driver instead of
+    // returning null, matching the fallback getCurrentDrivers() already performs.
+    return this.driverMap.entrySet()
+      .stream()
+      .filter(entry -> entry.getValue().isActive())
+      .findFirst()
+      .map(entry -> {
+        this.currentDriver = entry.getKey();
+        this.currentActiveDriver = entry.getValue();
+        return entry.getValue();
+      })
+      .orElse(null);
   }
 
   public DriverSession<?> getDriver(String driverName) {

@@ -182,7 +182,8 @@ public final class ValidatorHelper {
         List<CompletableFuture<ValidatorResult>> futures = new ArrayList<>(validations.size());
 
         for (DataValidation validation : validations) {
-          futures.add(CompletableFuture.supplyAsync(() -> cachedValidation.computeIfAbsent(validation, v -> {
+          futures.add(CompletableFuture.supplyAsync(
+              ExecutorFactory.withPropagatedContext(() -> cachedValidation.computeIfAbsent(validation, v -> {
             String validationName = v.getValidation().toLowerCase().trim();
             Class<?> validatorClass = REGISTERED_VALIDATORS.get(validationName);
 
@@ -220,7 +221,8 @@ public final class ValidatorHelper {
             } catch (Exception ex) {
               return ValidatorResult.builder().validation(validationName).success(false).error(ex).build();
             }
-          }), executor));
+          })),
+              executor));
         }
 
         // Wait for all tasks or timeout

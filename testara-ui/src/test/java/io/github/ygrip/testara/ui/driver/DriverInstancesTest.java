@@ -7,6 +7,7 @@ import io.github.ygrip.testara.ui.page.PageFinder;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -60,6 +61,25 @@ class DriverInstancesTest {
     assertTrue(chrome.isClosed(), "closeAllDrivers must quit every registered session, not just the active one");
     assertTrue(firefox.isClosed(), "closeAllDrivers must quit every registered session, not just the active one");
     assertFalse(instances.getActiveDriverMap().containsKey("chrome"));
+  }
+
+  /**
+   * Regression coverage: getCurrentDriver() required an explicit setCurrentActiveDriver() call
+   * after registerDriver() - if that second step was skipped (or the pointer was otherwise
+   * unset while the session itself was still open), it returned null even though a perfectly
+   * usable driver was registered, which crashed ActorManager.currentActor() downstream.
+   * getCurrentDrivers() (plural) already falls back to scanning driverMap when nothing is
+   * marked active; getCurrentDriver() (singular) must do the same.
+   */
+  @Test
+  void getCurrentDriverFallsBackToTheRegisteredSessionWhenNoActivePointerIsSet() {
+    DriverInstances instances = new DriverInstances();
+    FakeSession session = new FakeSession();
+    instances.registerDriver("chrome").forDriver(session);
+
+    assertSame(session, instances.getCurrentDriver(),
+        "getCurrentDriver() must fall back to the sole registered active session");
+    assertTrue(instances.getActiveDriverMap().containsKey("chrome"));
   }
 
   @Test

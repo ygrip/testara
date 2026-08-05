@@ -1,6 +1,7 @@
 package io.github.ygrip.testara.ui.page;
 
 import java.time.Duration;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
@@ -19,6 +20,7 @@ import io.github.ygrip.testara.ui.config.WebPageDataProperties;
 import io.github.ygrip.testara.ui.driver.DriverSession;
 import io.github.ygrip.testara.ui.driver.DriverSessionManager;
 import io.github.ygrip.testara.ui.error.PageFailureException;
+import io.github.ygrip.testara.ui.model.DeviceType;
 import io.github.ygrip.testara.ui.model.Page;
 import io.github.ygrip.testara.ui.model.WebPageData;
 import lombok.extern.log4j.Log4j2;
@@ -55,13 +57,19 @@ public abstract class PageContext<D extends DriverSession<?>> {
       return new WebPageData();
     }
     String pageName = metadata.name();
-    return Optional.ofNullable(properties())
+    final var platform = driver().platform();
+    final var properties = properties();
+    final Map<String, WebPageData> pagesWithinPlatform = Optional.ofNullable(properties)
       .map(WebPageDataProperties::getPage)
+      .map(pages -> pages.get(platform))
+      .orElse(Map.of());
+    final Map<String, WebPageData> fallback = Optional.ofNullable(properties)
+      .map(WebPageDataProperties::getPage)
+      .map(pages -> pages.get(DeviceType.DEFAULT))
+      .orElse(Map.of());
+    return Optional.ofNullable(pagesWithinPlatform.get(pageName))
       .filter(ObjectUtils::isNotEmpty)
-      .map(platforms -> platforms.get(driver().platform()))
-      .filter(ObjectUtils::isNotEmpty)
-      .map(properties -> properties.getOrDefault(pageName, new WebPageData()))
-      .orElse(new WebPageData());
+      .orElseGet(() -> fallback.getOrDefault(pageName, new WebPageData()));
   }
 
   private WebPageDataProperties properties() {

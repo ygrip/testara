@@ -1,15 +1,15 @@
 package io.github.ygrip.testara.ui.interaction;
 
-import java.util.HashMap;
+import java.util.Map;
 import java.util.Optional;
 
-import org.apache.commons.lang3.ObjectUtils;
 import org.apache.commons.lang3.StringUtils;
 
 import io.github.ygrip.testara.core.context.TestFramework;
 import io.github.ygrip.testara.ui.config.WebPageDataProperties;
 import io.github.ygrip.testara.ui.driver.DriverSession;
 import io.github.ygrip.testara.ui.executor.Actor;
+import io.github.ygrip.testara.ui.model.DeviceType;
 import io.github.ygrip.testara.ui.model.WebPageData;
 import io.github.ygrip.testara.ui.page.Element;
 import io.github.ygrip.testara.ui.page.NamedPage;
@@ -59,31 +59,41 @@ public final class Navigate implements Interaction {
   public void perform(InteractionContext context) {
     switch (kind) {
       case GO -> {
-        DriverSession<?> session = context.session();
-        final var platform = session.platform();
-        final var pageData = Optional.ofNullable(TestFramework.configuration()
-            .get(WebPageDataProperties.class))
-          .map(WebPageDataProperties::getPage)
-          .map(page -> page.getOrDefault(platform, new HashMap<>()))
-          .map(page -> page.get(url))
-          .filter(ObjectUtils::isNotEmpty)
-          .orElse(new WebPageData());
-
         final var converter = TestFramework.context()
           .converter();
-        final var targetLocation = Optional.ofNullable(pageData.getUrl())
+        final var resolvedUrl = Optional.ofNullable(getUrl(context, url))
           .map(converter::convert)
           .map(String::valueOf)
           .filter(StringUtils::isNotBlank)
           .orElse(url);
         context.navigation()
-          .to(targetLocation);
+          .to(resolvedUrl);
       }
       case REFRESH -> context.navigation()
         .refresh();
       case RELOAD -> context.navigation()
         .reload();
     }
+  }
+
+  private String getUrl(InteractionContext context, String url) {
+    WebPageDataProperties properties = TestFramework.configuration()
+      .get(WebPageDataProperties.class);
+    DriverSession<?> session = context.session();
+    final var platform = session.platform();
+    final Map<String, WebPageData> pagesWithinPlatform = Optional.ofNullable(properties)
+      .map(WebPageDataProperties::getPage)
+      .map(pages -> pages.get(platform))
+      .orElse(Map.of());
+    final Map<String, WebPageData> fallback = Optional.ofNullable(properties)
+      .map(WebPageDataProperties::getPage)
+      .map(pages -> pages.get(DeviceType.DEFAULT))
+      .orElse(Map.of());
+    return Optional.ofNullable(pagesWithinPlatform.get(url))
+      .map(WebPageData::getUrl)
+      .filter(StringUtils::isNotBlank)
+      .orElseGet(() -> fallback.getOrDefault(url, new WebPageData())
+        .getUrl());
   }
 
   @Override

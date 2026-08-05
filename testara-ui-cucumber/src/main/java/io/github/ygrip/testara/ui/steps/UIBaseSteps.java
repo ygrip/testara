@@ -362,7 +362,12 @@ public class UIBaseSteps {
       .executeTask(action, additionalParameter);
   }
 
-  @When("{actor} wait until {string} is {elementState}")
+  @When("{actor} wait until page {string} is loaded")
+  public void waitUntilPage(String identifier, String page) throws Throwable {
+    ActorManager.currentActor().attemptsTo(WaitUntil.page(page).loaded());
+  }
+
+    @When("{actor} wait until {string} is {elementState}")
   public void waitUntilElementIs(String identifier, String element, String condition) throws Throwable {
     switch (condition.trim().toLowerCase()) {
       case "enabled":

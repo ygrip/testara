@@ -23,6 +23,9 @@ public final class ActorManager {
   public static Actor currentActor() {
     final var session = DriverSessionManager.inThisTestThread()
       .getCurrentDriver();
+    if (session == null) {
+      throw new IllegalStateException("No current driver session. Register a driver with DriverSessionManager first.");
+    }
     return actorWith(session);
   }
 
@@ -53,7 +56,8 @@ public final class ActorManager {
    * unnamed session onto a single actor - key unnamed sessions by their unique driver identity instead.
    */
   private static String actorKey(DriverSession<?> session) {
-    final var sessionName = session.sessionName();
-    return sessionName != null ? sessionName : "__unnamed__:" + System.identityHashCode(session);
+    return Optional.ofNullable(session)
+      .map(DriverSession::sessionName)
+      .orElseGet(() -> "__unnamed__:" + System.identityHashCode(session));
   }
 }

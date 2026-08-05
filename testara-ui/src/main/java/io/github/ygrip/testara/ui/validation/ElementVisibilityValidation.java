@@ -27,7 +27,8 @@ public class ElementVisibilityValidation extends ValidatorLogic<String, Boolean>
       }
 
       return true;
-    } catch (Exception ignored) {
+    } catch (Exception err) {
+      err.printStackTrace();
       return false;
     }
   }

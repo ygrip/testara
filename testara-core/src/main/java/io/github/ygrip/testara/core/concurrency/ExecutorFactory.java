@@ -3,6 +3,7 @@ package io.github.ygrip.testara.core.concurrency;
 import io.github.ygrip.testara.core.context.ExecutorRegistry;
 import lombok.extern.log4j.Log4j2;
 
+import java.util.List;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.Callable;
@@ -24,6 +25,7 @@ import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Supplier;
 
 /**
  * Wrapper for ExecutorService that ensures proper cleanup and prevents orphaned threads.
@@ -297,6 +299,38 @@ public class ExecutorFactory {
         maxThreads,
         threadNamePrefix);
     return executor;
+  }
+
+  /**
+   * Wrap a task so it runs with the calling thread's propagated context bound on whichever
+   * thread actually executes it - see {@link ThreadContextPropagator}. Without this, a task
+   * dispatched onto a fresh virtual/worker thread (e.g. via {@link #createVirtualThreadPerTaskExecutor})
+   * silently sees an empty/default context instead of the caller's (driver sessions, actors,
+   * etc.), since {@code ThreadLocal} state does not cross to unrelated threads.
+   *
+   * @param task the task to run with propagated context
+   * @return a supplier that captures the calling thread's context now and rebinds/unbinds it
+   *     around {@code task} when invoked, wherever that ends up running
+   */
+  public static <T> Supplier<T> withPropagatedContext(Supplier<T> task) {
+    List<ThreadContextPropagator> propagators = ThreadContextPropagatorLoader.load();
+    if (propagators.isEmpty()) {
+      return task;
+    }
+    List<Object> snapshots = propagators.stream()
+        .map(ThreadContextPropagator::capture)
+        .toList();
+
+    return () -> {
+      for (int i = 0; i < propagators.size(); i++) {
+        propagators.get(i).bind(snapshots.get(i));
+      }
+      try {
+        return task.get();
+      } finally {
+        propagators.forEach(ThreadContextPropagator::unbind);
+      }
+    };
   }
 
   /**

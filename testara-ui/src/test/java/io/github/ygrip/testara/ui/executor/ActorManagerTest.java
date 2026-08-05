@@ -7,6 +7,7 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import io.github.ygrip.testara.ui.config.AbstractDriverProperties;
 import io.github.ygrip.testara.ui.driver.DriverSession;
+import io.github.ygrip.testara.ui.driver.DriverSessionManager;
 import io.github.ygrip.testara.ui.model.DeviceType;
 import io.github.ygrip.testara.ui.page.PageContext;
 import io.github.ygrip.testara.ui.page.PageFinder;
@@ -16,6 +17,7 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -50,6 +52,22 @@ class ActorManagerTest {
   @AfterEach
   void clearThreadLocal() {
     ActorManager.bindToCurrentThread(null);
+    DriverSessionManager.bindToCurrentThread(null);
+  }
+
+  /**
+   * Regression coverage: currentActor() used to hand a null session straight to
+   * actorWith()/Actor.with(), which failed three frames down inside
+   * SessionInteractionContext.from() with an opaque "session cannot be null" - and callers like
+   * ElementVisibilityValidation.validate() swallow that as a false validation result instead of a
+   * clear setup error. Fail fast here instead, matching Actor.withCurrentSession()'s message.
+   */
+  @Test
+  void currentActorFailsFastWithAClearMessageWhenNoDriverIsRegistered() {
+    DriverSessionManager.bindToCurrentThread(null);
+
+    IllegalStateException ex = assertThrows(IllegalStateException.class, ActorManager::currentActor);
+    assertEquals("No current driver session. Register a driver with DriverSessionManager first.", ex.getMessage());
   }
 
   @Test
