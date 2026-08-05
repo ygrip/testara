@@ -1,0 +1,89 @@
+testara-ui-vibium/src/main/java/io/github/ygrip/testara/ui/vibium/driver/VibiumSession.java
+  1a6ae739a90fa1a6 43
+testara-elastic/pom.xml
+  1a6ae739a90fa1a6 28,31-32,35-36
+testara-archetypes/testara-archetype-ui-cucumber/pom.xml
+  1a6ae739a90fa1a6 35-49
+testara-agent-mcp/src/main/java/io/github/ygrip/testara/agent/mcp/McpServer.java
+  1a6ae739a90fa1a6 192
+testara-ui-appium/src/main/java/io/github/ygrip/testara/ui/appium/driver/AppiumSession.java
+  1a6ae739a90fa1a6 36
+pom.xml
+  1a6ae739a90fa1a6 64-65,450,453-455,458-460,847-851
+testara-junit5/src/test/java/io/github/ygrip/testara/engine/testsupport/MapConfigurationParameters.java
+  1a6ae739a90fa1a6 33
+testara-elastic/src/main/java/io/github/ygrip/testara/elastic/ElasticSearchHelperImpl.java
+  1a6ae739a90fa1a6 4-27,30,47,49,53,55,68-69,99-102,130,133,136,154,174,183-186,193,195,198,210,212,214-215,217,219,232-233,237-238,240,242,249,252,255,301,306,308,310,360-361,363-364,378,381,384,397,401,410,415,421,427,429-431,433,436-438,442,445,447-451,458,462-463,470-471,478,480-482,489-490,497,500,503,516,520-522,532-533,535,545-546,548-549,554-555,566,578,591,603,617,621,638,652,664,668-669,686,696,705,710-712,714-715,717,729
+testara-archetypes/testara-archetype-all-cucumber/pom.xml
+  1a6ae739a90fa1a6 35-49
+testara-ui-vibium/src/main/java/io/github/ygrip/testara/ui/vibium/engine/VibiumEngine.java
+  1a6ae739a90fa1a6 26
+testara-archetypes/testara-archetype-api-cucumber/pom.xml
+  1a6ae739a90fa1a6 35-49
+testara-agent/pom.xml
+  1a6ae739a90fa1a6 32,55
+testara-reporter-plugin/pom.xml
+  1a6ae739a90fa1a6 31
+testara-ui-playwright/src/main/java/io/github/ygrip/testara/ui/playwright/engine/PlaywrightEngine.java
+  1a6ae739a90fa1a6 31
+testara-ui-playwright/src/main/java/io/github/ygrip/testara/ui/playwright/driver/PlaywrightSession.java
+  1a6ae739a90fa1a6 50
+testara-reporter/src/main/java/io/github/ygrip/testara/reporter/cucumber/Embedding.java
+  1a6ae739a90fa1a6 7,49
+testara-agent-mcp/pom.xml
+  1a6ae739a90fa1a6 57-65
+testara-ui-cucumber/src/main/java/io/github/ygrip/testara/ui/steps/ProxySteps.java
+  1a6ae739a90fa1a6 54-55
+testara-elastic/src/main/java/io/github/ygrip/testara/elastic/ElasticSearchHelper.java
+  1a6ae739a90fa1a6 4-19,22,57,59,61,67,79,84-85,87,93,97,103-104,108,116,122,144,166,176-177,209,211,224,228,238,243,248,258-259,264,270,283,287,298,309,319,327,345,362,381,398,406,419,427,438,446,459,467-468,482,490,501,528,546,556,559,562,564
+testara-ui-appium/src/main/java/io/github/ygrip/testara/ui/appium/engine/AppiumEngine.java
+  1a6ae739a90fa1a6 43
+testara-ui/src/main/java/io/github/ygrip/testara/ui/model/TestaraProxyModel.java
+  1a6ae739a90fa1a6 3,28
+testara-agent-cli/pom.xml
+  1a6ae739a90fa1a6 89-97
+testara-ui-selenium/src/main/java/io/github/ygrip/testara/ui/selenium/driver/SeleniumSession.java
+  1a6ae739a90fa1a6 36
+testara-elastic/src/test/java/io/github/ygrip/testara/elastic/ElasticSearchTests.java
+  1a6ae739a90fa1a6 3-6,8,61,63-70,76,79,102,120
+testara-ui/src/main/java/io/github/ygrip/testara/ui/populator/ElementCatalog.java
+  1a6ae739a90fa1a6 363-365
+testara-api/src/main/java/io/github/ygrip/testara/api/ConcurrentRequestBuilderImpl.java
+  1a6ae739a90fa1a6 303
+testara-agent/src/main/java/io/github/ygrip/testara/agent/knowledge/JsonlKnowledgeStore.java
+  1a6ae739a90fa1a6 310
+testara-api/src/main/java/io/github/ygrip/testara/api/model/CreateRequestSpecification.java
+  1a6ae739a90fa1a6 37
+testara-core/src/test/java/io/github/ygrip/testara/testenv/TestEnvironmentExtension.java
+  1a6ae739a90fa1a6 12,24
+testara-ui-selenium/src/main/java/io/github/ygrip/testara/ui/selenium/engine/SeleniumEngine.java
+  1a6ae739a90fa1a6 44
+testara-core/src/main/java/io/github/ygrip/testara/core/support/SetUtils.java
+  1a6ae739a90fa1a6 25,58,99
+testara-elastic-cucumber/src/main/java/io/github/ygrip/testara/elastic/steps/ElasticSearchBaseSteps.java
+  1a6ae739a90fa1a6 18-23,25,126-127,131,158-159,164,271,277-278,280-282,340,346
+testara-elastic/src/test/java/io/github/ygrip/testara/elastic/testenv/ElasticModule.java
+  1a6ae739a90fa1a6 12,23
+testara-ui/src/main/java/io/github/ygrip/testara/ui/proxy/ProxyInstanceManager.java
+  1a6ae739a90fa1a6 47
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.23",
+  "base_commit_sha": "dd28eaaace54984c2f05a2470ad12581ef307148",
+  "prompts": {
+    "1a6ae739a90fa1a6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f7133a67-e10e-469c-aa85-d2bd57924e41",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "ygrip <yunaz.gilang@gmail.com>",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 369,
+      "overriden_lines": 0
+    }
+  }
+}
