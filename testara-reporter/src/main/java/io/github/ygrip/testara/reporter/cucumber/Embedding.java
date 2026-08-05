@@ -4,7 +4,7 @@ import java.io.Serializable;
 import java.nio.charset.StandardCharsets;
 import java.util.Locale;
 
-import org.codehaus.plexus.util.Base64;
+import java.util.Base64;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
@@ -46,7 +46,7 @@ public class Embedding implements Serializable {
 
   @JsonIgnore
   public String getDecodedData() {
-    return new String(Base64.decodeBase64(this.data.getBytes(StandardCharsets.UTF_8)), StandardCharsets.UTF_8);
+    return new String(Base64.getDecoder().decode(this.data.getBytes(StandardCharsets.UTF_8)), StandardCharsets.UTF_8);
   }
 
   @JsonIgnore

@@ -47,6 +47,7 @@ import lombok.extern.log4j.Log4j2;
  * {@code about:blank}).
  */
 @Log4j2
+@SuppressWarnings("unchecked")
 public final class PlaywrightSession implements DriverSession<Browser> {
   private static final long API_TIMEOUT_MINUTES = 10;
 

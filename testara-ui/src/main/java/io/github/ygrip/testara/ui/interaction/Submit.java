@@ -40,6 +40,7 @@ public final class Submit implements Interaction {
   }
 
   @Override
+  @SuppressWarnings("unchecked")
   public Interaction root(Element root) {
     return new Submit(root.withChild(element).child());
   }

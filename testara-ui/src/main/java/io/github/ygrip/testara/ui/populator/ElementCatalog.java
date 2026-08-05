@@ -360,7 +360,9 @@ public class ElementCatalog {
   }
 
   /**
-   * @deprecated use {@link #getResult(Object, List, String)} for thread-safe lookup
+   * Convenience overload that reads the current finder's keys/query at call time.
+   * Prefer {@link #getResult(Object, List, String)} when the catalog may be reused
+   * concurrently across threads between building the query and resolving it.
    */
   protected Map.Entry<JavaType, Object> getResult(Object instance) {
     if (this.finder == null) {

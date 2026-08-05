@@ -15,15 +15,14 @@ import io.cucumber.datatable.DataTable;
 import io.cucumber.java.en.Given;
 import io.cucumber.java.en.Then;
 import io.cucumber.java.en.When;
-import org.elasticsearch.action.get.GetRequest;
-import org.elasticsearch.action.index.IndexRequest;
-import org.elasticsearch.action.update.UpdateRequest;
-import org.elasticsearch.client.RequestOptions;
-import org.elasticsearch.xcontent.XContentType;
-import org.elasticsearch.search.sort.SortBuilder;
-import org.elasticsearch.search.sort.SortBuilders;
-import org.elasticsearch.search.sort.SortOrder;
+import co.elastic.clients.elasticsearch._types.SortOptions;
+import co.elastic.clients.elasticsearch._types.SortOrder;
+import co.elastic.clients.elasticsearch.core.GetRequest;
+import co.elastic.clients.elasticsearch.core.IndexRequest;
+import co.elastic.clients.elasticsearch.core.UpdateRequest;
+import co.elastic.clients.json.JsonData;
 
+import java.io.StringReader;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
@@ -91,7 +90,7 @@ public class ElasticSearchBaseSteps {
         Arrays.stream(index.split(",")).filter(entry -> !CommonHelper.isBlank(entry)).distinct().toArray(String[]::new);
     assertThat("No elastic search connection is established", elasticSearchHelper.isConnected(), equalTo(true));
 
-    response = elasticSearchHelper.count(query, indexes, routing, RequestOptions.DEFAULT);
+    response = elasticSearchHelper.count(query, indexes, routing);
   }
 
   @When("{elasticsearch} insert to index {string} with data :")
@@ -124,15 +123,12 @@ public class ElasticSearchBaseSteps {
     });
     assertThat("data should not be empty", CommonHelper.isBlank(data), equalTo(false));
 
-    IndexRequest request = new IndexRequest(indexName);
-    request.source(MapperHelper.toString(data), XContentType.JSON);
-    if (!CommonHelper.isBlank(type)) {
-      request.type(type);
-    }
+    IndexRequest.Builder<JsonData> request =
+        new IndexRequest.Builder<JsonData>().index(indexName).withJson(new StringReader(MapperHelper.toString(data)));
     if (!CommonHelper.isBlank(routing)) {
       request.routing(routing);
     }
-    response = elasticSearchHelper.index(request, RequestOptions.DEFAULT);
+    response = elasticSearchHelper.index(request.build());
   }
 
   @When("{elasticsearch} update document from index {string} with type {string} with id {string} and data :")
@@ -159,13 +155,13 @@ public class ElasticSearchBaseSteps {
     });
 
     if (!CommonHelper.isBlank(id)) {
-      UpdateRequest updateRequest = new UpdateRequest(indexName, type, id);
+      UpdateRequest.Builder<Void, Map<String, Object>> updateRequest =
+          new UpdateRequest.Builder<Void, Map<String, Object>>().index(indexName).id(id).doc(data);
       if (!CommonHelper.isBlank(routing)) {
         updateRequest.routing(routing);
       }
-      updateRequest.doc(data);
 
-      response = elasticSearchHelper.update(updateRequest, RequestOptions.DEFAULT);
+      response = elasticSearchHelper.update(updateRequest.build());
     }
   }
 
@@ -272,15 +268,18 @@ public class ElasticSearchBaseSteps {
         .toArray(String[]::new);
     Map<String, String> mappedSort = MapperHelper.toObject(data.getOrDefault("sortBy", "{}"), new TypeReference<>() {
     });
-    List<SortBuilder<?>> sorts = new ArrayList<>();
+    List<SortOptions> sorts = new ArrayList<>();
     if (CommonHelper.isBlank(mappedSort)) {
       String sortBy = MapperHelper.toString(data.getOrDefault("sortBy", null));
       if (!CommonHelper.isBlank(sortBy)) {
         String[] keywords = sortBy.split(":");
         if (keywords.length == 1) {
-          sorts.add(SortBuilders.fieldSort(keywords[0].trim()));
+          String field = keywords[0].trim();
+          sorts.add(SortOptions.of(s -> s.field(f -> f.field(field))));
         } else if (keywords.length > 1) {
-          sorts.add(SortBuilders.fieldSort(keywords[0].trim()).order(SortOrder.fromString(keywords[1].trim())));
+          String field = keywords[0].trim();
+          SortOrder order = "desc".equalsIgnoreCase(keywords[1].trim()) ? SortOrder.Desc : SortOrder.Asc;
+          sorts.add(SortOptions.of(s -> s.field(f -> f.field(field).order(order))));
         }
       }
     } else {
@@ -338,18 +337,13 @@ public class ElasticSearchBaseSteps {
     routing = TestFramework.context().converter().convert(routing);
     assertThat("No elastic search connection is established", elasticSearchHelper.isConnected(), equalTo(true));
 
-    GetRequest request = null;
-    if (!CommonHelper.isBlank(type)) {
-      request = new GetRequest(index, type, id);
-    } else {
-      request = new GetRequest(index);
-    }
+    GetRequest.Builder request = new GetRequest.Builder().index(index).id(id);
     if (!CommonHelper.isBlank(routing)) {
       request.routing(routing);
     }
 
     dataHolder.setResponse(key,
-        elasticSearchHelper.getOneAs(request, new TypeReference<LinkedHashMap<String, Object>>() {
+        elasticSearchHelper.getOneAs(request.build(), new TypeReference<LinkedHashMap<String, Object>>() {
         }));
   }
 

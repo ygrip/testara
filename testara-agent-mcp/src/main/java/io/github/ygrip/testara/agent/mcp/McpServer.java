@@ -189,7 +189,7 @@ public class McpServer {
     result.put("protocolVersion", "2024-11-05");
     result.putObject("capabilities")
       .putObject("tools");
-    result.with("capabilities")
+    result.withObject("capabilities")
       .putObject("prompts");
     ObjectNode info = result.putObject("serverInfo");
     info.put("name", SERVER_NAME);

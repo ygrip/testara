@@ -39,6 +39,7 @@ public final class Scroll implements Interaction {
   }
 
   @Override
+  @SuppressWarnings("unchecked")
   public Interaction root(Element root) {
     return new Scroll(root.withChild(locator).child(), alignToTop);
   }

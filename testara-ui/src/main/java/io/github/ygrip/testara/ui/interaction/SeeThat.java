@@ -279,6 +279,7 @@ public final class SeeThat implements Interaction {
   }
 
   @Override
+  @SuppressWarnings("unchecked")
   public Interaction root(Element root) {
     return new SeeThat(kind, root.withChild(locator).child(), expectedText);
   }

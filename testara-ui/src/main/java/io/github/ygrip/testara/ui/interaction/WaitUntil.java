@@ -251,6 +251,7 @@ public final class WaitUntil implements Interaction {
   }
 
   @Override
+  @SuppressWarnings("unchecked")
   public Interaction root(Element root) {
     return new WaitUntil(kind,
       root.withChild(locator)

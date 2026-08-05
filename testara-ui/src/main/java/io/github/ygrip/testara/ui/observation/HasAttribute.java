@@ -26,6 +26,7 @@ public final class HasAttribute implements Observation<Boolean> {
   }
 
   @Override
+  @SuppressWarnings("unchecked")
   public Observation<Boolean> root(Element root) {
     return new HasAttribute(root.withChild(element).child(), attributeName);
   }

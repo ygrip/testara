@@ -1,25 +1,25 @@
 package io.github.ygrip.testara.elastic;
 
 
+import co.elastic.clients.elasticsearch.ElasticsearchClient;
+import co.elastic.clients.elasticsearch._types.SearchType;
+import co.elastic.clients.elasticsearch._types.SortOptions;
+import co.elastic.clients.elasticsearch.cluster.HealthResponse;
+import co.elastic.clients.elasticsearch.core.CountRequest;
+import co.elastic.clients.elasticsearch.core.CountResponse;
+import co.elastic.clients.elasticsearch.core.DeleteRequest;
+import co.elastic.clients.elasticsearch.core.DeleteResponse;
+import co.elastic.clients.elasticsearch.core.GetRequest;
+import co.elastic.clients.elasticsearch.core.GetResponse;
+import co.elastic.clients.elasticsearch.core.IndexRequest;
+import co.elastic.clients.elasticsearch.core.IndexResponse;
+import co.elastic.clients.elasticsearch.core.SearchRequest;
+import co.elastic.clients.elasticsearch.core.SearchResponse;
+import co.elastic.clients.elasticsearch.core.UpdateRequest;
+import co.elastic.clients.elasticsearch.core.UpdateResponse;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JavaType;
-import org.elasticsearch.action.admin.cluster.health.ClusterHealthResponse;
-import org.elasticsearch.action.delete.DeleteRequest;
-import org.elasticsearch.action.delete.DeleteResponse;
-import org.elasticsearch.action.get.GetRequest;
-import org.elasticsearch.action.get.GetResponse;
-import org.elasticsearch.action.index.IndexRequest;
-import org.elasticsearch.action.index.IndexResponse;
-import org.elasticsearch.action.search.SearchRequest;
-import org.elasticsearch.action.search.SearchResponse;
-import org.elasticsearch.action.search.SearchType;
-import org.elasticsearch.action.update.UpdateRequest;
-import org.elasticsearch.action.update.UpdateResponse;
-import org.elasticsearch.client.RequestOptions;
-import org.elasticsearch.client.RestHighLevelClient;
-import org.elasticsearch.client.core.CountRequest;
-import org.elasticsearch.client.core.CountResponse;
-import org.elasticsearch.search.sort.SortBuilder;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import java.util.List;
 import java.util.Map;
@@ -54,17 +54,17 @@ public interface ElasticSearchHelper {
   boolean isConnected();
 
   /**
-   * Method to get current elastic search rest high level client connection
+   * Method to get current elastic search client connection
    *
-   * @return RestHighLevelClient
+   * @return ElasticsearchClient
    */
-  RestHighLevelClient getClient();
+  ElasticsearchClient getClient();
 
   /**
    * Method to index document to elastic search
    *
    * @param indexName is String of the elastic search index to be checked
-   * @param type      is String of the elastic search type to be checked
+   * @param type      is unused (Elasticsearch mapping types were removed in ES7+); kept for source compatibility
    * @param source    is object of document that want to be indexed in elastic search
    * @return IndexResponse
    */
@@ -74,55 +74,52 @@ public interface ElasticSearchHelper {
    * Method to index document to elastic search
    *
    * @param request is index request data from the elastic search
-   * @param options is the elastic request options
    * @return IndexResponse
    */
-  IndexResponse index(IndexRequest request, RequestOptions options);
+  IndexResponse index(IndexRequest<?> request);
 
   /**
    * Method to update document to elastic search
    *
-   * @param request is index request data from the elastic search
-   * @param options is the elastic request options
-   * @return IndexResponse
+   * @param request is update request data from the elastic search
+   * @return UpdateResponse
    */
-  UpdateResponse update(UpdateRequest request, RequestOptions options);
+  UpdateResponse<ObjectNode> update(UpdateRequest<?, ?> request);
 
   /**
    * Method to get document by id from elastic search
    *
    * @param indexName is String of the elastic search index to be checked
-   * @param type      is String of the elastic search type to be checked
+   * @param type      is unused (Elasticsearch mapping types were removed in ES7+); kept for source compatibility
    * @param id        is id of the elastic document index to be checked
    * @return GetResponse
    */
-  GetResponse getOne(String indexName, String type, String id);
+  GetResponse<ObjectNode> getOne(String indexName, String type, String id);
 
   /**
    * Method to get document by id from elastic search
    *
    * @param indexName is String of the elastic search index to be checked
-   * @param type      is String of the elastic search type to be checked
-   * @param routing      is String of the elastic search routing id to be checked
+   * @param type      is unused (Elasticsearch mapping types were removed in ES7+); kept for source compatibility
+   * @param routing   is String of the elastic search routing id to be checked
    * @param id        is id of the elastic document index to be checked
    * @return GetResponse
    */
-  GetResponse getOne(String indexName, String type, String routing, String id);
+  GetResponse<ObjectNode> getOne(String indexName, String type, String routing, String id);
 
   /**
    * Method to get document by id from elastic search
    *
    * @param request is get request data from the elastic search
-   * @param options is the elastic request options
    * @return GetResponse
    */
-  GetResponse getOne(GetRequest request, RequestOptions options);
+  GetResponse<ObjectNode> getOne(GetRequest request);
 
   /**
    * Method to get document by id from elastic search
    *
    * @param indexName is String of the elastic search index to be checked
-   * @param type      is String of the elastic search type to be checked
+   * @param type      is unused (Elasticsearch mapping types were removed in ES7+); kept for source compatibility
    * @param id        is id of the elastic document index to be checked
    * @param clazz     is the data type user desired as output
    * @return T object typce
@@ -144,7 +141,7 @@ public interface ElasticSearchHelper {
    * Method to get document by id from elastic search
    *
    * @param indexName is String of the elastic search index to be checked
-   * @param type      is String of the elastic search type to be checked
+   * @param type      is unused (Elasticsearch mapping types were removed in ES7+); kept for source compatibility
    * @param id        is id of the elastic document index to be checked
    * @param reference is the data type user desired as output
    * @return T object typce
@@ -166,7 +163,7 @@ public interface ElasticSearchHelper {
    * Method to delete document by id from elastic search
    *
    * @param indexName is String of the elastic search index to be checked
-   * @param type      is String of the elastic search type to be checked
+   * @param type      is unused (Elasticsearch mapping types were removed in ES7+); kept for source compatibility
    * @param id        is id of the elastic document index to be checked
    * @return GetResponse
    */
@@ -176,8 +173,8 @@ public interface ElasticSearchHelper {
    * Method to delete document by id from elastic search
    *
    * @param indexName is String of the elastic search index to be checked
-   * @param type      is String of the elastic search type to be checked
-   * @param routing      is String of the elastic search routing id to be checked
+   * @param type      is unused (Elasticsearch mapping types were removed in ES7+); kept for source compatibility
+   * @param routing   is String of the elastic search routing id to be checked
    * @param id        is id of the elastic document index to be checked
    * @return GetResponse
    */
@@ -187,10 +184,9 @@ public interface ElasticSearchHelper {
    * Method to delete document by id from elastic search
    *
    * @param request is delete request data from the elastic search
-   * @param options is the elastic request options
    * @return GetResponse
    */
-  DeleteResponse deleteOne(DeleteRequest request, RequestOptions options);
+  DeleteResponse deleteOne(DeleteRequest request);
 
   /**
    * Method to check whether elastic search index is exists
@@ -210,75 +206,9 @@ public interface ElasticSearchHelper {
   /**
    * Method to check cluster health info a an elastic search system
    *
-   * @return ClusterHealthResponse
+   * @return HealthResponse
    */
-  ClusterHealthResponse getClusterHealthInfo();
-
-  /**
-   * Method to search documents from elastic search
-   *
-   * @param luceneQuery is lucene query to be passed to elastic search
-   * @param indexes     is list of index to check, if empty then will search all indexes
-   * @param offset      is number of document to skip
-   * @param limit       is number of document to fetch
-   * @param sorts       list of sort rule
-   * @param type        is the elastic search type
-   * @param options     is the elastic request options
-   * @return SearchResponse
-   */
-  SearchResponse search(String luceneQuery,
-      String[] indexes,
-      int offset,
-      int limit,
-      List<SortBuilder<?>> sorts,
-      SearchType type,
-      RequestOptions options);
-
-  /**
-   * Method to search documents from elastic search
-   *
-   * @param luceneQuery is lucene query to be passed to elastic search
-   * @param indexes     is list of index to check, if empty then will search all indexes
-   * @param offset      is number of document to skip
-   * @param limit       is number of document to fetch
-   * @param types       is list of document type
-   * @param sorts       list of sort rule
-   * @param searchType  is the elastic search type
-   * @param options     is the elastic request options
-   * @return SearchResponse
-   */
-  SearchResponse search(String luceneQuery,
-      String[] indexes,
-      int offset,
-      int limit,
-      String[] types,
-      List<SortBuilder<?>> sorts,
-      SearchType searchType,
-      RequestOptions options);
-
-  /**
-   * Method to search documents from elastic search
-   *
-   * @param luceneQuery is lucene query to be passed to elastic search
-   * @param indexes     is list of index to check, if empty then will search all indexes
-   * @param offset      is number of document to skip
-   * @param limit       is number of document to fetch
-   * @param types       is list of document type
-   * @param routings     is list of routing id of elastic search
-   * @param sorts       list of sort rule
-   * @param searchType  is the elastic search type
-   * @param options     is the elastic request options
-   * @return SearchResponse
-   */
-  SearchResponse search(String luceneQuery,
-      String[] indexes,
-      int offset,
-      int limit,
-      String[] types,
-      String[] routings,
-      List<SortBuilder<?>> sorts,
-      SearchType searchType,
-      RequestOptions options);
+  HealthResponse getClusterHealthInfo();
 
   /**
    * Method to search documents from elastic search
@@ -291,11 +221,11 @@ public interface ElasticSearchHelper {
    * @param type        is the elastic search type
    * @return SearchResponse
    */
-  SearchResponse search(String luceneQuery,
+  SearchResponse<ObjectNode> search(String luceneQuery,
       String[] indexes,
       int offset,
       int limit,
-      List<SortBuilder<?>> sorts,
+      List<SortOptions> sorts,
       SearchType type);
 
   /**
@@ -305,14 +235,56 @@ public interface ElasticSearchHelper {
    * @param indexes     is list of index to check, if empty then will search all indexes
    * @param offset      is number of document to skip
    * @param limit       is number of document to fetch
+   * @param types       is unused (Elasticsearch mapping types were removed in ES7+); kept for source compatibility
    * @param sorts       list of sort rule
+   * @param searchType  is the elastic search type
    * @return SearchResponse
    */
-  SearchResponse search(String luceneQuery,
+  SearchResponse<ObjectNode> search(String luceneQuery,
       String[] indexes,
       int offset,
       int limit,
-      List<SortBuilder<?>> sorts);
+      String[] types,
+      List<SortOptions> sorts,
+      SearchType searchType);
+
+  /**
+   * Method to search documents from elastic search
+   *
+   * @param luceneQuery is lucene query to be passed to elastic search
+   * @param indexes     is list of index to check, if empty then will search all indexes
+   * @param offset      is number of document to skip
+   * @param limit       is number of document to fetch
+   * @param types       is unused (Elasticsearch mapping types were removed in ES7+); kept for source compatibility
+   * @param routings    is list of routing id of elastic search
+   * @param sorts       list of sort rule
+   * @param searchType  is the elastic search type
+   * @return SearchResponse
+   */
+  SearchResponse<ObjectNode> search(String luceneQuery,
+      String[] indexes,
+      int offset,
+      int limit,
+      String[] types,
+      String[] routings,
+      List<SortOptions> sorts,
+      SearchType searchType);
+
+  /**
+   * Method to search documents from elastic search
+   *
+   * @param luceneQuery is lucene query to be passed to elastic search
+   * @param indexes     is list of index to check, if empty then will search all indexes
+   * @param offset      is number of document to skip
+   * @param limit       is number of document to fetch
+   * @param sorts       list of sort rule
+   * @return SearchResponse
+   */
+  SearchResponse<ObjectNode> search(String luceneQuery,
+      String[] indexes,
+      int offset,
+      int limit,
+      List<SortOptions> sorts);
 
   /**
    * Method to search documents from elastic search
@@ -323,40 +295,18 @@ public interface ElasticSearchHelper {
    * @param sorts       list of sort rule
    * @return SearchResponse
    */
-  SearchResponse search(String luceneQuery,
-      String[] indexes,
-      int limit,
-      List<SortBuilder<?>> sorts);
+  SearchResponse<ObjectNode> search(String luceneQuery, String[] indexes, int limit, List<SortOptions> sorts);
 
   /**
    * Method to search documents from elastic search
    *
    * @param luceneQuery is lucene query to be passed to elastic search
    * @param indexes     is list of index to check, if empty then will search all indexes
+   * @param sorts       list of sort rule
    * @param type        is the elastic search type
-   * @param options     is the elastic request options
-   * @param sorts       list of sort rule
    * @return SearchResponse
    */
-  SearchResponse search(String luceneQuery,
-      String[] indexes,
-      List<SortBuilder<?>> sorts,
-      SearchType type,
-      RequestOptions options);
-
-  /**
-   * Method to search documents from elastic search
-   *
-   * @param luceneQuery is lucene query to be passed to elastic search
-   * @param options     is the elastic request options
-   * @param sorts       list of sort rule
-   * @return SearchResponse
-   * @param indexes an array of {@link String} objects.
-   */
-  SearchResponse search(String luceneQuery,
-      String[] indexes,
-      List<SortBuilder<?>> sorts,
-      RequestOptions options);
+  SearchResponse<ObjectNode> search(String luceneQuery, String[] indexes, List<SortOptions> sorts, SearchType type);
 
   /**
    * Method to search documents from elastic search
@@ -366,16 +316,7 @@ public interface ElasticSearchHelper {
    * @param sorts       list of sort rule
    * @return SearchResponse
    */
-  SearchResponse search(String luceneQuery, String[] indexes, List<SortBuilder<?>> sorts);
-
-  /**
-   * Method to search documents from elastic search
-   *
-   * @param request is the elastic search request
-   * @param options is the elastic request options
-   * @return SearchResponse
-   */
-  SearchResponse search(SearchRequest request, RequestOptions options);
+  SearchResponse<ObjectNode> search(String luceneQuery, String[] indexes, List<SortOptions> sorts);
 
   /**
    * Method to search documents from elastic search
@@ -383,7 +324,7 @@ public interface ElasticSearchHelper {
    * @param request is the elastic search request
    * @return SearchResponse
    */
-  SearchResponse search(SearchRequest request);
+  SearchResponse<ObjectNode> search(SearchRequest request);
 
   /**
    * Method to get document from elastic search and parse it into specified data type
@@ -401,7 +342,7 @@ public interface ElasticSearchHelper {
       String[] indexes,
       int offset,
       int limit,
-      List<SortBuilder<?>> sorts,
+      List<SortOptions> sorts,
       Class<T> clazz);
 
   /**
@@ -418,7 +359,7 @@ public interface ElasticSearchHelper {
   <T> List<T> getSearchDataAs(String luceneQuery,
       String[] indexes,
       int limit,
-      List<SortBuilder<?>> sorts,
+      List<SortOptions> sorts,
       Class<T> clazz);
 
   /**
@@ -437,7 +378,7 @@ public interface ElasticSearchHelper {
       String[] indexes,
       int offset,
       int limit,
-      List<SortBuilder<?>> sorts,
+      List<SortOptions> sorts,
       TypeReference<T> type);
 
   /**
@@ -454,7 +395,7 @@ public interface ElasticSearchHelper {
   <T> List<T> getSearchDataAs(String luceneQuery,
       String[] indexes,
       int limit,
-      List<SortBuilder<?>> sorts,
+      List<SortOptions> sorts,
       TypeReference<T> type);
 
   /**
@@ -462,7 +403,7 @@ public interface ElasticSearchHelper {
    *
    * @param luceneQuery is lucene query to be passed to elastic search
    * @param indexes     is list of index to check, if empty then will search all indexes
-   * @param types       is list of document type
+   * @param types       is unused (Elasticsearch mapping types were removed in ES7+); kept for source compatibility
    * @param offset      is the number of document to be skipped
    * @param limit       is the number of limit document to be fetched
    * @param sorts       list of sort rule
@@ -475,7 +416,7 @@ public interface ElasticSearchHelper {
       String[] types,
       int offset,
       int limit,
-      List<SortBuilder<?>> sorts,
+      List<SortOptions> sorts,
       Class<T> clazz);
 
   /**
@@ -483,7 +424,7 @@ public interface ElasticSearchHelper {
    *
    * @param luceneQuery is lucene query to be passed to elastic search
    * @param indexes     is list of index to check, if empty then will search all indexes
-   * @param types       is list of document type
+   * @param types       is unused (Elasticsearch mapping types were removed in ES7+); kept for source compatibility
    * @param limit       is the number of limit document to be fetched
    * @param sorts       list of sort rule
    * @param clazz       java class or type reference
@@ -494,7 +435,7 @@ public interface ElasticSearchHelper {
       String[] indexes,
       String[] types,
       int limit,
-      List<SortBuilder<?>> sorts,
+      List<SortOptions> sorts,
       Class<T> clazz);
 
   /**
@@ -502,11 +443,10 @@ public interface ElasticSearchHelper {
    *
    * @param luceneQuery is lucene query to be passed to elastic search
    * @param indexes     is list of index to check, if empty then will search all indexes
-   * @param types       is list of document type
+   * @param types       is unused (Elasticsearch mapping types were removed in ES7+); kept for source compatibility
    * @param offset      is the number of document to be skipped
    * @param limit       is the number of limit document to be fetched
    * @param sorts       list of sort rule
-   * @param types       is list of document type
    * @param type        java class or type reference
    * @return List of type
    * @param <T> a T object.
@@ -516,7 +456,7 @@ public interface ElasticSearchHelper {
       String[] types,
       int offset,
       int limit,
-      List<SortBuilder<?>> sorts,
+      List<SortOptions> sorts,
       TypeReference<T> type);
 
   /**
@@ -524,12 +464,11 @@ public interface ElasticSearchHelper {
    *
    * @param luceneQuery is lucene query to be passed to elastic search
    * @param indexes     is list of index to check, if empty then will search all indexes
-   * @param types       is list of document type
-   * @param routings     is list of elastic search routing id
+   * @param types       is unused (Elasticsearch mapping types were removed in ES7+); kept for source compatibility
+   * @param routings    is list of elastic search routing id
    * @param offset      is the number of document to be skipped
    * @param limit       is the number of limit document to be fetched
    * @param sorts       list of sort rule
-   * @param types       is list of document type
    * @param type        java class or type reference
    * @return List of type
    * @param <T> a T object.
@@ -540,7 +479,7 @@ public interface ElasticSearchHelper {
       String[] routings,
       int offset,
       int limit,
-      List<SortBuilder<?>> sorts,
+      List<SortOptions> sorts,
       TypeReference<T> type);
 
   /**
@@ -548,10 +487,9 @@ public interface ElasticSearchHelper {
    *
    * @param luceneQuery is lucene query to be passed to elastic search
    * @param indexes     is list of index to check, if empty then will search all indexes
-   * @param types       is list of document type
+   * @param types       is unused (Elasticsearch mapping types were removed in ES7+); kept for source compatibility
    * @param limit       is the number of limit document to be fetched
    * @param sorts       list of sort rule
-   * @param types       is list of document type
    * @param type        java class or type reference
    * @return List of type
    * @param <T> a T object.
@@ -560,7 +498,7 @@ public interface ElasticSearchHelper {
       String[] indexes,
       String[] types,
       int limit,
-      List<SortBuilder<?>> sorts,
+      List<SortOptions> sorts,
       TypeReference<T> type);
 
   /**
@@ -569,16 +507,6 @@ public interface ElasticSearchHelper {
    * @return CountResponse
    */
   CountResponse count();
-
-  /**
-   * Method to count matching documents from elastic search
-   *
-   * @param luceneQuery is lucene query to be passed to elastic search
-   * @param indexes     is list of index to check, if empty then will search all indexes
-   * @param options     is the elastic request options
-   * @return CountResponse
-   */
-  CountResponse count(String luceneQuery, String[] indexes, RequestOptions options);
 
   /**
    * Method to count matching documents from elastic search
@@ -595,19 +523,9 @@ public interface ElasticSearchHelper {
    * @param luceneQuery is lucene query to be passed to elastic search
    * @param indexes     is list of index to check, if empty then will search all indexes
    * @param routing     is routing id of elastic search
-   * @param options     is the elastic request options
    * @return CountResponse
    */
-  CountResponse count(String luceneQuery, String[] indexes, String routing, RequestOptions options);
-
-  /**
-   * Method to count matching documents from elastic search
-   *
-   * @param request is the elastic count request
-   * @param options is the elastic request options
-   * @return CountResponse
-   */
-  CountResponse count(CountRequest request, RequestOptions options);
+  CountResponse count(String luceneQuery, String[] indexes, String routing);
 
   /**
    * Method to count matching documents from elastic search
@@ -625,7 +543,7 @@ public interface ElasticSearchHelper {
    * @return List of type data
    * @param <T> a T object.
    */
-  <T> List<T> parseSearchData(SearchResponse response, JavaType type);
+  <T> List<T> parseSearchData(SearchResponse<ObjectNode> response, JavaType type);
 
   /**
    * Method to convert result of elastic search document into user specified type data
@@ -635,13 +553,13 @@ public interface ElasticSearchHelper {
    * @return List of type data
    * @param <T> a T object.
    */
-  <T> T parseOneDocumentData(GetResponse response, JavaType type);
+  <T> T parseOneDocumentData(GetResponse<ObjectNode> response, JavaType type);
 
   /**
-   * Method to convert hash map object to list of elastic search sort builder
+   * Method to convert hash map object to list of elastic search sort options
    *
    * @param sorts is the hash map request, contains key of the field to sort and the order type
-   * @return List of source builder data
+   * @return List of sort options
    */
-  List<SortBuilder<?>> parseSortBuilder(Map<String, String> sorts);
+  List<SortOptions> parseSortBuilder(Map<String, String> sorts);
 }

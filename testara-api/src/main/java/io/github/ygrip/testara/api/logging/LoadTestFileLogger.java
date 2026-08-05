@@ -99,7 +99,7 @@ public class LoadTestFileLogger implements AutoCloseable {
     ObjectMapper mapper = new ObjectMapper();
     mapper.registerModule(new JavaTimeModule());
     mapper.configure(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS, false);
-    mapper.setSerializationInclusion(JsonInclude.Include.NON_NULL);
+    mapper.setDefaultPropertyInclusion(JsonInclude.Include.NON_NULL);
     mapper.configure(SerializationFeature.INDENT_OUTPUT, true);
     return mapper;
   }

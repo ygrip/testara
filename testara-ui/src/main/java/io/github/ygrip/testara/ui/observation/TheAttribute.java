@@ -25,6 +25,7 @@ public final class TheAttribute implements Observation<String> {
   }
 
   @Override
+  @SuppressWarnings("unchecked")
   public Observation<String> root(Element root) {
     return new TheAttribute(root.withChild(element).child(), attributeName);
   }

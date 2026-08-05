@@ -33,6 +33,7 @@ public final class TheText implements Observation<String> {
   }
 
   @Override
+  @SuppressWarnings("unchecked")
   public Observation<String> root(Element root) {
     return new TheText(root.withChild(element).child());
   }

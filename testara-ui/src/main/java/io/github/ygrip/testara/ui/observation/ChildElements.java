@@ -32,6 +32,7 @@ public final class ChildElements implements Observation<List<?>> {
   }
 
   @Override
+  @SuppressWarnings("unchecked")
   public Observation<List<?>> root(Element root) {
     return new ChildElements(root.withChild(element).child());
   }
@@ -50,18 +51,21 @@ public final class ChildElements implements Observation<List<?>> {
       this.child = child;
     }
 
+    @SuppressWarnings("unchecked")
     public ChildElements fromParent(String locator) {
       return new ChildElements(Element.of(locator)
         .build()
         .withChild(child));
     }
 
+    @SuppressWarnings("unchecked")
     public ChildElements fromParent(Locator locator) {
       return new ChildElements(Element.of(locator)
         .build()
         .withChild(child));
     }
 
+    @SuppressWarnings("unchecked")
     public ChildElements fromParent(Element.ElementContext locator) {
       return new ChildElements(locator.build()
         .withChild(child));

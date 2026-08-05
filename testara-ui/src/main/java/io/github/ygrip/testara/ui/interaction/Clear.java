@@ -37,6 +37,7 @@ public final class Clear implements Interaction {
   }
 
   @Override
+  @SuppressWarnings("unchecked")
   public Interaction root(Element root) {
     return new Clear(root.withChild(element).child());
   }

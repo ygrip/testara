@@ -34,5 +34,6 @@ public class CreateRequestSpecification {
   private Object payload;
   private Set<RequestLog> requestLog;
   private Set<ResponseLog> responseLog;
+  @Builder.Default
   private boolean autoCloseConnection = false;
 }

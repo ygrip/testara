@@ -33,6 +33,7 @@ public final class DoubleClick implements Interaction {
   }
 
   @Override
+  @SuppressWarnings("unchecked")
   public Interaction root(Element root) {
     return new DoubleClick(root.withChild(element).child());
   }

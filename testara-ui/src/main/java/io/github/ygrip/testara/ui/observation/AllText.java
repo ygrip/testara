@@ -34,6 +34,7 @@ public final class AllText implements Observation<List<String>> {
   }
 
   @Override
+  @SuppressWarnings("unchecked")
   public Observation<List<String>> root(Element root) {
     return new AllText(root.withChild(element).child());
   }

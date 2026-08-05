@@ -51,9 +51,8 @@ public class ProxySteps {
    * Resolve the active proxy for the current test thread via {@link ProxyInstanceManager}.
    * The proxy is registered during driver setup by each {@code ProxyFactory} implementation.
    */
-  @SuppressWarnings("rawtypes")
-  private AbstractProxy proxy() {
-    AbstractProxy proxy = ProxyInstanceManager.currentProxy();
+  private AbstractProxy<?> proxy() {
+    AbstractProxy<?> proxy = ProxyInstanceManager.currentProxy();
     assertThat("No proxy has been registered for the current thread. "
       + "Ensure the driver was started with a proxy type (standalone, embedded, or mitmproxy).", proxy, notNullValue());
     return proxy;

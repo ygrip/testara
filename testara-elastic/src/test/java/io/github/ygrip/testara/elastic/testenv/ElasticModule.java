@@ -9,7 +9,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 
 /**
- * Manages a single Elasticsearch 7.17 container (~512 MB expected memory).
+ * Manages a single Elasticsearch 8.15 container (~512 MB expected memory).
  * Heap is capped at 256 MB via ES_JAVA_OPTS.
  * Seeds test index and documents after startup.
  */
@@ -20,7 +20,7 @@ public class ElasticModule implements EnvironmentModule {
     @Override
     public void start() {
         elasticsearch = new ElasticsearchContainer(
-            "docker.elastic.co/elasticsearch/elasticsearch:7.17.27")
+            "docker.elastic.co/elasticsearch/elasticsearch:8.15.0")
             .withEnv("ES_JAVA_OPTS", "-Xms256m -Xmx256m")
             .withEnv("discovery.type", "single-node")
             .withEnv("xpack.security.enabled", "false");

@@ -50,6 +50,7 @@ public final class SelectOption implements Interaction {
   }
 
   @Override
+  @SuppressWarnings("unchecked")
   public Interaction root(Element root) {
     return new SelectOption(root.withChild(element).child(), strategy, stringArg, indexArg);
   }

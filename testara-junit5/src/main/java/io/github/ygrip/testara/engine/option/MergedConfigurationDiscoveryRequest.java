@@ -6,7 +6,6 @@ import org.junit.platform.engine.DiscoverySelector;
 import org.junit.platform.engine.EngineDiscoveryListener;
 import org.junit.platform.engine.EngineDiscoveryRequest;
 import org.junit.platform.engine.OutputDirectoryCreator;
-import org.junit.platform.engine.reporting.OutputDirectoryProvider;
 
 import java.util.List;
 
@@ -44,11 +43,6 @@ public final class MergedConfigurationDiscoveryRequest implements EngineDiscover
   @Override
   public EngineDiscoveryListener getDiscoveryListener() {
     return delegate.getDiscoveryListener();
-  }
-
-  @Override
-  public OutputDirectoryProvider getOutputDirectoryProvider() {
-    return delegate.getOutputDirectoryProvider();
   }
 
   @Override

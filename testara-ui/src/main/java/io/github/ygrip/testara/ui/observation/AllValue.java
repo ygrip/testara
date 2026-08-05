@@ -34,6 +34,7 @@ public final class AllValue implements Observation<List<String>> {
   }
 
   @Override
+  @SuppressWarnings("unchecked")
   public Observation<List<String>> root(Element root) {
     return new AllValue(root.withChild(element).child());
   }

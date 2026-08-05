@@ -38,6 +38,7 @@ public final class Hold implements Interaction {
   }
 
   @Override
+  @SuppressWarnings("unchecked")
   public Interaction root(Element root) {
     return new Hold(root.withChild(locator).child(), duration);
   }

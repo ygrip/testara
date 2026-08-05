@@ -44,8 +44,7 @@ public final class ProxyInstanceManager {
    *
    * @return the active proxy, or {@code null} if none has been registered
    */
-  @SuppressWarnings("rawtypes")
-  public static AbstractProxy currentProxy() {
+  public static AbstractProxy<?> currentProxy() {
     return PROXY_THREAD_LOCAL.get();
   }
 

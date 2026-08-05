@@ -52,6 +52,7 @@ public final class Enter implements Interaction {
   }
 
   @Override
+  @SuppressWarnings("unchecked")
   public Interaction root(Element root) {
     return new Enter(text, root.withChild(locator).child());
   }

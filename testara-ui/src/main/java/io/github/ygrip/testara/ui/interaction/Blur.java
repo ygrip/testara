@@ -40,6 +40,7 @@ public final class Blur implements Interaction {
   }
 
   @Override
+  @SuppressWarnings("unchecked")
   public Interaction root(Element root) {
     return new Blur(root.withChild(element).child());
   }

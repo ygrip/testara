@@ -45,7 +45,7 @@ public class CucumberReportParser {
     mapper.configure(SerializationFeature.FAIL_ON_SELF_REFERENCES, false);
     mapper.enable(DeserializationFeature.USE_BIG_DECIMAL_FOR_FLOATS);
     mapper.registerModule(new JavaTimeModule());
-    mapper.setSerializationInclusion(JsonInclude.Include.NON_NULL);
+    mapper.setDefaultPropertyInclusion(JsonInclude.Include.NON_NULL);
     return mapper;
   }
 

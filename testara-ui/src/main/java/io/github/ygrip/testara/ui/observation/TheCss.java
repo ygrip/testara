@@ -25,6 +25,7 @@ public final class TheCss implements Observation<String> {
   }
 
   @Override
+  @SuppressWarnings("unchecked")
   public Observation<String> root(Element root) {
     return new TheCss(root.withChild(element).child(), propertyName);
   }

@@ -33,6 +33,7 @@ import io.appium.java_client.AppiumDriver;
 import lombok.extern.log4j.Log4j2;
 
 @Log4j2
+@SuppressWarnings("unchecked")
 public final class AppiumSession implements DriverSession<AppiumDriver> {
   private final DeviceType deviceType;
   private AppiumDriver driver;

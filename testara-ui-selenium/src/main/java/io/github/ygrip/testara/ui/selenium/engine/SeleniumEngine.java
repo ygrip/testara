@@ -41,6 +41,7 @@ import io.github.bonigarcia.wdm.WebDriverManager;
 import lombok.extern.log4j.Log4j2;
 
 @Log4j2
+@SuppressWarnings("unchecked")
 public final class SeleniumEngine implements EngineFactory<SeleniumDriverProperties> {
   private static final String ID = "selenium";
   private static final String DEFAULT_REMOTE_URL = "http://localhost:4444/";

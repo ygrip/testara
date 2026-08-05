@@ -34,6 +34,7 @@ public final class StateElement implements Observation<Boolean> {
   }
 
   @Override
+  @SuppressWarnings("unchecked")
   public Observation<Boolean> root(Element root) {
     return new StateElement(kind, root.withChild(element).child());
   }

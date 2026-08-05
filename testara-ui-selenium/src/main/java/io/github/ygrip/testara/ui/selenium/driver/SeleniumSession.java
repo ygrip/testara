@@ -33,6 +33,7 @@ import io.github.ygrip.testara.ui.selenium.page.SeleniumPageFinder;
 import lombok.extern.log4j.Log4j2;
 
 @Log4j2
+@SuppressWarnings("unchecked")
 public final class SeleniumSession implements DriverSession<WebDriver> {
   private WebDriver driver;
   private DeviceType deviceType;
@@ -105,7 +106,6 @@ public final class SeleniumSession implements DriverSession<WebDriver> {
   }
 
   @Override
-  @SuppressWarnings("unchecked")
   public SeleniumPageFinder finder() {
     SeleniumPageFinder finder;
     try {

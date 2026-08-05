@@ -32,6 +32,7 @@ public final class TheValue implements Observation<String> {
   }
 
   @Override
+  @SuppressWarnings("unchecked")
   public Observation<String> root(Element root) {
     return new TheValue(root.withChild(element).child());
   }

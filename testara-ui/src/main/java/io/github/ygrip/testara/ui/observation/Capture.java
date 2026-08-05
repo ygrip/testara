@@ -69,6 +69,7 @@ public final class Capture implements Observation<byte[]> {
   }
 
   @Override
+  @SuppressWarnings("unchecked")
   public Observation<byte[]> root(Element root) {
     if (target == Target.ELEMENT) {
       return new Capture(Target.ELEMENT, root.withChild(element).child(), null);

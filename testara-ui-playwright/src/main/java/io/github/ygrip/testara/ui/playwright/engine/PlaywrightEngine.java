@@ -28,6 +28,7 @@ import io.github.ygrip.testara.ui.playwright.driver.StealthProvider;
 import lombok.extern.log4j.Log4j2;
 
 @Log4j2
+@SuppressWarnings("unchecked")
 public final class PlaywrightEngine implements EngineFactory<PlaywrightDriverProperties> {
   private static final String ID = "playwright";
   private static final String DEFAULT_REMOTE_URL = "ws://localhost:3000/";

@@ -40,6 +40,7 @@ public final class ForceClick implements Interaction {
   }
 
   @Override
+  @SuppressWarnings("unchecked")
   public Interaction root(Element root) {
     return new ForceClick(root.withChild(element).child());
   }

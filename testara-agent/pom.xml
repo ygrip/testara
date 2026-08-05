@@ -29,6 +29,7 @@
       <plugin>
         <groupId>org.codehaus.mojo</groupId>
         <artifactId>exec-maven-plugin</artifactId>
+        <version>3.6.3</version>
         <executions>
           <execution>
             <id>generate-agent-knowledge</id>
@@ -51,6 +52,7 @@
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-resources-plugin</artifactId>
+        <version>3.4.0</version>
         <executions>
           <execution>
             <id>copy-generated-agent-resources</id>

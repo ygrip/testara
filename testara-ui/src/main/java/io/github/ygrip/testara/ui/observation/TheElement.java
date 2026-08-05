@@ -32,6 +32,7 @@ public final class TheElement implements Observation<Object> {
   }
 
   @Override
+  @SuppressWarnings("unchecked")
   public Observation<Object> root(Element root) {
     return new TheElement(root.withChild(element).child());
   }

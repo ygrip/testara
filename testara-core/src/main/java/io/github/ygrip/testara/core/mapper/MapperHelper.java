@@ -91,7 +91,7 @@ public class MapperHelper {
    * Create optimized ObjectMapper with performance-focused configuration
    */
   private static ObjectMapper createOptimizedObjectMapper() {
-    ObjectMapper mapper = new ObjectMapper().setSerializationInclusion(JsonInclude.Include.ALWAYS)
+    ObjectMapper mapper = new ObjectMapper().setDefaultPropertyInclusion(JsonInclude.Include.ALWAYS)
         .setVisibility(PropertyAccessor.FIELD, JsonAutoDetect.Visibility.ANY)
         // Optimized serialization settings
         .configure(SerializationFeature.FAIL_ON_EMPTY_BEANS, false)
@@ -122,7 +122,7 @@ public class MapperHelper {
     xmlModule.setDefaultUseWrapper(false);
 
     XmlMapper mapper = new XmlMapper(xmlModule);
-    mapper.setSerializationInclusion(JsonInclude.Include.ALWAYS);
+    mapper.setDefaultPropertyInclusion(JsonInclude.Include.ALWAYS);
     mapper.setVisibility(PropertyAccessor.FIELD, JsonAutoDetect.Visibility.ANY);
     // Optimized settings for XML processing
     mapper.configure(SerializationFeature.FAIL_ON_EMPTY_BEANS, false);

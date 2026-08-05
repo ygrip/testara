@@ -1,5 +1,6 @@
 package io.github.ygrip.testara.ui.model;
 
+import java.net.URI;
 import java.net.URL;
 
 import lombok.Data;
@@ -24,7 +25,7 @@ public class TestaraProxyModel {
    */
   public TestaraProxyModel(String proxyAddress) {
     try {
-      URL url = new URL(proxyAddress);
+      URL url = URI.create(proxyAddress).toURL();
       this.protocol = url.getProtocol();
       this.proxyHost = url.getHost();
       this.proxyPort = url.getPort() < 0 ? 80 : url.getPort();

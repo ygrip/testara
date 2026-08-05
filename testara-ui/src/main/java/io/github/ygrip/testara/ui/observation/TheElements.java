@@ -34,6 +34,7 @@ public final class TheElements implements Observation<List<?>> {
   }
 
   @Override
+  @SuppressWarnings("unchecked")
   public Observation<List<?>> root(Element root) {
     return new TheElements(root.withChild(element).child());
   }

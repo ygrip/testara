@@ -23,6 +23,7 @@ import io.github.ygrip.testara.ui.vibium.driver.VibiumSession;
 import lombok.extern.log4j.Log4j2;
 
 @Log4j2
+@SuppressWarnings("unchecked")
 public final class VibiumEngine implements EngineFactory<VibiumDriverProperties> {
   private static final String ID = "vibium";
 

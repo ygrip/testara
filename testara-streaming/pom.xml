@@ -45,7 +45,7 @@
         <dependency>
             <groupId>io.github.ygrip</groupId>
             <artifactId>testara-core</artifactId>
-            <version>${parent.version}</version>
+            <version>${project.parent.version}</version>
             <scope>test</scope>
             <type>test-jar</type>
         </dependency>

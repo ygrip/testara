@@ -40,6 +40,7 @@ import lombok.extern.log4j.Log4j2;
  * current-page state. Two sessions never share a {@link Page} or {@link CurrentPageHolder}.
  */
 @Log4j2
+@SuppressWarnings("unchecked")
 public final class VibiumSession implements DriverSession<Browser> {
 
   private final AtomicBoolean closed = new AtomicBoolean(false);

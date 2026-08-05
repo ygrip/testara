@@ -24,20 +24,16 @@
             <artifactId>testara-core</artifactId>
         </dependency>
         <dependency>
-            <groupId>org.elasticsearch</groupId>
-            <artifactId>elasticsearch</artifactId>
-        </dependency>
-        <dependency>
             <groupId>org.elasticsearch.client</groupId>
-            <artifactId>elasticsearch-rest-high-level-client</artifactId>
+            <artifactId>elasticsearch-rest-client</artifactId>
         </dependency>
         <dependency>
-            <groupId>org.elasticsearch.plugin</groupId>
-            <artifactId>lang-mustache-client</artifactId>
+            <groupId>co.elastic.clients</groupId>
+            <artifactId>elasticsearch-java</artifactId>
         </dependency>
         <dependency>
-            <groupId>org.elasticsearch.plugin</groupId>
-            <artifactId>rank-eval-client</artifactId>
+            <groupId>jakarta.json</groupId>
+            <artifactId>jakarta.json-api</artifactId>
         </dependency>
         <!-- Test dependencies -->
         <dependency>
@@ -53,7 +49,7 @@
         <dependency>
             <groupId>io.github.ygrip</groupId>
             <artifactId>testara-core</artifactId>
-            <version>${parent.version}</version>
+            <version>${project.parent.version}</version>
             <scope>test</scope>
             <type>test-jar</type>
         </dependency>

@@ -37,6 +37,7 @@ public final class Hover implements Interaction {
   }
 
   @Override
+  @SuppressWarnings("unchecked")
   public Interaction root(Element root) {
     return new Hover(root.withChild(locator).child());
   }

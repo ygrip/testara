@@ -300,6 +300,7 @@ public class ConcurrentRequestBuilderImpl implements ConcurrentRequestBuilder, R
   }
 
   @Override
+  @Deprecated
   public ConcurrentRequestBuilder withRequestCustomizer(Function<Integer, Map<String, Object>> customizer) {
     this.requestCustomizer = customizer;
     return this;

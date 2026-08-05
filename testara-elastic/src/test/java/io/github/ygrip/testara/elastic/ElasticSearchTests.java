@@ -1,14 +1,14 @@
 package io.github.ygrip.testara.elastic;
 
+import co.elastic.clients.elasticsearch._types.SortOptions;
+import co.elastic.clients.elasticsearch._types.SortOrder;
+import co.elastic.clients.elasticsearch.core.CountResponse;
+import co.elastic.clients.elasticsearch.core.SearchResponse;
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.github.ygrip.testara.core.BaseTests;
 import io.github.ygrip.testara.core.TestWith;
 import io.github.ygrip.testara.core.context.TestFramework;
-import org.elasticsearch.action.search.SearchResponse;
-import org.elasticsearch.client.core.CountResponse;
-import org.elasticsearch.search.sort.SortBuilder;
-import org.elasticsearch.search.sort.SortBuilders;
-import org.elasticsearch.search.sort.SortOrder;
 import io.github.ygrip.testara.elastic.testenv.ElasticModule;
 import io.github.ygrip.testara.testenv.TestEnvironmentExtension;
 import io.github.ygrip.testara.testenv.WithModules;
@@ -24,7 +24,6 @@ import java.util.Map;
 import java.util.Set;
 
 import static org.hamcrest.MatcherAssert.assertThat;
-import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.greaterThan;
 import static org.hamcrest.Matchers.lessThanOrEqualTo;
@@ -54,27 +53,30 @@ public class ElasticSearchTests extends BaseTests {
 
   @Test
   public void convertHashMapToListOfSorBuilder() throws Throwable {
-    List<SortBuilder<?>> expected = new ArrayList<>();
-    expected.add(SortBuilders.fieldSort("memberId").order(SortOrder.DESC));
-    expected.add(SortBuilders.fieldSort("created").order(SortOrder.ASC));
-
     Map<String, String> input = new HashMap<>();
     input.put("memberId", "desc");
     input.put("created", "asc");
 
     ElasticSearchHelper elasticSearch = TestFramework.context().get(ElasticSearchHelper.class);
-    List<SortBuilder<?>> actual = elasticSearch.parseSortBuilder(input);
+    List<SortOptions> actual = elasticSearch.parseSortBuilder(input);
     assertThat(actual, is(notNullValue()));
-    assertThat(actual, containsInAnyOrder(expected.toArray()));
+    assertThat(actual.size(), equalTo(2));
+
+    Map<String, SortOrder> actualByField = new HashMap<>();
+    for (SortOptions option : actual) {
+      actualByField.put(option.field().field(), option.field().order());
+    }
+    assertThat(actualByField.get("memberId"), equalTo(SortOrder.Desc));
+    assertThat(actualByField.get("created"), equalTo(SortOrder.Asc));
   }
 
   @Test
   public void queryElasticSearch() throws Throwable {
     ElasticSearchHelper elasticSearch = TestFramework.context().get(ElasticSearchHelper.class);
-    SearchResponse indexes =
+    SearchResponse<ObjectNode> indexes =
         elasticSearch.init("agp").search("*:*", new String[] {"notification_inbox_notification_inboxes"}, null);
     assertThat(indexes, is(notNullValue()));
-    assertThat(indexes.getHits().getHits(), is(notNullValue()));
+    assertThat(indexes.hits().hits(), is(notNullValue()));
   }
 
   @Test
@@ -97,7 +99,7 @@ public class ElasticSearchTests extends BaseTests {
     input.put("created", "desc");
 
     ElasticSearchHelper elasticSearch = TestFramework.context().get(ElasticSearchHelper.class);
-    List<SortBuilder<?>> sorts = elasticSearch.parseSortBuilder(input);
+    List<SortOptions> sorts = elasticSearch.parseSortBuilder(input);
     List<LinkedHashMap<String, Object>> data = elasticSearch.init("agp")
         .getSearchDataAs("*:*",
             new String[] {"notification_inbox_notification_inboxes"},
@@ -115,6 +117,6 @@ public class ElasticSearchTests extends BaseTests {
     CountResponse count =
         elasticSearch.init("agp").count("*:*", new String[] {"notification_inbox_notification_inboxes"});
     assertThat(count, is(notNullValue()));
-    assertThat(count.getCount(), greaterThan(0L));
+    assertThat(count.count(), greaterThan(0L));
   }
 }

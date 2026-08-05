@@ -40,6 +40,7 @@ import io.appium.java_client.ios.options.XCUITestOptions;
 import lombok.extern.log4j.Log4j2;
 
 @Log4j2
+@SuppressWarnings("unchecked")
 public final class AppiumEngine implements EngineFactory<AppiumDriverProperties> {
   private static final String ID = "appium";
   private static final String DEFAULT_REMOTE_URL = "http://localhost:4444/";

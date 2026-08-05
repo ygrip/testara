@@ -40,6 +40,7 @@ public final class Focus implements Interaction {
   }
 
   @Override
+  @SuppressWarnings("unchecked")
   public Interaction root(Element root) {
     return new Focus(root.withChild(element).child());
   }

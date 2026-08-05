@@ -40,7 +40,7 @@ public class ParallelExecutionTracer {
   public static void scenarioStarted(String scenarioName, TestDescriptor descriptor) {
     if (!enabled) return;
 
-    long threadId = Thread.currentThread().getId();
+    long threadId = Thread.currentThread().threadId();
     String threadName = Thread.currentThread().getName();
     long startTime = System.currentTimeMillis();
 
@@ -81,7 +81,7 @@ public class ParallelExecutionTracer {
   public static void scenarioFinished(String scenarioName, boolean passed) {
     if (!enabled) return;
 
-    long threadId = Thread.currentThread().getId();
+    long threadId = Thread.currentThread().threadId();
     ScenarioExecutionInfo info = executionMap.get(threadId);
 
     if (info != null) {

@@ -22,7 +22,7 @@ public class SetUtils {
    * @param <T>        a T object.
    * @return a {@link List} object.
    */
-  @SuppressWarnings("unchecked")
+  @SafeVarargs
   public static <T> List<T> union(List<T>... collection) {
     return union(Arrays.asList(collection));
   }
@@ -55,7 +55,7 @@ public class SetUtils {
    * @param <T>        a T object.
    * @return a {@link List} object.
    */
-  @SuppressWarnings("unchecked")
+  @SafeVarargs
   public static <T> List<T> intersection(List<T>... collection) {
     return intersection(Arrays.asList(collection));
   }
@@ -96,7 +96,7 @@ public class SetUtils {
    * @param <T>        a T object.
    * @return a {@link List} object.
    */
-  @SuppressWarnings("unchecked")
+  @SafeVarargs
   public static <T> List<T> difference(List<T>... collection) {
     return difference(Arrays.asList(collection));
   }

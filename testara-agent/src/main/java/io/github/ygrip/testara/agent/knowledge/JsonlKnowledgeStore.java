@@ -307,7 +307,7 @@ public final class JsonlKnowledgeStore implements ProjectKnowledgeService {
     Map<String, String> map = new LinkedHashMap<>();
     try {
       JsonNode node = MAPPER.readTree(json);
-      node.fields().forEachRemaining(e -> map.put(e.getKey(), e.getValue().asText()));
+      node.properties().forEach(e -> map.put(e.getKey(), e.getValue().asText()));
     } catch (IOException e) {
       LOG.fine("Cannot parse JSON: " + e.getMessage());
     }

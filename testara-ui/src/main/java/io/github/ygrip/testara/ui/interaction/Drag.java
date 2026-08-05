@@ -59,6 +59,7 @@ public final class Drag implements Interaction {
   }
 
   @Override
+  @SuppressWarnings("unchecked")
   public Interaction root(Element root) {
     return Optional.ofNullable(target)
       .map(result -> new Drag(root.withChild(source).child(), root.withChild(target).child()))

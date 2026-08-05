@@ -30,6 +30,7 @@ public final class MapConfigurationParameters implements ConfigurationParameters
   }
 
   @Override
+  @Deprecated
   public int size() {
     return values.size();
   }

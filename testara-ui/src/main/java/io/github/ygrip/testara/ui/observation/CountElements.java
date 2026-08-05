@@ -35,6 +35,7 @@ public final class CountElements implements Observation<Integer> {
   }
 
   @Override
+  @SuppressWarnings("unchecked")
   public Observation<Integer> root(Element root) {
     return new CountElements(root.withChild(element).child());
   }

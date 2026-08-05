@@ -40,6 +40,7 @@ public final class Click implements Interaction {
   }
 
   @Override
+  @SuppressWarnings("unchecked")
   public Interaction root(Element root) {
     return new Click(root.withChild(element).child());
   }

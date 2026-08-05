@@ -9,7 +9,7 @@ import org.junit.jupiter.api.extension.ExtensionContext;
  * {@link TestEnvironment}.
  * <p>
  * Containers are started once and shared across all test classes in the
- * same JVM. Cleanup is handled via a {@code CloseableResource} registered
+ * same JVM. Cleanup is handled via an {@link AutoCloseable} registered
  * in JUnit's root store, so containers are stopped after the last test
  * class finishes.
  */
@@ -21,7 +21,7 @@ public class TestEnvironmentExtension implements BeforeAllCallback {
             .getStore(ExtensionContext.Namespace.GLOBAL)
             .getOrComputeIfAbsent(
                 TestEnvironment.class.getName(),
-                key -> (ExtensionContext.Store.CloseableResource) TestEnvironment::shutdownAll
+                key -> (AutoCloseable) TestEnvironment::shutdownAll
             );
 
         Class<?> testClass = context.getRequiredTestClass();

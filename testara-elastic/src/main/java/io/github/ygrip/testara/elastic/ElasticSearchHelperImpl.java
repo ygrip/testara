@@ -1,8 +1,33 @@
 package io.github.ygrip.testara.elastic;
 
 
+import co.elastic.clients.elasticsearch.ElasticsearchClient;
+import co.elastic.clients.elasticsearch._types.Level;
+import co.elastic.clients.elasticsearch._types.SearchType;
+import co.elastic.clients.elasticsearch._types.SortOptions;
+import co.elastic.clients.elasticsearch._types.SortOrder;
+import co.elastic.clients.elasticsearch.cluster.HealthRequest;
+import co.elastic.clients.elasticsearch.cluster.HealthResponse;
+import co.elastic.clients.elasticsearch.core.CountRequest;
+import co.elastic.clients.elasticsearch.core.CountResponse;
+import co.elastic.clients.elasticsearch.core.DeleteRequest;
+import co.elastic.clients.elasticsearch.core.DeleteResponse;
+import co.elastic.clients.elasticsearch.core.GetRequest;
+import co.elastic.clients.elasticsearch.core.GetResponse;
+import co.elastic.clients.elasticsearch.core.IndexRequest;
+import co.elastic.clients.elasticsearch.core.IndexResponse;
+import co.elastic.clients.elasticsearch.core.SearchRequest;
+import co.elastic.clients.elasticsearch.core.SearchResponse;
+import co.elastic.clients.elasticsearch.core.UpdateRequest;
+import co.elastic.clients.elasticsearch.core.UpdateResponse;
+import co.elastic.clients.elasticsearch.core.search.Hit;
+import co.elastic.clients.json.JsonData;
+import co.elastic.clients.json.jackson.JacksonJsonpMapper;
+import co.elastic.clients.transport.ElasticsearchTransport;
+import co.elastic.clients.transport.rest_client.RestClientTransport;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JavaType;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.github.ygrip.testara.core.concurrency.ThreadExecutor;
 import io.github.ygrip.testara.core.context.TestComponent;
 import io.github.ygrip.testara.core.mapper.MapperHelper;
@@ -16,40 +41,18 @@ import org.apache.http.auth.AuthScope;
 import org.apache.http.auth.UsernamePasswordCredentials;
 import org.apache.http.client.CredentialsProvider;
 import org.apache.http.impl.client.BasicCredentialsProvider;
-import org.elasticsearch.action.admin.cluster.health.ClusterHealthRequest;
-import org.elasticsearch.action.admin.cluster.health.ClusterHealthResponse;
-import org.elasticsearch.action.delete.DeleteRequest;
-import org.elasticsearch.action.delete.DeleteResponse;
-import org.elasticsearch.action.get.GetRequest;
-import org.elasticsearch.action.get.GetResponse;
-import org.elasticsearch.action.index.IndexRequest;
-import org.elasticsearch.action.index.IndexResponse;
-import org.elasticsearch.action.search.SearchRequest;
-import org.elasticsearch.action.search.SearchResponse;
-import org.elasticsearch.action.search.SearchType;
-import org.elasticsearch.action.update.UpdateRequest;
-import org.elasticsearch.action.update.UpdateResponse;
-import org.elasticsearch.client.RequestOptions;
 import org.elasticsearch.client.RestClient;
 import org.elasticsearch.client.RestClientBuilder;
-import org.elasticsearch.client.RestHighLevelClient;
-import org.elasticsearch.client.core.CountRequest;
-import org.elasticsearch.client.core.CountResponse;
-import org.elasticsearch.core.TimeValue;
-import org.elasticsearch.xcontent.XContentType;
-import org.elasticsearch.index.query.QueryBuilders;
-import org.elasticsearch.search.SearchHit;
-import org.elasticsearch.search.builder.SearchSourceBuilder;
-import org.elasticsearch.search.sort.SortBuilder;
-import org.elasticsearch.search.sort.SortBuilders;
-import org.elasticsearch.search.sort.SortOrder;
 
+import java.io.StringReader;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
-import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 
 /**
  * <p>ElasticSearchHelperImpl class.</p>
@@ -62,7 +65,8 @@ import java.util.concurrent.TimeUnit;
 public class ElasticSearchHelperImpl implements ElasticSearchHelper {
   private static final String PREFIX = "elastic-search";
   private final ElasticSearchProperties properties;
-  private RestHighLevelClient client;
+  private RestClient restClient;
+  private ElasticsearchClient client;
   private String currentServiceName;
 
   /**
@@ -92,7 +96,10 @@ public class ElasticSearchHelperImpl implements ElasticSearchHelper {
           if (props.isRequireAuthentication()) {
             builder.setHttpClientConfigCallback(h -> h.setDefaultCredentialsProvider(credentialsProvider));
           }
-          this.client = new RestHighLevelClient(builder);
+          this.restClient = builder.build();
+          ElasticsearchTransport transport =
+              new RestClientTransport(this.restClient, new JacksonJsonpMapper(MapperHelper.getObjectMapper()));
+          this.client = new ElasticsearchClient(transport);
           this.currentServiceName = service;
         } else {
           throw new Exception("No elastic search host is specified");
@@ -120,12 +127,13 @@ public class ElasticSearchHelperImpl implements ElasticSearchHelper {
    */
   @Override
   public void close() {
-    if (this.client != null) {
+    if (this.restClient != null) {
       log.debug("#Closing elastic search connection");
       try {
-        this.client.close();
+        this.restClient.close();
       } catch (Exception ignored) {
       } finally {
+        this.restClient = null;
         this.client = null;
       }
     } else {
@@ -143,7 +151,7 @@ public class ElasticSearchHelperImpl implements ElasticSearchHelper {
     }
     try {
       return ThreadExecutor.run(Thread.ofVirtual().name(PREFIX + "-", 0).factory(),
-          () -> this.client.ping(RequestOptions.DEFAULT));
+          () -> this.client.ping().value());
     } catch (Exception e) {
       return false;
     }
@@ -163,7 +171,7 @@ public class ElasticSearchHelperImpl implements ElasticSearchHelper {
    * {@inheritDoc}
    */
   @Override
-  public RestHighLevelClient getClient() {
+  public ElasticsearchClient getClient() {
     return this.client;
   }
 
@@ -172,25 +180,22 @@ public class ElasticSearchHelperImpl implements ElasticSearchHelper {
    */
   @Override
   public IndexResponse index(String indexName, String type, Object source) {
-    IndexRequest request = new IndexRequest(indexName);
-    request.source(MapperHelper.toString(source), XContentType.JSON);
-    if (!CommonHelper.isBlank(type)) {
-      request.type(type);
-    }
-    return index(request, RequestOptions.DEFAULT);
+    IndexRequest<JsonData> request = new IndexRequest.Builder<JsonData>().index(indexName)
+        .withJson(new StringReader(MapperHelper.toString(source)))
+        .build();
+    return index(request);
   }
 
   /**
    * {@inheritDoc}
    */
   @Override
-  public IndexResponse index(IndexRequest request, RequestOptions options) {
+  public IndexResponse index(IndexRequest<?> request) {
     reconnect();
-    log.debug("#Elastic search indexing document {} in {}", request.sourceAsMap(), request.index());
+    log.debug("#Elastic search indexing document in {}", request.index());
     IndexResponse result = null;
     try {
-      result = ThreadExecutor.run(Thread.ofVirtual().name(PREFIX + "-", 0).factory(),
-          () -> this.client.index(request, options));
+      result = ThreadExecutor.run(Thread.ofVirtual().name(PREFIX + "-", 0).factory(), () -> this.client.index(request));
     } catch (Exception e) {
       log.trace("#Error when index document to elastic search, log : ", e);
     } finally {
@@ -202,14 +207,16 @@ public class ElasticSearchHelperImpl implements ElasticSearchHelper {
   /**
    * {@inheritDoc}
    */
+  @SuppressWarnings("unchecked")
   @Override
-  public UpdateResponse update(UpdateRequest request, RequestOptions options) {
+  public UpdateResponse<ObjectNode> update(UpdateRequest<?, ?> request) {
     reconnect();
-    log.debug("#Elastic search updating document {} in {}", request.getDescription(), request.index());
-    UpdateResponse result = null;
+    log.debug("#Elastic search updating document in {}", request.index());
+    UpdateResponse<ObjectNode> result = null;
     try {
+      UpdateRequest<ObjectNode, Object> typed = (UpdateRequest<ObjectNode, Object>) request;
       result = ThreadExecutor.run(Thread.ofVirtual().name(PREFIX + "-", 0).factory(),
-          () -> this.client.update(request, options));
+          () -> this.client.update(typed, ObjectNode.class));
     } catch (Exception e) {
       log.trace("#Error when update document to elastic search, log : ", e);
     } finally {
@@ -222,37 +229,30 @@ public class ElasticSearchHelperImpl implements ElasticSearchHelper {
    * {@inheritDoc}
    */
   @Override
-  public GetResponse getOne(String indexName, String type, String id) {
-    return CommonHelper.isBlank(type) ?
-        getOne(new GetRequest(indexName).id(id), RequestOptions.DEFAULT) :
-        getOne(new GetRequest(indexName, type, id), RequestOptions.DEFAULT);
+  public GetResponse<ObjectNode> getOne(String indexName, String type, String id) {
+    return getOne(new GetRequest.Builder().index(indexName).id(id).build());
   }
 
   @Override
-  public GetResponse getOne(String indexName, String type, String routing, String id) {
-    GetRequest request = null;
-    if (!CommonHelper.isBlank(type)) {
-      request = new GetRequest(indexName, type, id);
-    } else {
-      request = new GetRequest(indexName);
-    }
+  public GetResponse<ObjectNode> getOne(String indexName, String type, String routing, String id) {
+    GetRequest.Builder builder = new GetRequest.Builder().index(indexName).id(id);
     if (!CommonHelper.isBlank(routing)) {
-      request.routing(routing);
+      builder.routing(routing);
     }
-    return getOne(request, RequestOptions.DEFAULT);
+    return getOne(builder.build());
   }
 
   /**
    * {@inheritDoc}
    */
   @Override
-  public GetResponse getOne(GetRequest request, RequestOptions options) {
+  public GetResponse<ObjectNode> getOne(GetRequest request) {
     reconnect();
     log.debug("#Elastic search get document with id {} in {}", request.id(), request.index());
-    GetResponse result = null;
+    GetResponse<ObjectNode> result = null;
     try {
       result = ThreadExecutor.run(Thread.ofVirtual().name(PREFIX + "-", 0).factory(),
-          () -> this.client.get(request, options));
+          () -> this.client.get(request, ObjectNode.class));
     } catch (Exception e) {
       log.trace("#Error when get document to elastic search, log : ", e);
     } finally {
@@ -274,7 +274,7 @@ public class ElasticSearchHelperImpl implements ElasticSearchHelper {
    */
   @Override
   public <T> T getOneAs(GetRequest request, Class<T> clazz) {
-    return parseOneDocumentData(getOne(request, RequestOptions.DEFAULT), MapperHelper.getGenericType(clazz));
+    return parseOneDocumentData(getOne(request), MapperHelper.getGenericType(clazz));
   }
 
   /**
@@ -290,7 +290,7 @@ public class ElasticSearchHelperImpl implements ElasticSearchHelper {
    */
   @Override
   public <T> T getOneAs(GetRequest request, TypeReference<T> reference) {
-    return parseOneDocumentData(getOne(request, RequestOptions.DEFAULT), MapperHelper.getGenericType(reference));
+    return parseOneDocumentData(getOne(request), MapperHelper.getGenericType(reference));
   }
 
   /**
@@ -298,36 +298,29 @@ public class ElasticSearchHelperImpl implements ElasticSearchHelper {
    */
   @Override
   public DeleteResponse deleteOne(String indexName, String type, String id) {
-    return CommonHelper.isBlank(type) ?
-        deleteOne(new DeleteRequest(indexName).id(id), RequestOptions.DEFAULT) :
-        deleteOne(new DeleteRequest(indexName, type, id), RequestOptions.DEFAULT);
+    return deleteOne(new DeleteRequest.Builder().index(indexName).id(id).build());
   }
 
   @Override
   public DeleteResponse deleteOne(String indexName, String type, String routing, String id) {
-    DeleteRequest request = null;
-    if (!CommonHelper.isBlank(type)) {
-      request = new DeleteRequest(indexName, type, id);
-    } else {
-      request = new DeleteRequest(indexName);
-    }
+    DeleteRequest.Builder builder = new DeleteRequest.Builder().index(indexName).id(id);
     if (!CommonHelper.isBlank(routing)) {
-      request.routing(routing);
+      builder.routing(routing);
     }
-    return deleteOne(request, RequestOptions.DEFAULT);
+    return deleteOne(builder.build());
   }
 
   /**
    * {@inheritDoc}
    */
   @Override
-  public DeleteResponse deleteOne(DeleteRequest request, RequestOptions options) {
+  public DeleteResponse deleteOne(DeleteRequest request) {
     reconnect();
     log.debug("#Elastic search delete document with id {} in {}", request.id(), request.index());
     DeleteResponse result = null;
     try {
       result = ThreadExecutor.run(Thread.ofVirtual().name(PREFIX + "-", 0).factory(),
-          () -> this.client.delete(request, options));
+          () -> this.client.delete(request));
     } catch (Exception e) {
       log.trace("#Error when delete document to elastic search, log : ", e);
     } finally {
@@ -343,8 +336,6 @@ public class ElasticSearchHelperImpl implements ElasticSearchHelper {
   public boolean doesIndexExists(String indexName) {
     reconnect();
     log.debug("#Elastic search check index {}", indexName);
-    ClusterHealthRequest request = new ClusterHealthRequest();
-
     boolean result = false;
     try {
       result = getIndexes().contains(indexName);
@@ -366,12 +357,11 @@ public class ElasticSearchHelperImpl implements ElasticSearchHelper {
     log.debug("#Elastic get index list");
     try {
       // Use indices level to get the indices map populated
-      ClusterHealthRequest request = new ClusterHealthRequest();
-      request.level(ClusterHealthRequest.Level.INDICES);
-      ClusterHealthResponse response = ThreadExecutor.run(Thread.ofVirtual().name(PREFIX + "-", 0).factory(),
-          () -> getClient().cluster().health(request, RequestOptions.DEFAULT));
-      if (response != null && response.getIndices() != null) {
-        result = response.getIndices().keySet();
+      HealthRequest request = new HealthRequest.Builder().level(Level.Indices).build();
+      HealthResponse response = ThreadExecutor.run(Thread.ofVirtual().name(PREFIX + "-", 0).factory(),
+          () -> getClient().cluster().health(request));
+      if (response != null && response.indices() != null) {
+        result = response.indices().keySet();
       }
     } catch (Exception e) {
       log.trace("#Error when get index list to elastic search, log : ", e);
@@ -385,14 +375,13 @@ public class ElasticSearchHelperImpl implements ElasticSearchHelper {
    * {@inheritDoc}
    */
   @Override
-  public ClusterHealthResponse getClusterHealthInfo() {
+  public HealthResponse getClusterHealthInfo() {
     reconnect();
     log.debug("#Elastic get cluster health info");
-    ClusterHealthRequest request = new ClusterHealthRequest();
-    ClusterHealthResponse result = null;
+    HealthResponse result = null;
     try {
       result = ThreadExecutor.run(Thread.ofVirtual().name(PREFIX + "-", 0).factory(),
-          () -> getClient().cluster().health(request, RequestOptions.DEFAULT));
+          () -> getClient().cluster().health(h -> h));
     } catch (Exception e) {
       log.trace("#Error when get cluster health info to elastic search, log : ", e);
     } finally {
@@ -405,145 +394,113 @@ public class ElasticSearchHelperImpl implements ElasticSearchHelper {
    * {@inheritDoc}
    */
   @Override
-  public SearchResponse search(String luceneQuery,
+  public SearchResponse<ObjectNode> search(String luceneQuery,
       String[] indexes,
       int offset,
       int limit,
-      List<SortBuilder<?>> sorts,
-      SearchType type,
-      RequestOptions options) {
-    return search(luceneQuery, indexes, offset, limit, null, sorts, type, options);
+      List<SortOptions> sorts,
+      SearchType type) {
+    return search(luceneQuery, indexes, offset, limit, null, sorts, type);
   }
 
   /**
    * {@inheritDoc}
    */
   @Override
-  public SearchResponse search(String luceneQuery,
+  public SearchResponse<ObjectNode> search(String luceneQuery,
       String[] indexes,
       int offset,
       int limit,
       String[] type,
-      List<SortBuilder<?>> sorts,
-      SearchType searchType,
-      RequestOptions options) {
-    return search(luceneQuery, indexes, offset, limit, type, null, sorts, searchType, options);
+      List<SortOptions> sorts,
+      SearchType searchType) {
+    return search(luceneQuery, indexes, offset, limit, type, null, sorts, searchType);
   }
 
   @Override
-  public SearchResponse search(String luceneQuery,
+  public SearchResponse<ObjectNode> search(String luceneQuery,
       String[] indexes,
       int offset,
       int limit,
       String[] types,
       String[] routings,
-      List<SortBuilder<?>> sorts,
-      SearchType searchType,
-      RequestOptions options) {
-    SearchSourceBuilder sourceBuilder = new SearchSourceBuilder();
-    sourceBuilder.query(QueryBuilders.queryStringQuery(luceneQuery));
-    sourceBuilder.from(Math.max(offset, 0));
+      List<SortOptions> sorts,
+      SearchType searchType) {
+    SearchRequest.Builder builder = new SearchRequest.Builder();
+    builder.query(q -> q.queryString(qs -> qs.query(luceneQuery)));
+    builder.from(Math.max(offset, 0));
     if (limit >= 1) {
-      sourceBuilder.size(limit);
+      builder.size(limit);
     }
-    sourceBuilder.timeout(new TimeValue(properties.getTimeout(), TimeUnit.SECONDS));
-    SearchRequest searchRequest = new SearchRequest();
     if (sorts != null) {
-      for (SortBuilder<?> sort : sorts) {
-        if (sort != null) {
-          sourceBuilder.sort(sort);
-        }
+      List<SortOptions> filtered = sorts.stream().filter(Objects::nonNull).collect(Collectors.toList());
+      if (!filtered.isEmpty()) {
+        builder.sort(filtered);
       }
     }
     if (indexes != null && indexes.length > 0) {
-      searchRequest.indices(indexes);
-    }
-    if (types != null && types.length > 0) {
-      searchRequest.types(types);
+      builder.index(Arrays.asList(indexes));
     }
     if (routings != null && routings.length > 0) {
-      searchRequest.routing(routings);
+      builder.routing(String.join(",", routings));
     }
-    searchRequest.searchType(searchType);
-    searchRequest.source(sourceBuilder);
-    return search(searchRequest, options);
+    if (searchType != null) {
+      builder.searchType(searchType);
+    }
+    builder.timeout(properties.getTimeout() + "s");
+    return search(builder.build());
   }
 
   /**
    * {@inheritDoc}
    */
   @Override
-  public SearchResponse search(String luceneQuery,
+  public SearchResponse<ObjectNode> search(String luceneQuery,
       String[] indexes,
       int offset,
       int limit,
-      List<SortBuilder<?>> sorts,
+      List<SortOptions> sorts) {
+    return search(luceneQuery, indexes, offset, limit, sorts, null);
+  }
+
+  /**
+   * {@inheritDoc}
+   */
+  @Override
+  public SearchResponse<ObjectNode> search(String luceneQuery, String[] indexes, int limit, List<SortOptions> sorts) {
+    return search(luceneQuery, indexes, 0, limit, sorts, null);
+  }
+
+  /**
+   * {@inheritDoc}
+   */
+  @Override
+  public SearchResponse<ObjectNode> search(String luceneQuery,
+      String[] indexes,
+      List<SortOptions> sorts,
       SearchType type) {
-    return search(luceneQuery, indexes, offset, limit, sorts, type, RequestOptions.DEFAULT);
+    return search(luceneQuery, indexes, 0, 0, sorts, type);
   }
 
   /**
    * {@inheritDoc}
    */
   @Override
-  public SearchResponse search(String luceneQuery,
-      String[] indexes,
-      int offset,
-      int limit,
-      List<SortBuilder<?>> sorts) {
-    return search(luceneQuery, indexes, offset, limit, sorts, SearchType.DEFAULT);
+  public SearchResponse<ObjectNode> search(String luceneQuery, String[] indexes, List<SortOptions> sorts) {
+    return search(luceneQuery, indexes, sorts, null);
   }
 
   /**
    * {@inheritDoc}
    */
   @Override
-  public SearchResponse search(String luceneQuery, String[] indexes, int limit, List<SortBuilder<?>> sorts) {
-    return search(luceneQuery, indexes, 0, limit, sorts, SearchType.DEFAULT);
-  }
-
-  /**
-   * {@inheritDoc}
-   */
-  @Override
-  public SearchResponse search(String luceneQuery,
-      String[] indexes,
-      List<SortBuilder<?>> sorts,
-      SearchType type,
-      RequestOptions options) {
-    return search(luceneQuery, indexes, 0, 0, sorts, SearchType.DEFAULT);
-  }
-
-  /**
-   * {@inheritDoc}
-   */
-  @Override
-  public SearchResponse search(String luceneQuery,
-      String[] indexes,
-      List<SortBuilder<?>> sorts,
-      RequestOptions options) {
-    return search(luceneQuery, indexes, sorts, SearchType.DEFAULT, options);
-  }
-
-  /**
-   * {@inheritDoc}
-   */
-  @Override
-  public SearchResponse search(String luceneQuery, String[] indexes, List<SortBuilder<?>> sorts) {
-    return search(luceneQuery, indexes, sorts, SearchType.DEFAULT, RequestOptions.DEFAULT);
-  }
-
-  /**
-   * {@inheritDoc}
-   */
-  @Override
-  public SearchResponse search(SearchRequest request, RequestOptions options) {
+  public SearchResponse<ObjectNode> search(SearchRequest request) {
     reconnect();
     log.debug("#Elastic search with query {}", request);
-    SearchResponse result = null;
+    SearchResponse<ObjectNode> result = null;
     try {
       result = ThreadExecutor.run(Thread.ofVirtual().name(PREFIX + "-", 0).factory(),
-          () -> this.client.search(request, options));
+          () -> this.client.search(request, ObjectNode.class));
     } catch (Exception e) {
       log.trace("#Error when search document to elastic search, log : ", e);
     } finally {
@@ -556,21 +513,13 @@ public class ElasticSearchHelperImpl implements ElasticSearchHelper {
    * {@inheritDoc}
    */
   @Override
-  public SearchResponse search(SearchRequest request) {
-    return search(request, RequestOptions.DEFAULT);
-  }
-
-  /**
-   * {@inheritDoc}
-   */
-  @Override
-  public <T> List<T> parseSearchData(SearchResponse response, JavaType type) {
+  public <T> List<T> parseSearchData(SearchResponse<ObjectNode> response, JavaType type) {
     List<T> result = new ArrayList<>();
     if (!CommonHelper.isBlank(response)) {
       log.debug("#Parse elastic search document to {}", type.getRawClass().getSimpleName());
-      SearchHit[] searchHits = response.getHits().getHits();
-      for (SearchHit hit : searchHits) {
-        result.add(MapperHelper.toObject(hit.getSourceAsString(), type));
+      List<Hit<ObjectNode>> hits = response.hits().hits();
+      for (Hit<ObjectNode> hit : hits) {
+        result.add(MapperHelper.toObject(hit.source(), type));
       }
     }
     return result;
@@ -580,10 +529,10 @@ public class ElasticSearchHelperImpl implements ElasticSearchHelper {
    * {@inheritDoc}
    */
   @Override
-  public <T> T parseOneDocumentData(GetResponse response, JavaType type) {
-    if (!CommonHelper.isBlank(response)) {
+  public <T> T parseOneDocumentData(GetResponse<ObjectNode> response, JavaType type) {
+    if (!CommonHelper.isBlank(response) && response.found()) {
       log.debug("#Parse elastic search document to {}", type.getRawClass().getSimpleName());
-      return MapperHelper.toObject(response.getSourceAsString(), type);
+      return MapperHelper.toObject(response.source(), type);
     } else {
       return null;
     }
@@ -593,19 +542,17 @@ public class ElasticSearchHelperImpl implements ElasticSearchHelper {
    * {@inheritDoc}
    */
   @Override
-  public List<SortBuilder<?>> parseSortBuilder(Map<String, String> sorts) {
-    List<SortBuilder<?>> results = new ArrayList<>();
+  public List<SortOptions> parseSortBuilder(Map<String, String> sorts) {
+    List<SortOptions> results = new ArrayList<>();
     for (String key : sorts.keySet()) {
-      SortBuilder<?> sort = null;
-      try {
-        sort = SortBuilders.fieldSort(key).order(SortOrder.fromString(sorts.getOrDefault(key, "ASC").trim()));
-      } catch (Exception ignored) {
-        sort = SortBuilders.fieldSort(key);
-      } finally {
-        results.add(sort);
-      }
+      SortOrder order = toSortOrder(sorts.get(key));
+      results.add(SortOptions.of(s -> s.field(f -> f.field(key).order(order))));
     }
     return results;
+  }
+
+  private SortOrder toSortOrder(String raw) {
+    return "desc".equalsIgnoreCase(raw == null ? "" : raw.trim()) ? SortOrder.Desc : SortOrder.Asc;
   }
 
   /**
@@ -616,7 +563,7 @@ public class ElasticSearchHelperImpl implements ElasticSearchHelper {
       String[] indexes,
       int offset,
       int limit,
-      List<SortBuilder<?>> sorts,
+      List<SortOptions> sorts,
       Class<T> clazz) {
     return getSearchDataAs(luceneQuery, indexes, null, offset, limit, sorts, clazz);
   }
@@ -628,7 +575,7 @@ public class ElasticSearchHelperImpl implements ElasticSearchHelper {
   public <T> List<T> getSearchDataAs(String luceneQuery,
       String[] indexes,
       int limit,
-      List<SortBuilder<?>> sorts,
+      List<SortOptions> sorts,
       Class<T> clazz) {
     return getSearchDataAs(luceneQuery, indexes, null, 0, limit, sorts, clazz);
   }
@@ -641,7 +588,7 @@ public class ElasticSearchHelperImpl implements ElasticSearchHelper {
       String[] indexes,
       int offset,
       int limit,
-      List<SortBuilder<?>> sorts,
+      List<SortOptions> sorts,
       TypeReference<T> type) {
     return getSearchDataAs(luceneQuery, indexes, null, offset, limit, sorts, type);
   }
@@ -653,7 +600,7 @@ public class ElasticSearchHelperImpl implements ElasticSearchHelper {
   public <T> List<T> getSearchDataAs(String luceneQuery,
       String[] indexes,
       int limit,
-      List<SortBuilder<?>> sorts,
+      List<SortOptions> sorts,
       TypeReference<T> type) {
     return getSearchDataAs(luceneQuery, indexes, null, 0, limit, sorts, type);
   }
@@ -667,12 +614,11 @@ public class ElasticSearchHelperImpl implements ElasticSearchHelper {
       String[] types,
       int offset,
       int limit,
-      List<SortBuilder<?>> sorts,
+      List<SortOptions> sorts,
       Class<T> clazz) {
     List<T> result = new ArrayList<>();
     try {
-      SearchResponse searchResponse =
-          search(luceneQuery, indexes, offset, limit, types, sorts, SearchType.DEFAULT, RequestOptions.DEFAULT);
+      SearchResponse<ObjectNode> searchResponse = search(luceneQuery, indexes, offset, limit, types, sorts, null);
       result = parseSearchData(searchResponse, MapperHelper.getGenericType(clazz));
     } catch (Exception ignored) {
 
@@ -689,7 +635,7 @@ public class ElasticSearchHelperImpl implements ElasticSearchHelper {
       String[] indexes,
       String[] types,
       int limit,
-      List<SortBuilder<?>> sorts,
+      List<SortOptions> sorts,
       Class<T> clazz) {
     return getSearchDataAs(luceneQuery, indexes, types, 0, limit, sorts, clazz);
   }
@@ -703,7 +649,7 @@ public class ElasticSearchHelperImpl implements ElasticSearchHelper {
       String[] types,
       int offset,
       int limit,
-      List<SortBuilder<?>> sorts,
+      List<SortOptions> sorts,
       TypeReference<T> type) {
     return getSearchDataAs(luceneQuery, indexes, types, null, offset, limit, sorts, type);
   }
@@ -715,19 +661,12 @@ public class ElasticSearchHelperImpl implements ElasticSearchHelper {
       String[] routings,
       int offset,
       int limit,
-      List<SortBuilder<?>> sorts,
+      List<SortOptions> sorts,
       TypeReference<T> type) {
     List<T> result = new ArrayList<>();
     try {
-      SearchResponse searchResponse = search(luceneQuery,
-          indexes,
-          offset,
-          limit,
-          types,
-          routings,
-          sorts,
-          SearchType.DEFAULT,
-          RequestOptions.DEFAULT);
+      SearchResponse<ObjectNode> searchResponse =
+          search(luceneQuery, indexes, offset, limit, types, routings, sorts, null);
       result = parseSearchData(searchResponse, MapperHelper.getGenericType(type));
     } catch (Exception ignored) {
 
@@ -744,7 +683,7 @@ public class ElasticSearchHelperImpl implements ElasticSearchHelper {
       String[] indexes,
       String[] types,
       int limit,
-      List<SortBuilder<?>> sorts,
+      List<SortOptions> sorts,
       TypeReference<T> type) {
     return getSearchDataAs(luceneQuery, indexes, types, 0, limit, sorts, type);
   }
@@ -754,19 +693,8 @@ public class ElasticSearchHelperImpl implements ElasticSearchHelper {
    */
   @Override
   public CountResponse count() {
-    CountRequest countRequest = new CountRequest();
-    SearchSourceBuilder searchSourceBuilder = new SearchSourceBuilder();
-    searchSourceBuilder.query(QueryBuilders.matchAllQuery());
-    countRequest.source(searchSourceBuilder);
-    return count(countRequest, RequestOptions.DEFAULT);
-  }
-
-  /**
-   * {@inheritDoc}
-   */
-  @Override
-  public CountResponse count(String luceneQuery, String[] indexes, RequestOptions options) {
-    return count(luceneQuery, indexes, null, options);
+    CountRequest countRequest = new CountRequest.Builder().query(q -> q.matchAll(m -> m)).build();
+    return count(countRequest);
   }
 
   /**
@@ -774,43 +702,19 @@ public class ElasticSearchHelperImpl implements ElasticSearchHelper {
    */
   @Override
   public CountResponse count(String luceneQuery, String[] indexes) {
-    return count(luceneQuery, indexes, RequestOptions.DEFAULT);
+    return count(luceneQuery, indexes, null);
   }
 
   @Override
-  public CountResponse count(String luceneQuery, String[] indexes, String routing, RequestOptions options) {
-    CountRequest countRequest = new CountRequest();
-    SearchSourceBuilder searchSourceBuilder = new SearchSourceBuilder();
-    searchSourceBuilder.query(QueryBuilders.queryStringQuery(luceneQuery));
-    countRequest.source(searchSourceBuilder);
-    if (indexes != null) {
-      countRequest.indices(indexes);
+  public CountResponse count(String luceneQuery, String[] indexes, String routing) {
+    CountRequest.Builder builder = new CountRequest.Builder().query(q -> q.queryString(qs -> qs.query(luceneQuery)));
+    if (indexes != null && indexes.length > 0) {
+      builder.index(Arrays.asList(indexes));
     }
-    if (routing != null && !routing.isEmpty()) {
-      if (!routing.trim().isEmpty()) {
-        countRequest.routing(routing);
-      }
+    if (!CommonHelper.isBlank(routing)) {
+      builder.routing(routing);
     }
-    return count(countRequest, options);
-  }
-
-  /**
-   * {@inheritDoc}
-   */
-  @Override
-  public CountResponse count(CountRequest request, RequestOptions options) {
-    reconnect();
-    log.debug("#Elastic search count matching document with query {}", request);
-    CountResponse result = null;
-    try {
-      result = ThreadExecutor.run(Thread.ofVirtual().name(PREFIX + "-", 0).factory(),
-          () -> this.client.count(request, options));
-    } catch (Exception e) {
-      log.trace("#Error when count matching document to elastic search, log : ", e);
-    } finally {
-      close();
-    }
-    return result;
+    return count(builder.build());
   }
 
   /**
@@ -818,6 +722,16 @@ public class ElasticSearchHelperImpl implements ElasticSearchHelper {
    */
   @Override
   public CountResponse count(CountRequest request) {
-    return count(request, RequestOptions.DEFAULT);
+    reconnect();
+    log.debug("#Elastic search count matching document with query {}", request);
+    CountResponse result = null;
+    try {
+      result = ThreadExecutor.run(Thread.ofVirtual().name(PREFIX + "-", 0).factory(), () -> this.client.count(request));
+    } catch (Exception e) {
+      log.trace("#Error when count matching document to elastic search, log : ", e);
+    } finally {
+      close();
+    }
+    return result;
   }
 }
