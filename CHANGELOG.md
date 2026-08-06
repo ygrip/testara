@@ -16,6 +16,7 @@ All notable changes to Testara are documented in this file.
 
 - Migrated the Elasticsearch integration to the Elasticsearch 8 Java client and aligned its test environment.
 - Hardened the build for Java 21 and removed compiler, Javadoc, and dependency-analysis warnings across the reactor.
+- Hardened GitHub Actions for Ubuntu 24.04 browser tests and migrated official workflow actions to Node.js 24-compatible releases.
 - Scoped command execution caches to the active scenario and bounded the global parse cache.
 - Kept UI driver and test context alive for the complete Cucumber run, with configurable driver reset behavior between scenarios.
 
