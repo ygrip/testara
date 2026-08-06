@@ -1,0 +1,36 @@
+testara-validation/src/main/java/io/github/ygrip/testara/validation/ValidatorHelper.java
+  025e8885b5b71d91 221
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.23",
+  "base_commit_sha": "2632851fb8a812f053deb9aa8691195d551f5abd",
+  "prompts": {
+    "025e8885b5b71d91": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fd6a4-1365-7021-a25d-d70e73b46a2a",
+        "model": "unknown"
+      },
+      "human_author": "ygrip <yunaz.gilang@gmail.com>",
+      "messages": [],
+      "total_additions": 1,
+      "total_deletions": 1,
+      "accepted_lines": 1,
+      "overriden_lines": 0
+    },
+    "1a6ae739a90fa1a6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f7133a67-e10e-469c-aa85-d2bd57924e41",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "ygrip <yunaz.gilang@gmail.com>",
+      "messages": [],
+      "total_additions": 1,
+      "total_deletions": 1,
+      "accepted_lines": 0,
+      "overriden_lines": 0
+    }
+  }
+}
