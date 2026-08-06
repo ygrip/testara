@@ -218,7 +218,7 @@ public final class ValidatorHelper {
               }
               return result;
 
-            } catch (Exception ex) {
+            } catch (Exception | AssertionError ex) {
               return ValidatorResult.builder().validation(validationName).success(false).error(ex).build();
             }
           })),

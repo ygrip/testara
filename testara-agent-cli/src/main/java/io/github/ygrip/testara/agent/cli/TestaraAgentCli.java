@@ -42,13 +42,11 @@ public class TestaraAgentCli implements Runnable {
   }
 
 
-  /**
-   * Reads version from META-INF/maven/.../pom.properties packed into the JAR.
-   */
+  /** Reads the build-filtered version resource retained by both shaded JARs and native images. */
   static class VersionProvider implements IVersionProvider {
     static String readVersion() {
       try (InputStream is = VersionProvider.class.getResourceAsStream(
-        "/META-INF/maven/io.github.ygrip/testara-agent-cli/pom.properties")) {
+        "/testara-agent-version.properties")) {
         if (is != null) {
           Properties props = new Properties();
           props.load(is);

@@ -197,4 +197,14 @@ public class ValidationTests extends BaseTests {
     DataValidation validation = DataValidation.builder().validation("yunaz").actual(true).expectation(true).build();
     assertDoesThrow(() -> ValidatorHelper.validate(validation));
   }
+
+  @Test
+  public void assertionErrorFromValidatorIsReportedAsFailure() {
+    DataValidation failing =
+        DataValidation.builder().validation("ASSERTION_ERROR").actual(true).expectation(true).build();
+    DataValidation passing =
+        DataValidation.builder().validation("EQUAL").actual(true).expectation(true).build();
+
+    assertDoesThrow(() -> ValidatorHelper.validates(List.of(failing, passing)));
+  }
 }
