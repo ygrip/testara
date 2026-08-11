@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId>io.github.ygrip</groupId>
+    <artifactId>testara-core-parent</artifactId>
+    <version>2.1.0</version>
+  </parent>
+
+  <artifactId>testara-testcontainers</artifactId>
+  <name>Testara Testcontainers Module</name>
+  <description>Reusable Testcontainers lifecycle abstraction for Testara automation projects.</description>
+
+  <dependencies>
+    <dependency>
+      <groupId>io.github.ygrip</groupId>
+      <artifactId>testara-core</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.testcontainers</groupId>
+      <artifactId>testcontainers</artifactId>
+    </dependency>
+
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter</artifactId>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+</project>
