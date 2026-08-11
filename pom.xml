@@ -113,7 +113,7 @@
     <hamcrest.version>3.0</hamcrest.version>
     <assertj.version>4.0.0-M1</assertj.version>
     <wiremock.version>3.13.2</wiremock.version>
-    <mitmproxy-grid-java-client.version>0.1.0</mitmproxy-grid-java-client.version>
+    <mitmproxy-grid-java-client.version>0.2.0</mitmproxy-grid-java-client.version>
     <testcontainers.version>2.0.2</testcontainers.version>
     <picocli.version>4.7.6</picocli.version>
 
@@ -124,6 +124,7 @@
 
   <modules>
     <module>testara-core</module>
+    <module>testara-testcontainers</module>
     <module>testara-properties</module>
     <module>testara-spring</module>
     <module>testara-command</module>
@@ -200,6 +201,11 @@
       <dependency>
         <groupId>io.github.ygrip</groupId>
         <artifactId>testara-core</artifactId>
+        <version>${project.parent.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.github.ygrip</groupId>
+        <artifactId>testara-testcontainers</artifactId>
         <version>${project.parent.version}</version>
       </dependency>
       <dependency>
