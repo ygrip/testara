@@ -44,6 +44,11 @@
             </dependency>
             <dependency>
                 <groupId>io.github.ygrip</groupId>
+                <artifactId>testara-testcontainers</artifactId>
+                <version>${project.parent.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.github.ygrip</groupId>
                 <artifactId>testara-command</artifactId>
                 <version>${project.parent.version}</version>
             </dependency>
