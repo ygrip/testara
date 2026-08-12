@@ -36,8 +36,14 @@ public final class PlaywrightWaitCapability extends PlaywrightElementResolver im
   public WaitPage untilPageLoaded(NamedPage namedPage) {
     return duration -> {
       PageContext<?> pageCtx = namedPage.getPage();
-      if (ObjectUtils.isNotEmpty(pageCtx) && pageCtx.isCurrentPage(duration)) {
+      if (ObjectUtils.isEmpty(pageCtx)) {
+        log.warn("Unable to resolve page '{}' while waiting for it to load", namedPage.getName());
+        return PlaywrightWaitCapability.this;
+      }
+      if (pageCtx.isCurrentPage(duration)) {
         namedPage.getFinder().setCurrentPage(pageCtx);
+      } else {
+        log.warn("Page '{}' did not become current within {}", pageCtx.getClass().getSimpleName(), duration);
       }
       return PlaywrightWaitCapability.this;
     };
@@ -201,8 +207,8 @@ public final class PlaywrightWaitCapability extends PlaywrightElementResolver im
       .ignoreExceptions()
       .until(() -> {
         try {
-          return session.runOnApiThread(() -> !Optional.ofNullable(resolveOnApiThreadOnly(locator))
-            .map(com.microsoft.playwright.Locator::isEnabled)
+          return session.runOnApiThread(() -> Optional.ofNullable(resolveOnApiThreadOnly(locator))
+            .map(el -> !el.isEnabled())
             .orElse(false));
         } catch (Exception e) {
           return false;
