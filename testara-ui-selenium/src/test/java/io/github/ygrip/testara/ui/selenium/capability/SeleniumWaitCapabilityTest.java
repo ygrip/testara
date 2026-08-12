@@ -19,13 +19,13 @@ import io.github.ygrip.testara.ui.page.PageContext;
 import io.github.ygrip.testara.ui.page.PageFinder;
 import io.github.ygrip.testara.ui.populator.ElementCatalog;
 
-import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Regression coverage for {@link SeleniumWaitCapability#untilPageLoaded(NamedPage)}: the
  * finder's current page must only be activated when the page actually confirms it is the
- * current page within the given timeout.
+ * current page within the given timeout, and a failed condition must fail the wait.
  */
 class SeleniumWaitCapabilityTest {
 
@@ -105,16 +105,16 @@ class SeleniumWaitCapabilityTest {
   }
 
   @Test
-  void doesNotSetCurrentPageWhenPageIsNotCurrent() {
+  void throwsWhenPageIsNotCurrent() {
     FakePage page = new FakePage(false);
     FakeFinder finder = new FakeFinder(page);
     NamedPage namedPage = NamedPage.of(FakePage.class)
       .by(finder)
       .build();
 
-    new SeleniumWaitCapability(null).untilPageLoaded(namedPage)
-      .forDuration(Duration.ofMillis(10));
-
-    assertFalse(finder.wasCurrentPageSet(), "current page must not be activated when isCurrentPage returns false");
+    assertThrows(RuntimeException.class, () ->
+      new SeleniumWaitCapability(null).untilPageLoaded(namedPage)
+        .forDuration(Duration.ofMillis(10))
+    );
   }
 }
