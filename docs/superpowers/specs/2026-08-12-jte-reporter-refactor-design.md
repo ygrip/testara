@@ -1,42 +1,40 @@
 # JTE Reporter Refactor Design
 
-Date: 2026-08-12
-Target release: Testara 2.2.0
+Date: 2026-08-12  
+Target release: Testara 2.2.0  
 Scope: `testara-reporter` in PR #1
 
 ## 1. Goal
 
-Refactor Testara reporting into a single, typed, component-based JTE rendering architecture and remove Thymeleaf completely.
+Refactor Testara reporting into one typed, component-based JTE rendering architecture and remove Thymeleaf completely.
 
 The migration must:
 
-- replace all Thymeleaf runtime and build dependencies with JTE;
-- migrate all existing report styles to JTE;
+- replace all Thymeleaf runtime/build dependencies with JTE;
+- migrate every existing report style to JTE;
 - add a new modern, clean, email-friendly report style;
-- make report rendering component based instead of maintaining large monolithic HTML templates;
-- introduce a renderer-independent typed report view model instead of loose `Map<String, Object>` template context values;
-- support optional white-label branding consistently across every report style;
-- precompile/generate JTE templates at build time and bundle them in the reporter JAR;
-- render directly to the output destination instead of building a large intermediate HTML string;
-- keep Cucumber parsing/aggregation separate from presentation so rendering can scale without repeating report calculations;
-- retain email compatibility, including Outlook conditional comments and VML used by existing templates.
+- replace monolithic HTML templates with reusable report components;
+- replace loose `Map<String, Object>` template contracts with immutable typed view models;
+- support optional white-label branding across every style;
+- generate JTE template classes at build time and bundle them in the reporter JAR;
+- render directly to the output file rather than producing a large intermediate HTML string;
+- aggregate report data once, separately from rendering;
+- preserve email compatibility, including Outlook conditional comments and VML.
 
-This is a renderer migration, not a dual-engine compatibility layer. There will be no Thymeleaf fallback path after this change.
+This is a renderer migration, not a dual-engine compatibility layer. The completed change has no Thymeleaf fallback path.
 
 ## 2. Non-goals
 
 This change does not:
 
-- add a second template engine;
-- preserve arbitrary user-provided Thymeleaf templates;
-- add an email sender or MIME attachment subsystem;
+- retain arbitrary user-provided Thymeleaf templates;
+- add another template engine beside JTE;
+- add an email sender/MIME subsystem;
 - add PDF generation;
-- redesign Cucumber JSON parsing itself unless a small extraction is required to separate aggregation from rendering;
-- introduce a general-purpose UI/component framework into the reporter.
+- redesign Cucumber JSON parsing beyond extracting aggregation responsibilities;
+- introduce a general-purpose web UI/component framework.
 
 ## 3. Architecture
-
-The reporting pipeline becomes:
 
 ```text
 Cucumber JSON
@@ -54,7 +52,7 @@ ReportViewFactory
 ReportView                       immutable, renderer independent
     |
     v
-ReportRenderer                   rendering boundary
+ReportRenderer                   architectural boundary
     |
     v
 JteReportRenderer                only renderer implementation
@@ -66,27 +64,25 @@ JteReportRenderer                only renderer implementation
     |       SINGLE_PAGE
     |
     v
-FileOutput / WriterOutput
+FileOutput
 ```
 
-The important boundary is `ReportView`. Cucumber-specific objects must not be exposed directly to JTE components. That prevents the presentation layer from becoming coupled to Cucumber parsing models and makes future output formats possible without recomputing test data.
+The durable boundary is `ReportView`. Cucumber parser/domain objects must not be passed into JTE templates.
 
-### Responsibilities
-
-`CucumberReportAggregator`
+### `CucumberReportAggregator`
 
 - accepts parsed `Feature` data;
-- calculates status counts, percentages, coverage, failures, unstable features and duration rankings;
-- contains no HTML/template logic.
+- calculates status counts/percentages, coverage, frequent failures, unstable features and duration rankings;
+- contains no JTE or HTML logic.
 
-`ReportViewFactory`
+### `ReportViewFactory`
 
-- converts aggregated reporter data into immutable view records;
-- resolves branding and report metadata;
-- prepares presentation-ready values such as labels, formatted duration ranges and status semantics;
+- turns aggregate data into immutable rendering records;
+- resolves metadata and branding;
+- prepares presentation-ready labels/duration ranges/status semantics;
 - contains no JTE APIs.
 
-`ReportRenderer`
+### `ReportRenderer`
 
 ```java
 public interface ReportRenderer {
@@ -94,31 +90,29 @@ public interface ReportRenderer {
 }
 ```
 
-It is intentionally small. The interface is an architectural boundary, not a legacy extension registry.
+The interface is deliberately small. It defines the data/rendering boundary and is not a plugin registry or legacy extension mechanism.
 
-`JteReportRenderer`
+### `JteReportRenderer`
 
 - owns one reusable precompiled `TemplateEngine`;
-- maps `ReportStyle` to a root JTE template;
-- renders directly to a file/writer output;
-- does not parse templates at report-generation time;
-- contains no report aggregation logic.
+- maps each `ReportStyle` to exactly one root JTE template;
+- renders directly with JTE `FileOutput`;
+- performs no template parsing/compilation at report-generation time;
+- performs no report aggregation.
 
-`CucumberSummaryReportGenerator`
+### `CucumberSummaryReportGenerator`
 
-- remains the fluent public orchestration API;
-- delegates aggregation/model creation/rendering instead of owning all three concerns;
-- no longer creates a template engine per report.
+The existing fluent public entry point remains, but becomes orchestration only: read -> aggregate -> build view -> render. It no longer creates a template engine or a loose template context.
 
-## 4. Typed report view model
+## 4. Typed view model
 
-Create renderer-independent records under:
+Create immutable records under:
 
 ```text
 io.github.ygrip.testara.reporter.view
 ```
 
-The root model:
+Root type:
 
 ```java
 public record ReportView(
@@ -134,24 +128,21 @@ public record ReportView(
 ) {}
 ```
 
-Supporting records should be narrow and immutable. Template-visible data must use methods/fields on these types rather than map keys.
+Required view records:
 
-Suggested types:
-
-- `ReportMetadata`: title, start/end time, generated time, report link, total feature/scenario count;
-- `ReportBranding`: organization name, resolved logo URI, organization detail, white-label state;
-- `ReportStatusSummary`: overall status, counts and percentages by status;
-- `ReportFieldGroup` / `ReportField`: custom report metadata;
-- `ReportCoverageGroup` / `ReportCoverageItem`: suite/feature coverage rows;
-- `ReportFailure`: title, error detail, occurrence count, severity/status;
+- `ReportMetadata`: report title, start/end time, generated time, report link, total feature count, total scenario count;
+- `ReportBranding`: organization name, resolved logo URI, organization detail, white-label flag;
+- `ReportStatusSummary`: overall status plus ordered status metrics;
+- `ReportStatusMetric`: status, label, count, percentage;
+- `ReportFieldGroup` and `ReportField`: custom metadata;
+- `ReportCoverageGroup` and `ReportCoverageItem`: suite/feature coverage rows;
+- `ReportFailure`: title, error detail, count, severity/status;
 - `ReportUnstableFeature`: feature name and failure percentage;
-- `ReportDurationItem`: label, count when applicable, duration range and relative percentage.
+- `ReportDurationItem`: label, optional call count, duration range and relative percentage.
 
-JTE root templates receive exactly one `ReportView` parameter. Components receive only the smallest typed object they need.
+A root JTE template receives exactly one `ReportView`. Components receive only the narrow typed values they need.
 
-This removes string-keyed template contracts such as `report`, `results`, `coverage` and `unstableFeatures` from the Java renderer.
-
-## 5. Report styles
+## 5. Report styles and compatibility
 
 Introduce:
 
@@ -164,71 +155,65 @@ public enum ReportStyle {
 }
 ```
 
-`MODERN` becomes the default for Testara 2.2.0.
+`MODERN` is the Testara 2.2.0 default.
 
-The three current template identifiers remain accepted as lightweight aliases so existing Java/CLI configuration does not need a simultaneous rename:
+Existing style identifiers remain as lightweight aliases only. They do not retain Thymeleaf:
 
 ```text
+testara-modern-report      -> MODERN
 testara-style-report       -> CLASSIC
 testara-simple-report      -> SIMPLE
 testara-single-page-report -> SINGLE_PAGE
-testara-modern-report      -> MODERN
 modern                     -> MODERN
 classic                    -> CLASSIC
 simple                     -> SIMPLE
 single-page                -> SINGLE_PAGE
 ```
 
-This alias mapping does not preserve Thymeleaf. All aliases resolve to JTE styles.
-
-Add the preferred API:
+Preferred fluent API:
 
 ```java
 withReportStyle(ReportStyle style)
 ```
 
-Keep `withReportTemplate(String)` as a deprecated source-compatible adapter that only resolves known style identifiers. It must fail fast for unknown identifiers with an error listing supported styles. Arbitrary external Thymeleaf template loading is removed.
+Keep `withReportTemplate(String)` as a deprecated source-compatible adapter that resolves only these known IDs. Unknown IDs fail fast with the accepted styles. Arbitrary external Thymeleaf template loading is removed.
 
-CLI `--single-page-template` remains accepted for compatibility but is documented as a report-style selector and resolves through the same `ReportStyle` parser. A future major release may rename the option without carrying a second implementation path now.
+CLI `--single-page-template` remains accepted in 2.2.0 but resolves through the same `ReportStyle` parser. Help text describes it as a style selector. This preserves command compatibility without preserving an old renderer.
 
 ## 6. JTE build/runtime strategy
 
-Use one pinned `${jte.version}` property for both:
+Use one pinned `${jte.version}` for both:
 
 - `gg.jte:jte`;
 - `gg.jte:jte-maven-plugin`.
 
-The initial implementation should use JTE `3.2.3`, which is verified as published in Maven Central. Dependency and plugin versions must always stay aligned.
+The dependency and Maven plugin must always use the exact same version. The implementation will pin the latest stable release verified in Maven Central at implementation time, never a range, `LATEST`, or snapshot. This avoids freezing the design to a patch version that may be stale before Testara 2.2.0 ships.
 
-Templates live in:
+Templates live under:
 
 ```text
 testara-reporter/src/main/jte/
 ```
 
-Use the Maven plugin `generate` goal during `generate-sources` with `ContentType.Html`. Generated template Java sources are compiled with Testara and bundled into the normal `testara-reporter` JAR. Runtime uses:
+Use the JTE Maven plugin `generate` goal in `generate-sources`, with `ContentType.Html`. The generated Java template sources compile with Testara and are bundled in the normal reporter JAR. Runtime creates one engine with:
 
 ```java
 TemplateEngine.createPrecompiled(ContentType.Html)
 ```
 
-The engine is created once and safely shared by reporter instances.
-
-Critical email setting:
+Critical build setting:
 
 ```xml
 <htmlCommentsPreserved>true</htmlCommentsPreserved>
 ```
 
-The existing report templates contain Outlook conditional comments and VML blocks. Removing comments during JTE compilation would break those clients. The migration must preserve and test these blocks.
+JTE normally removes HTML comments, while Testara's email markup relies on Outlook conditional comments containing VML. These comments must survive compilation and are covered by renderer tests.
 
-Use normal HTML output escaping for all user/configuration-derived values. Raw output is allowed only for static, repository-owned email compatibility markup where JTE parsing requires it. Branding detail, report names, error messages and custom fields must never use raw/unsafe output.
+All configuration/report/error text uses JTE's normal HTML escaping. `$unsafe{}`/raw output is forbidden for user/configuration-derived values. Raw sections are permitted only for repository-owned static email-compatibility markup when necessary.
 
-Binary static-content rendering is not enabled initially. The generated-source/precompiled path already removes runtime parsing and keeps the JAR self-contained without adding another resource-copy pipeline.
+Binary static-content rendering is intentionally not enabled in 2.2.0. Generated/precompiled templates already eliminate runtime parsing and keep a self-contained JAR without another resource-copy pipeline.
 
 ## 7. Component structure
-
-Use shared components instead of duplicating each entire report.
 
 ```text
 src/main/jte/
@@ -262,45 +247,46 @@ src/main/jte/
     spacer.jte
 ```
 
-Root report templates are composition files. They decide which components are present and their ordering. They should not contain large duplicated sections.
+Root report templates are composition files. They control ordering and inclusion, not detailed repeated markup.
 
-Where visual differences are only styling, use a typed `ReportTheme`/style token object passed to components instead of copying component markup. A separate component is justified only when structure or semantics differ materially.
+Where styles differ only visually, shared components receive a typed `ReportTheme` containing presentation tokens. New component markup is created only when the structure/semantics actually differ. This prevents four report styles from becoming four copies of the same 100 KB template again.
 
-The existing three styles are migrated for semantic/visual continuity, not byte-for-byte HTML identity.
+The existing styles target semantic and recognizable visual continuity, not byte-for-byte HTML equivalence.
 
-## 8. Modern report design
+## 8. Modern report
 
-The modern report remains intentionally conservative at the email transport layer:
+The modern style is visually cleaner while remaining deliberately conservative for email clients:
 
-- table-based layout;
+- table-based structural layout;
 - critical styles inline;
-- maximum content width around 640 px;
+- approximately 640 px maximum content width;
 - no JavaScript;
 - no external CSS;
+- no remote fonts;
 - no icon font;
 - no layout dependency on CSS grid/flexbox;
-- no SVG dependency for status icons;
-- Outlook conditional/VML markup retained where required.
+- no SVG status icons;
+- existing Outlook conditional/VML techniques retained where required.
 
-Visual composition:
+Composition:
 
-1. compact brand header with optional logo;
-2. report name and execution window;
-3. prominent overall status block;
+1. compact organization/framework header with optional logo;
+2. report title and execution window;
+3. prominent overall status;
 4. status metric cards;
 5. compact distribution bar;
-6. custom metadata fields when present;
+6. optional custom metadata;
 7. coverage summary;
 8. failure overview only when failures exist;
-9. slowest scenarios and steps;
-10. optional full-report call-to-action;
+9. longest scenarios and steps;
+10. optional full-report CTA;
 11. branded footer.
 
-Status icons use small text/glyph-based marks with textual labels as the accessibility/fallback source. The report must remain understandable if icons or images are blocked by the email client.
+Status icons use simple glyphs plus explicit text labels. The report remains understandable when styling/images are stripped or blocked.
 
 ## 9. White-label branding
 
-Expand `ReportConfiguration` using a nested branding configuration consistent with Testara's existing nested property binding pattern.
+Extend `ReportConfiguration` with nested branding, following Testara's existing nested configuration pattern:
 
 ```properties
 testara.report.style=modern
@@ -310,7 +296,7 @@ testara.report.branding.logo=classpath:branding/blibli.png
 testara.report.branding.detail=Commerce Platform Quality Engineering
 ```
 
-Java shape:
+Java configuration shape:
 
 ```java
 @Data
@@ -322,9 +308,7 @@ public class ReportConfiguration {
 }
 ```
 
-`BrandingConfiguration` contains organization name, logo and detail.
-
-Resolved defaults:
+Defaults:
 
 ```text
 organization name   Testara
@@ -332,188 +316,181 @@ logo                absent
 organization detail absent
 ```
 
-The report/project title remains independent from organization branding. Setting organization name replaces visible framework branding, not `reportName`.
+Organization branding is independent from `reportName`. A white-label name replaces visible Testara branding but does not replace a report title such as `Checkout Regression`.
 
-Every style consumes the same `ReportBranding` object and shared header/footer branding components.
+Every style consumes the same `ReportBranding` model and shared branding/header/footer components.
 
 ### Logo resolution
 
-Introduce `BrandingLogoResolver` with deterministic URI handling:
+Introduce `BrandingLogoResolver`:
 
-- `classpath:` -> read resource and embed as a data URI;
-- `file:` -> read file and embed as a data URI;
-- plain local path -> read file and embed as a data URI;
-- `data:image/...` -> pass through after validation;
+- `classpath:` -> read and embed as data URI;
+- `file:` -> read and embed as data URI;
+- plain local path -> read and embed as data URI;
+- `data:image/...` -> validate and pass through;
 - `https://` -> pass through unchanged;
-- `cid:` -> pass through unchanged for callers that separately construct a MIME message.
+- `cid:` -> pass through unchanged for callers that separately build MIME messages.
 
-Only common email/browser image media types are accepted: PNG, JPEG/JPG, GIF and WEBP. SVG is not accepted for embedded email branding because client support is inconsistent.
+Embedded local/data images accept PNG, JPEG/JPG and GIF. SVG and WEBP are rejected for embedded branding because broad email-client compatibility is the priority.
 
-A missing/unreadable/unsupported logo logs a warning and renders the report without a logo. Test execution/report generation must not fail because branding artwork is unavailable.
+A missing, unreadable, oversized or unsupported logo logs a warning and renders without a logo. Report generation must not fail because branding artwork is unavailable.
 
-Local logo size is bounded before embedding to prevent accidentally turning a small report into a multi-megabyte HTML file. The implementation limit is 1 MiB of source image data; larger local images are ignored with a warning. Testara will not perform image resizing inside the reporter.
+Local/classpath source images are limited to 1 MiB before base64 encoding. Larger assets are ignored with a warning. Testara does not perform image resizing inside the reporter.
 
-## 10. Email compatibility
+Data URI embedding is for self-contained report portability. Where a mail pipeline supports MIME attachments, `cid:` remains the preferred way to reference an attached logo; Testara reporter itself does not construct the MIME message.
 
-All styles share these rules:
+## 10. Email compatibility contract
 
-- preserve Outlook conditional comments;
-- preserve required VML fallback blocks from existing templates;
+Every style must:
+
+- preserve Outlook conditional comments and required VML fallback blocks;
 - use tables for structural layout;
 - inline critical styles;
-- include image dimensions and meaningful `alt` text;
-- make status information textual as well as visual;
-- avoid relying on remote fonts;
-- avoid JavaScript;
-- avoid client-sensitive SVG icons;
+- use explicit image dimensions and meaningful `alt` text;
+- encode status semantically in text as well as color/icon;
+- avoid remote fonts, JavaScript and external stylesheets;
+- avoid SVG/icon-font dependencies;
 - tolerate blocked external images;
-- keep a plain readable hierarchy when advanced styling is stripped.
+- remain readable when advanced styling is stripped.
 
-Generated output tests must assert the presence of the Outlook conditional markers after JTE rendering so a future build-plugin change cannot silently strip them.
+Renderer tests assert that Outlook conditional markers remain in generated output, preventing a future JTE/plugin configuration change from silently stripping them.
 
 ## 11. Performance and scalability
 
-The current implementation creates a new Thymeleaf engine for each report, disables cache, renders to a large `String`, writes the string, then clears the cache. The refactor removes that lifecycle entirely.
+The current implementation creates a new Thymeleaf engine for each report, disables template caching, renders the whole result into a `String`, writes it, and clears the cache. That lifecycle is removed.
 
 The JTE path must:
 
-- compile/generate templates during the Maven build;
+- generate templates during the Maven build;
 - use one reusable precompiled `TemplateEngine`;
-- render directly through `FileOutput` or `WriterOutput`;
-- aggregate the Cucumber data once per report;
+- render directly via `FileOutput`;
+- read/aggregate Cucumber data once per report;
 - build one immutable `ReportView`;
-- avoid re-reading report JSON for each template section;
-- avoid duplicating calculation logic inside templates;
-- keep templates presentation-only;
-- prefer immutable records/lists at the renderer boundary.
+- avoid re-reading report files for individual sections;
+- keep calculations out of templates;
+- avoid duplicated calculations across styles/components;
+- make all renderer-bound lists immutable copies.
 
-No speculative caching of report data is added. The main scalable gain comes from eliminating runtime template compilation, large intermediate output strings and repeated calculation/render coupling.
+No speculative cross-report cache is added. The scalability gain comes from build-time template compilation, reusable renderer state, direct output, one aggregation pass and smaller componentized templates.
 
 ## 12. Error handling
 
-- Unknown report style: fail fast before reading/rendering the report, list valid styles.
-- JTE template compilation error: fail the Maven build.
-- Runtime render error: propagate as report-generation failure with style and destination in the exception message.
-- Invalid branding text: safely HTML escaped.
-- Logo read/validation failure: warning, continue without logo.
-- Empty report sections: component omitted rather than rendering broken/empty tables.
-- Empty feature/scenario collections: calculations must avoid index/division assumptions and render an explicit zero-test state.
+- unknown style: fail before reading/rendering, with accepted values;
+- JTE template/model mismatch: fail Maven compilation;
+- runtime render failure: propagate with report style and destination path in the message;
+- branding/report/custom/error text: HTML escaped;
+- invalid logo: warn and continue without logo;
+- empty optional section: omit component;
+- zero-feature/zero-scenario report: render a valid explicit zero-test state without division/index errors.
 
-The current duration/failure calculations that assume non-empty lists should be hardened as part of the extraction because componentized rendering must handle empty reports safely.
+The extraction must harden existing ranking/calculation code that currently assumes non-empty lists.
 
 ## 13. Migration sequence
 
-The implementation should land in coherent steps while keeping the final PR on one renderer:
-
-1. add typed view models and tests;
+1. add typed view records and tests;
 2. extract aggregation/view creation from `CucumberSummaryReportGenerator`;
-3. add `ReportStyle` parsing and configuration tests;
+3. add `ReportStyle` parsing/configuration tests;
 4. add branding configuration and logo resolver tests;
-5. add JTE dependency/plugin and a minimal precompiled renderer contract test;
+5. add aligned JTE dependency/plugin plus a minimal precompiled renderer test;
 6. build shared email layout/components;
 7. implement `MODERN`;
 8. migrate `CLASSIC`;
 9. migrate `SIMPLE`;
 10. migrate `SINGLE_PAGE`;
-11. migrate CLI/style selection to `ReportStyle`;
+11. move Java/CLI style selection to `ReportStyle`;
 12. remove all Thymeleaf Java code, dependencies and `.html` templates;
-13. verify no `org.thymeleaf`, Thymeleaf template attributes, or legacy template resources remain;
-14. run reporter tests and the available Testara reactor verification.
+13. remove root Thymeleaf dependency/version management that is no longer used elsewhere;
+14. verify no Thymeleaf imports, `data-th-*`, expressions or template resources remain;
+15. run reporter verification and the available Testara reactor checks.
 
-There is no intermediate production state with both renderer engines after the final commit series.
+The final PR contains only the JTE renderer. There is no completed state in which both template engines are carried.
 
 ## 14. Testing strategy
 
-Existing reporter tests currently exercise summary generation but mostly assert that generation completes. Preserve those integration fixtures and add targeted assertions.
+Existing summary-generation fixtures remain useful, but they currently mostly prove that generation completes. Add behavioral assertions rather than relying on giant full-file snapshots.
 
 ### Unit tests
 
 `ReportStyleTest`
 
-- all canonical names parse;
-- all legacy identifiers map to the intended JTE style;
-- unknown values fail with useful message;
-- modern is the configured default.
+- canonical names and legacy aliases resolve correctly;
+- unknown values fail clearly;
+- modern is the default.
 
 `ReportBrandingFactoryTest`
 
 - Testara defaults;
-- organization-name override;
-- organization detail;
-- null/blank handling.
+- organization override/detail;
+- blank/null normalization.
 
 `BrandingLogoResolverTest`
 
-- classpath embedding;
-- local file embedding;
-- data URI passthrough;
-- HTTPS passthrough;
-- CID passthrough;
-- unsupported media type warning/fallback;
-- missing file warning/fallback;
-- source size limit.
+- classpath and local file embedding;
+- data URI validation/passthrough;
+- HTTPS/CID passthrough;
+- PNG/JPEG/GIF support;
+- SVG/WEBP rejection;
+- missing/oversized source warning and fallback.
 
 `CucumberReportViewFactoryTest`
 
-- status counts/percentages;
+- counts/percentages;
 - zero tests;
 - coverage grouping;
 - failure ranking;
 - duration ranking;
 - custom fields;
-- metadata timestamps/link.
+- metadata/link values.
 
-### Template/render tests
+### Renderer tests
 
-For every `ReportStyle`:
+For each `ReportStyle`:
 
-- render a passed fixture;
-- render a failed fixture;
-- render an empty/zero-test view;
-- output contains the report title and expected status summary;
-- default branding contains Testara;
-- white-label branding replaces visible Testara brand text;
-- organization detail appears in footer;
-- optional logo appears only when resolved;
-- output contains no unresolved JTE directives;
-- output contains no Thymeleaf `data-th-*` attributes;
-- Outlook conditional comments remain present where the style uses them;
-- HTML does not depend on scripts/external CSS/icon fonts.
+- render passed, failed and zero-test views;
+- assert report title and status summary;
+- assert default Testara branding;
+- assert white-label name replaces visible framework branding;
+- assert organization detail in footer;
+- assert logo inclusion/absence appropriately;
+- assert no unresolved JTE directives;
+- assert no Thymeleaf `data-th-*` output;
+- assert Outlook conditional comments survive where required;
+- assert no script/external CSS/icon-font dependency.
 
-Use structural/semantic assertions rather than full 100 KB golden snapshots. Small snapshots are acceptable for isolated components where they improve confidence without making every spacing change a test rewrite.
+Small component snapshots are acceptable when useful. Do not use full-report golden snapshots that make harmless spacing changes expensive.
 
-### Build tests
+### Build/dependency tests
 
-Maven build must compile JTE templates. A bad template/model reference must fail during compilation, not first fail when a report is generated.
+- Maven must compile JTE templates, so invalid template/model references fail the build;
+- reporter dependency verification must confirm `org.thymeleaf:*` and `thymeleaf-extras-java8time` are absent;
+- repository search must confirm Thymeleaf remains nowhere after the migration. Current repository search shows its usage is limited to the reporter plus root dependency/version management, so full removal is in scope.
 
-A dependency scan/test should ensure `org.thymeleaf:*` and `thymeleaf-extras-java8time` are absent from the final reporter dependency graph.
+## 15. Completion criteria
 
-## 15. Removal criteria
+The refactor is complete only when:
 
-The migration is complete only when all of the following are true:
-
-- `testara-reporter` has no Thymeleaf dependency;
-- root Testara dependency management has no Thymeleaf version/property solely used by reporter;
-- no Java class imports Thymeleaf;
-- no reporter resource contains `data-th-*`/Thymeleaf expressions;
-- the three existing styles and modern style render through JTE;
-- JTE templates are built into the reporter JAR;
-- `CucumberSummaryReportGenerator` does not construct a template engine or loose template context;
-- report rendering writes directly to its output;
-- white-labeling works across all styles;
+- reporter and root POMs contain no Thymeleaf dependency/version used by Testara;
+- no Java source imports Thymeleaf;
+- no reporter resource contains Thymeleaf markup;
+- all four styles render through JTE;
+- generated JTE classes are included in the reporter JAR;
+- `CucumberSummaryReportGenerator` owns no template engine/context construction;
+- rendering writes directly to output;
+- white-labeling works consistently for all styles;
+- zero-test reports render safely;
 - reporter tests pass independently;
 - the full Testara reactor is rerun once the separate unpublished `mitmproxy-grid-java-client:0.2.0` dependency is available.
 
-## 16. Design rationale
+## 16. Rationale
 
-The long-term value is not merely replacing one template syntax with another. The durable change is the boundary between report data and rendering.
+The long-term value is the separation between report data and rendering, not merely a syntax swap.
 
 After this refactor:
 
-- Cucumber processing can evolve without touching email markup;
-- report markup can evolve without understanding Cucumber parser internals;
-- template/model drift becomes a build-time problem through JTE's typed Java templates;
-- styles share components instead of copying large HTML sections;
-- branding is a first-class model instead of hardcoded text;
-- rendering has predictable build-time compilation and low runtime setup cost;
-- a future renderer/output format can consume `ReportView` without duplicating aggregation, while Testara 2.2.0 itself carries only the JTE HTML renderer.
+- Cucumber processing can evolve without editing email markup;
+- report design can evolve without depending on Cucumber parser internals;
+- template/model drift is detected during the build by typed JTE templates;
+- report styles share components instead of copying giant HTML documents;
+- branding is first-class typed data rather than hardcoded text;
+- runtime rendering has predictable low setup cost;
+- future output formats can consume `ReportView` without duplicating aggregation, while Testara 2.2.0 itself carries only one HTML renderer: JTE.
