@@ -5,7 +5,6 @@ import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Predicate;
 
-import org.apache.commons.lang3.ObjectUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.awaitility.Awaitility;
 import org.awaitility.core.ConditionTimeoutException;
@@ -13,10 +12,10 @@ import org.awaitility.core.ConditionTimeoutException;
 import com.vibium.errors.VibiumException;
 import com.vibium.types.FindOptions;
 
+import io.github.ygrip.testara.ui.capability.PageWaitSupport;
 import io.github.ygrip.testara.ui.capability.WaitCapability;
 import io.github.ygrip.testara.ui.page.Element;
 import io.github.ygrip.testara.ui.page.NamedPage;
-import io.github.ygrip.testara.ui.page.PageContext;
 import io.github.ygrip.testara.ui.vibium.driver.VibiumSession;
 import io.github.ygrip.testara.ui.vibium.error.VibiumOperationException;
 import io.github.ygrip.testara.ui.vibium.locator.VibiumElement;
@@ -73,11 +72,7 @@ public final class VibiumWaitCapability extends VibiumElementResolver implements
   @Override
   public WaitPage untilPageLoaded(NamedPage namedPage) {
     return duration -> {
-      PageContext<?> pageCtx = namedPage.getPage();
-      if (ObjectUtils.isNotEmpty(pageCtx) && pageCtx.isCurrentPage(duration)) {
-        namedPage.getFinder()
-          .setCurrentPage(pageCtx);
-      }
+      PageWaitSupport.requireLoaded(namedPage, duration);
       return VibiumWaitCapability.this;
     };
   }
