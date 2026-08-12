@@ -24,7 +24,7 @@ public class SeleniumDriverProperties extends AbstractDriverProperties {
   private boolean enableWebSocket = true;
   private boolean maximizeBrowser = true;
   private boolean clearCache = false;
-  private String pageLoadStrategy = PageLoadStrategy.NORMAL.toString();
+  private String pageLoadStrategy;
   private Map<DeviceType, Map<String, String>> userAgent = new HashMap<>();
   private Map<DeviceType, Map<String, String>> binaryPath = new HashMap<>();
   private Map<DeviceType, Map<String, Map<String, Object>>> capabilities = new HashMap<>();
