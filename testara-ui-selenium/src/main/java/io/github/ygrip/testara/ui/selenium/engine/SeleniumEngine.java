@@ -14,6 +14,7 @@ import org.apache.logging.log4j.Logger;
 import org.openqa.selenium.Capabilities;
 import org.openqa.selenium.Dimension;
 import org.openqa.selenium.MutableCapabilities;
+import org.openqa.selenium.PageLoadStrategy;
 import org.openqa.selenium.Point;
 import org.openqa.selenium.WebDriver;
 import org.openqa.selenium.remote.DesiredCapabilities;
@@ -87,6 +88,25 @@ public final class SeleniumEngine implements EngineFactory<SeleniumDriverPropert
     return capabilities;
   }
 
+  static MutableCapabilities applyPageLoadStrategy(
+    MutableCapabilities capabilities,
+    SeleniumDriverProperties properties
+  ) {
+    String configured = Optional.ofNullable(properties)
+      .map(SeleniumDriverProperties::getPageLoadStrategy)
+      .filter(StringUtils::isNotBlank)
+      .orElse(null);
+    if (configured == null && capabilities.getCapability("pageLoadStrategy") != null) {
+      return capabilities;
+    }
+
+    PageLoadStrategy strategy = Optional.ofNullable(properties)
+      .map(SeleniumDriverProperties::resolvePageLoadStrategy)
+      .orElse(PageLoadStrategy.NORMAL);
+    capabilities.setCapability("pageLoadStrategy", strategy.toString());
+    return capabilities;
+  }
+
   private MutableCapabilities getCapabilities(String name, DeviceType deviceType) {
     MutableCapabilities capabilities = new MutableCapabilities();
     final var capabilitiesFromProperties = toCapabilities(Optional.ofNullable(config())
@@ -97,7 +117,7 @@ public final class SeleniumEngine implements EngineFactory<SeleniumDriverPropert
       .filter(ObjectUtils::isNotEmpty)
       .orElse(Collections.emptyMap()));
     capabilities.merge(capabilitiesFromProperties);
-    return capabilities;
+    return applyPageLoadStrategy(capabilities, config());
   }
 
   private EmulationModel getEmulationModel(String name, DeviceType deviceType) {
