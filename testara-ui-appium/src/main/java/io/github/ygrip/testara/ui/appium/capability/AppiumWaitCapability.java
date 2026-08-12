@@ -7,7 +7,6 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
 
-import org.apache.commons.lang3.ObjectUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.awaitility.Awaitility;
 import org.openqa.selenium.WebElement;
@@ -15,10 +14,10 @@ import org.openqa.selenium.support.ui.ExpectedCondition;
 import org.openqa.selenium.support.ui.ExpectedConditions;
 import org.openqa.selenium.support.ui.WebDriverWait;
 
+import io.github.ygrip.testara.ui.capability.PageWaitSupport;
 import io.github.ygrip.testara.ui.capability.WaitCapability;
 import io.github.ygrip.testara.ui.page.Element;
 import io.github.ygrip.testara.ui.page.NamedPage;
-import io.github.ygrip.testara.ui.page.PageContext;
 
 import io.appium.java_client.AppiumDriver;
 import lombok.extern.log4j.Log4j2;
@@ -44,11 +43,7 @@ public final class AppiumWaitCapability implements WaitCapability {
   @Override
   public WaitPage untilPageLoaded(NamedPage namedPage) {
     return duration -> {
-      PageContext<?> page = namedPage.getPage();
-      if (ObjectUtils.isNotEmpty(page) && page.isCurrentPage(duration)) {
-        namedPage.getFinder()
-          .setCurrentPage(page);
-      }
+      PageWaitSupport.requireLoaded(namedPage, duration);
       return AppiumWaitCapability.this;
     };
   }
