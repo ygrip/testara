@@ -45,8 +45,14 @@ public final class SeleniumWaitCapability implements WaitCapability {
   public WaitPage untilPageLoaded(NamedPage namedPage) {
     return duration -> {
       PageContext<?> page = namedPage.getPage();
-      if (ObjectUtils.isNotEmpty(page) && page.isCurrentPage(duration)) {
+      if (ObjectUtils.isEmpty(page)) {
+        log.warn("Unable to resolve page '{}' while waiting for it to load", namedPage.getName());
+        return SeleniumWaitCapability.this;
+      }
+      if (page.isCurrentPage(duration)) {
         namedPage.getFinder().setCurrentPage(page);
+      } else {
+        log.warn("Page '{}' did not become current within {}", page.getClass().getSimpleName(), duration);
       }
       return SeleniumWaitCapability.this;
     };
@@ -75,7 +81,7 @@ public final class SeleniumWaitCapability implements WaitCapability {
 
   @Override
   public WaitCapability untilSelected(Element locator) {
-    WebElement targetElement = element(locator);
+    WebElement targetElement = requiredElement(locator);
     new WebDriverWait(driver, defaultTimeout).withTimeout(defaultTimeout)
       .pollingEvery(Duration.ofMillis(100))
       .until(ExpectedConditions.elementToBeSelected(targetElement));
@@ -84,7 +90,7 @@ public final class SeleniumWaitCapability implements WaitCapability {
 
   @Override
   public WaitCapability untilVisible(Element locator) {
-    WebElement targetElement = element(locator);
+    WebElement targetElement = requiredElement(locator);
     new WebDriverWait(driver, defaultTimeout).withTimeout(defaultTimeout)
       .pollingEvery(Duration.ofMillis(100))
       .until(ExpectedConditions.visibilityOf(targetElement));
@@ -93,7 +99,10 @@ public final class SeleniumWaitCapability implements WaitCapability {
 
   @Override
   public WaitCapability untilInvisible(Element locator) {
-    WebElement targetElement = element(locator);
+    WebElement targetElement = optionalElement(locator);
+    if (targetElement == null) {
+      return this;
+    }
     new WebDriverWait(driver, defaultTimeout).withTimeout(defaultTimeout)
       .pollingEvery(Duration.ofMillis(100))
       .until(ExpectedConditions.invisibilityOf(targetElement));
@@ -102,7 +111,7 @@ public final class SeleniumWaitCapability implements WaitCapability {
 
   @Override
   public WaitCapability untilClickable(Element locator) {
-    WebElement targetElement = element(locator);
+    WebElement targetElement = requiredElement(locator);
     new WebDriverWait(driver, defaultTimeout).withTimeout(defaultTimeout)
       .pollingEvery(Duration.ofMillis(100))
       .until(ExpectedConditions.elementToBeClickable(targetElement));
@@ -117,7 +126,7 @@ public final class SeleniumWaitCapability implements WaitCapability {
         try {
           return locator.one();
         } catch (Exception e) {
-          throw new RuntimeException(e);
+          return null;
         }
       });
     return this;
@@ -128,14 +137,8 @@ public final class SeleniumWaitCapability implements WaitCapability {
     new WebDriverWait(driver, defaultTimeout).withTimeout(defaultTimeout)
       .pollingEvery(Duration.ofMillis(100))
       .until((ExpectedCondition<Boolean>) driver -> {
-        try {
-          WebElement target = element(locator);
-          return Optional.ofNullable(target)
-            .map(WebElement::isEnabled)
-            .orElse(false);
-        } catch (Exception e) {
-          throw new RuntimeException(e);
-        }
+        WebElement target = requiredElement(locator);
+        return target.isEnabled();
       });
     return this;
   }
@@ -145,14 +148,8 @@ public final class SeleniumWaitCapability implements WaitCapability {
     new WebDriverWait(driver, defaultTimeout).withTimeout(defaultTimeout)
       .pollingEvery(Duration.ofMillis(100))
       .until((ExpectedCondition<Boolean>) driver -> {
-        try {
-          WebElement target = element(locator);
-          return !Optional.ofNullable(target)
-            .map(WebElement::isEnabled)
-            .orElse(false);
-        } catch (Exception e) {
-          throw new RuntimeException(e);
-        }
+        WebElement target = requiredElement(locator);
+        return !target.isEnabled();
       });
     return this;
   }
@@ -169,11 +166,22 @@ public final class SeleniumWaitCapability implements WaitCapability {
   }
 
   @SuppressWarnings({"rawtypes"})
-  private WebElement element(Element locator) {
+  private WebElement requiredElement(Element locator) {
     try {
       return (WebElement) locator.one(defaultTimeout);
     } catch (Exception e) {
-      log.warn("Unable to find element on {}", locator.getLocator());
+      throw new IllegalStateException(
+        "Element '%s' was not found within %s".formatted(locator.getLocator(), defaultTimeout),
+        e
+      );
+    }
+  }
+
+  @SuppressWarnings({"rawtypes"})
+  private WebElement optionalElement(Element locator) {
+    try {
+      return (WebElement) locator.one(defaultTimeout);
+    } catch (Exception e) {
       return null;
     }
   }
