@@ -92,6 +92,14 @@ public final class SeleniumEngine implements EngineFactory<SeleniumDriverPropert
     MutableCapabilities capabilities,
     SeleniumDriverProperties properties
   ) {
+    String configured = Optional.ofNullable(properties)
+      .map(SeleniumDriverProperties::getPageLoadStrategy)
+      .filter(StringUtils::isNotBlank)
+      .orElse(null);
+    if (configured == null && capabilities.getCapability("pageLoadStrategy") != null) {
+      return capabilities;
+    }
+
     PageLoadStrategy strategy = Optional.ofNullable(properties)
       .map(SeleniumDriverProperties::resolvePageLoadStrategy)
       .orElse(PageLoadStrategy.NORMAL);
