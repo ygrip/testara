@@ -13,19 +13,20 @@ import org.junit.jupiter.api.Test;
 
 import io.github.ygrip.testara.ui.config.AbstractDriverProperties;
 import io.github.ygrip.testara.ui.driver.DriverSession;
+import io.github.ygrip.testara.ui.error.WaitTimeoutException;
 import io.github.ygrip.testara.ui.model.Locator;
 import io.github.ygrip.testara.ui.page.NamedPage;
 import io.github.ygrip.testara.ui.page.PageContext;
 import io.github.ygrip.testara.ui.page.PageFinder;
 import io.github.ygrip.testara.ui.populator.ElementCatalog;
 
-import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Regression coverage for {@link PlaywrightWaitCapability#untilPageLoaded(NamedPage)}: the
  * finder's current page must only be activated when the page actually confirms it is the
- * current page within the given timeout.
+ * current page within the given timeout, and a failed condition must fail the wait.
  */
 class PlaywrightWaitCapabilityTest {
 
@@ -105,16 +106,16 @@ class PlaywrightWaitCapabilityTest {
   }
 
   @Test
-  void doesNotSetCurrentPageWhenPageIsNotCurrent() {
+  void throwsWhenPageIsNotCurrent() {
     FakePage page = new FakePage(false);
     FakeFinder finder = new FakeFinder(page);
     NamedPage namedPage = NamedPage.of(FakePage.class)
       .by(finder)
       .build();
 
-    new PlaywrightWaitCapability(null).untilPageLoaded(namedPage)
-      .forDuration(Duration.ofMillis(10));
-
-    assertFalse(finder.wasCurrentPageSet(), "current page must not be activated when isCurrentPage returns false");
+    assertThrows(WaitTimeoutException.class, () ->
+      new PlaywrightWaitCapability(null).untilPageLoaded(namedPage)
+        .forDuration(Duration.ofMillis(10))
+    );
   }
 }
