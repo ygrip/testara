@@ -28,4 +28,27 @@ class SeleniumEnginePageLoadStrategyTest {
 
     assertEquals("normal", capabilities.getCapability("pageLoadStrategy"));
   }
+
+  @Test
+  void preservesGenericCapabilityWhenDedicatedPropertyIsNotConfigured() {
+    SeleniumDriverProperties properties = new SeleniumDriverProperties();
+    MutableCapabilities capabilities = new MutableCapabilities();
+    capabilities.setCapability("pageLoadStrategy", "eager");
+
+    SeleniumEngine.applyPageLoadStrategy(capabilities, properties);
+
+    assertEquals("eager", capabilities.getCapability("pageLoadStrategy"));
+  }
+
+  @Test
+  void dedicatedPropertyOverridesGenericCapability() {
+    SeleniumDriverProperties properties = new SeleniumDriverProperties();
+    properties.setPageLoadStrategy("none");
+    MutableCapabilities capabilities = new MutableCapabilities();
+    capabilities.setCapability("pageLoadStrategy", "eager");
+
+    SeleniumEngine.applyPageLoadStrategy(capabilities, properties);
+
+    assertEquals("none", capabilities.getCapability("pageLoadStrategy"));
+  }
 }
