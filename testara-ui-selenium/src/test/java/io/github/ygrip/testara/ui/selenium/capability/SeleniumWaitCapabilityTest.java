@@ -13,6 +13,7 @@ import org.junit.jupiter.api.Test;
 
 import io.github.ygrip.testara.ui.config.AbstractDriverProperties;
 import io.github.ygrip.testara.ui.driver.DriverSession;
+import io.github.ygrip.testara.ui.error.WaitTimeoutException;
 import io.github.ygrip.testara.ui.model.Locator;
 import io.github.ygrip.testara.ui.page.NamedPage;
 import io.github.ygrip.testara.ui.page.PageContext;
@@ -112,7 +113,7 @@ class SeleniumWaitCapabilityTest {
       .by(finder)
       .build();
 
-    assertThrows(RuntimeException.class, () ->
+    assertThrows(WaitTimeoutException.class, () ->
       new SeleniumWaitCapability(null).untilPageLoaded(namedPage)
         .forDuration(Duration.ofMillis(10))
     );
