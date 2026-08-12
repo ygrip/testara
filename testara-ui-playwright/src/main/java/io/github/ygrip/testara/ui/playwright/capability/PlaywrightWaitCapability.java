@@ -6,14 +6,13 @@ import static org.hamcrest.Matchers.equalTo;
 import java.time.Duration;
 import java.util.Optional;
 
-import org.apache.commons.lang3.ObjectUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.awaitility.Awaitility;
 
+import io.github.ygrip.testara.ui.capability.PageWaitSupport;
 import io.github.ygrip.testara.ui.capability.WaitCapability;
 import io.github.ygrip.testara.ui.page.Element;
 import io.github.ygrip.testara.ui.page.NamedPage;
-import io.github.ygrip.testara.ui.page.PageContext;
 
 import io.github.ygrip.testara.ui.playwright.driver.PlaywrightSession;
 import lombok.extern.log4j.Log4j2;
@@ -35,10 +34,7 @@ public final class PlaywrightWaitCapability extends PlaywrightElementResolver im
   @Override
   public WaitPage untilPageLoaded(NamedPage namedPage) {
     return duration -> {
-      PageContext<?> pageCtx = namedPage.getPage();
-      if (ObjectUtils.isNotEmpty(pageCtx) && pageCtx.isCurrentPage(duration)) {
-        namedPage.getFinder().setCurrentPage(pageCtx);
-      }
+      PageWaitSupport.requireLoaded(namedPage, duration);
       return PlaywrightWaitCapability.this;
     };
   }
