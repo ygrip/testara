@@ -1,10 +1,10 @@
 package io.github.ygrip.testara.reporter.model;
 
 public enum ReportTheme {
-  MODERN("#0f172a", "#2563eb", "#f8fafc", "#ffffff", "#0f172a", "#64748b", "#e2e8f0"),
-  CLASSIC("#1e3a5f", "#2f80ed", "#f3f6fa", "#ffffff", "#1f2937", "#6b7280", "#dbe3ec"),
-  SIMPLE("#111827", "#475569", "#ffffff", "#ffffff", "#111827", "#6b7280", "#e5e7eb"),
-  SINGLE_PAGE("#172554", "#1d4ed8", "#f8fafc", "#ffffff", "#111827", "#64748b", "#dbeafe");
+  MODERN("#0B1220", "#00AFA5", "#F8FAFC", "#FFFFFF", "#0B1220", "#64748B", "#CBD5E1"),
+  CLASSIC("#1E3A5F", "#2F80ED", "#F3F6FA", "#FFFFFF", "#1F2937", "#6B7280", "#DBE3EC"),
+  SIMPLE("#111827", "#475569", "#FFFFFF", "#FFFFFF", "#111827", "#6B7280", "#E5E7EB"),
+  SINGLE_PAGE("#0B1220", "#00AFA5", "#F8FAFC", "#FFFFFF", "#0B1220", "#64748B", "#CBD5E1");
 
   private final String headerBackground;
   private final String accent;
