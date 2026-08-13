@@ -1,10 +1,10 @@
 package io.github.ygrip.testara.reporter.summary;
 
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.List;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -20,7 +20,7 @@ class InteractiveReportResponsiveTest {
   @TempDir Path tempDir;
 
   @Test
-  void rendersSetaraRameinBlendWithMobileFilterAndSortControls() throws Exception {
+  void rendersFocusedExplorerWithInPlaceScenarioDetail() throws Exception {
     ReportConfiguration configuration = new ReportConfiguration();
     configuration.getInteractive().setEnabled(true);
     String reportPath = System.getProperty("user.dir") + "/src/test/resources/cucumber/multiple/";
@@ -34,10 +34,22 @@ class InteractiveReportResponsiveTest {
 
     String html = Files.readString(output);
     assertTrue(html.contains("data-visual-blend=\"setara-ramein\""));
-    assertTrue(html.contains("--violet:#8B5CF6"));
-    assertTrue(html.contains("data-filter-pane-toggle"));
-    assertTrue(html.contains("aria-controls=\"scenario-filter-pane\""));
-    assertTrue(html.contains("id=\"scenario-filter-pane\""));
+    assertTrue(html.contains("data-quality-signal"));
+    assertTrue(html.contains("data-quality-breakdown"));
+    assertTrue(html.contains("data-coverage-scroll"));
+    assertTrue(html.contains("<svg class=\"search-icon\""));
+    assertTrue(html.contains("data-clear-filters"));
+    assertTrue(html.contains("data-sort-column=\"status\""));
+    assertTrue(html.contains("data-sort-column=\"name\""));
+    assertTrue(html.contains("data-sort-column=\"feature\""));
+    assertTrue(html.contains("data-sort-column=\"duration\""));
+    assertTrue(html.contains("data-scenario-list-view"));
+    assertTrue(html.contains("data-scenario-detail-view"));
+    assertTrue(html.contains("data-open-scenario"));
+    assertTrue(html.contains("data-close-scenario"));
     assertTrue(html.contains("data-mobile-sort-strip"));
+    assertFalse(html.contains("data-failed-only"));
+    assertFalse(html.contains("data-filter-pane-toggle"));
+    assertFalse(html.contains("data-detail-toggle"));
   }
 }
