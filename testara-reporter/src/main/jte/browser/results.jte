@@ -1,7 +1,7 @@
 @import io.github.ygrip.testara.reporter.view.ReportView
 @param ReportView view
 <section class="bento-grid">
-  <article class="glass-card card-pad span-12 results-card" data-glass-card>
+  <article class="glass-card card-pad span-12 results-card" data-glass-card data-visual-blend="setara-ramein">
     <div class="results-heading">
       <div>
         <div class="card-eyebrow">Execution detail</div>
@@ -17,13 +17,17 @@
           <span class="search-icon">⌕</span>
           <input type="search" placeholder="Search scenario, feature, suite, tag, step, or error…" aria-label="Search report" data-report-search>
         </div>
+        <button class="filter-button mobile-filter-toggle" type="button" data-filter-pane-toggle aria-expanded="false" aria-controls="scenario-filter-pane">
+          <span>Filters</span>
+          <span class="filter-toggle-indicator" aria-hidden="true">⌄</span>
+        </button>
         <label class="failed-chip" title="Show only failed scenarios">
           <input type="checkbox" data-failed-only>
           <span>Failed only</span>
         </label>
         <button class="filter-button secondary" type="button" data-clear-filters>Clear</button>
       </div>
-      <div class="control-secondary">
+      <div class="control-secondary" id="scenario-filter-pane" data-filter-pane>
         <label class="control-label">
           <span>Status</span>
           <select data-status-filter>
@@ -53,6 +57,12 @@
     @if(view.scenarios().isEmpty())
       <div class="empty-state">Interactive scenario detail is not available for this report.</div>
     @else
+      <div class="mobile-sort-strip" data-mobile-sort-strip aria-label="Sort scenarios">
+        <span class="mobile-sort-label">Sort</span>
+        <button class="sort-header mobile-sort-button" type="button" data-sort-column="status" aria-pressed="false">Status <span data-sort-indicator></span></button>
+        <button class="sort-header mobile-sort-button" type="button" data-sort-column="name" aria-pressed="false">Scenario <span data-sort-indicator></span></button>
+        <button class="sort-header mobile-sort-button active" type="button" data-sort-column="duration" data-sort-direction="desc" aria-pressed="true">Duration <span data-sort-indicator>↓</span></button>
+      </div>
       <div class="scenario-table-shell">
         <table class="scenario-table">
           <thead>
