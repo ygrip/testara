@@ -1,7 +1,7 @@
 @import io.github.ygrip.testara.reporter.view.ReportView
 @param ReportView view
 <section class="bento-grid" data-bento-grid>
-  <article class="glass-card card-pad metric-card span-4" data-glass-card>
+  <article class="glass-card card-pad metric-card accent-teal span-4" data-glass-card>
     <div class="metric-top">
       <div>
         <div class="metric-label">Pass rate</div>
@@ -13,7 +13,7 @@
     <div class="mini-progress"><span style="width:${view.status().passRate()}%;"></span></div>
   </article>
 
-  <article class="glass-card card-pad metric-card span-4" data-glass-card>
+  <article class="glass-card card-pad metric-card accent-cyan span-4" data-glass-card>
     <div class="metric-top">
       <div>
         <div class="metric-label">Execution time</div>
@@ -24,7 +24,7 @@
     <p class="metric-note">Average ${view.metadata().averageExecutionTime()} per scenario.</p>
   </article>
 
-  <article class="glass-card card-pad metric-card span-4" data-glass-card>
+  <article class="glass-card card-pad metric-card accent-violet span-4" data-glass-card>
     <div class="metric-top">
       <div>
         <div class="metric-label">Scenario range</div>
