@@ -12,6 +12,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import io.github.ygrip.testara.reporter.config.ReportConfiguration;
+import io.github.ygrip.testara.reporter.cucumber.CucumberSummaryReportGenerator;
 import io.github.ygrip.testara.reporter.cucumber.CucumberReportMergeFactory;
 import io.github.ygrip.testara.reporter.model.ReportStyle;
 import io.github.ygrip.testara.reporter.reader.CucumberReportReader;
@@ -53,12 +54,19 @@ class JteReportRendererTest {
   }
 
   @Test
-  void rendersInteractiveSinglePageWithScenarioSearchFilterSortAndDetails() throws Exception {
-    String reportPath = System.getProperty("user.dir") + "/src/test/resources/cucumber/multiple/";
-    var features = CucumberReportMergeFactory.Builder
-      .using(CucumberReportReader.getReportPaths(reportPath))
-      .getMergedFeatures();
+  void doesNotMaterializeScenarioDetailsForSummaryByDefault() throws Exception {
+    var features = reportFeatures();
+
     ReportView view = new CucumberReportViewFactory().create(features, "Automation", new ReportConfiguration());
+
+    assertTrue(view.scenarios().isEmpty());
+  }
+
+  @Test
+  void rendersInteractiveSinglePageWithScenarioSearchFilterSortAndDetails() throws Exception {
+    ReportConfiguration configuration = new ReportConfiguration();
+    configuration.getInteractive().setEnabled(true);
+    ReportView view = new CucumberReportViewFactory().create(reportFeatures(), "Automation", configuration);
 
     assertFalse(view.scenarios().isEmpty());
     assertTrue(view.scenarios().stream().allMatch(scenario -> scenario.durationNanos() >= 0));
@@ -89,5 +97,12 @@ class JteReportRendererTest {
       assertTrue(html.contains("Automation"));
       assertTrue(html.contains("Testara"));
     }
+  }
+
+  private List<io.github.ygrip.testara.reporter.cucumber.Feature> reportFeatures() throws Exception {
+    String reportPath = System.getProperty("user.dir") + "/src/test/resources/cucumber/multiple/";
+    return CucumberReportMergeFactory.Builder
+      .using(CucumberReportReader.getReportPaths(reportPath))
+      .getMergedFeatures();
   }
 }
