@@ -95,6 +95,8 @@ public record ReportView(
       String status,
       String duration,
       long durationNanos,
+      boolean exampleExecution,
+      String exampleLabel,
       String error,
       List<ReportScenarioStep> steps
   ) {}
@@ -104,6 +106,16 @@ public record ReportView(
       String name,
       String status,
       String duration,
-      String error
+      String error,
+      List<List<String>> dataTable,
+      String docString,
+      List<ReportAttachment> attachments
+  ) {}
+
+  public record ReportAttachment(
+      String name,
+      String mimeType,
+      String uri,
+      String kind
   ) {}
 }
