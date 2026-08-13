@@ -1,0 +1,24 @@
+name: Reporter Verify
+
+on:
+  push:
+    branches:
+      - agent/testcontainers-grid-client
+
+permissions:
+  contents: read
+
+jobs:
+  reporter:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - name: Install reporter prerequisites
+        run: mvn -pl testara-reporter -am install -DskipTests -B --no-transfer-progress
+      - name: Run reporter tests
+        run: mvn -pl testara-reporter test -DskipTests=false -B --no-transfer-progress
