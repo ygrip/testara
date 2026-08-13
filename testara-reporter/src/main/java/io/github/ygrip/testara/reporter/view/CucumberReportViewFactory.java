@@ -19,11 +19,13 @@ import java.util.stream.Collectors;
 import io.github.ygrip.testara.reporter.branding.BrandingLogoResolver;
 import io.github.ygrip.testara.reporter.config.ReportConfiguration;
 import io.github.ygrip.testara.reporter.cucumber.Element;
+import io.github.ygrip.testara.reporter.cucumber.Embedding;
 import io.github.ygrip.testara.reporter.cucumber.Feature;
 import io.github.ygrip.testara.reporter.cucumber.Status;
 import io.github.ygrip.testara.reporter.cucumber.Step;
 import io.github.ygrip.testara.reporter.cucumber.Tag;
 import io.github.ygrip.testara.reporter.support.CommonUtil;
+import io.github.ygrip.testara.reporter.view.ReportView.ReportAttachment;
 import io.github.ygrip.testara.reporter.view.ReportView.ReportBranding;
 import io.github.ygrip.testara.reporter.view.ReportView.ReportCoverageGroup;
 import io.github.ygrip.testara.reporter.view.ReportView.ReportCoverageItem;
@@ -287,6 +289,7 @@ public class CucumberReportViewFactory {
         scenarioIndex++;
         List<ReportScenarioStep> steps = element.getSteps().stream().map(this::scenarioStep).toList();
         String error = steps.stream().map(ReportScenarioStep::error).filter(value -> !isBlank(value)).findFirst().orElse(null);
+        boolean exampleExecution = element.isScenarioOutline();
         result.add(new ReportScenario(
           "scenario-" + scenarioIndex,
           element.getName(),
@@ -296,6 +299,8 @@ public class CucumberReportViewFactory {
           element.getStatus().name(),
           CommonUtil.formatDuration(element.getDuration()),
           element.getDuration(),
+          exampleExecution,
+          exampleExecution ? exampleLabel(element) : null,
           error,
           steps
         ));
@@ -306,13 +311,69 @@ public class CucumberReportViewFactory {
 
   private ReportScenarioStep scenarioStep(Step step) {
     String error = step.getResult().getErrorMessage();
+    String docString = step.getDocString() == null || isBlank(step.getDocString().getValue())
+      ? null
+      : step.getDocString().getValue();
     return new ReportScenarioStep(
       stepKeyword(step),
       step.getName(),
       step.getResult().getStatus().name(),
       CommonUtil.formatDuration(step.getDuration()),
-      isBlank(error) ? null : error
+      isBlank(error) ? null : error,
+      dataTable(step),
+      docString,
+      step.getEmbeddings().stream().map(this::attachment).toList()
     );
+  }
+
+  private List<List<String>> dataTable(Step step) {
+    try {
+      return step.getRows().stream().map(row -> List.copyOf(row.getCells())).toList();
+    } catch (RuntimeException ignored) {
+      return List.of();
+    }
+  }
+
+  private ReportAttachment attachment(Embedding embedding) {
+    String mimeType = isBlank(embedding.getMimeType()) ? "application/octet-stream" : embedding.getMimeType().trim().toLowerCase(Locale.ROOT);
+    String kind;
+    if (mimeType.startsWith("image/")) {
+      kind = "image";
+    } else if (mimeType.startsWith("video/")) {
+      kind = "video";
+    } else if (mimeType.startsWith("audio/")) {
+      kind = "audio";
+    } else {
+      kind = "file";
+    }
+
+    String uri;
+    if ("image/url".equals(mimeType)) {
+      try {
+        uri = embedding.getDecodedData();
+      } catch (RuntimeException ignored) {
+        uri = "";
+      }
+    } else {
+      uri = "data:" + mimeType + ";base64," + embedding.getData();
+    }
+
+    String name = isBlank(embedding.getName()) ? embedding.getFileName() : embedding.getName();
+    return new ReportAttachment(name, mimeType, uri, kind);
+  }
+
+  private String exampleLabel(Element element) {
+    String id = element.getId();
+    if (!isBlank(id)) {
+      int separator = id.lastIndexOf(";;");
+      if (separator >= 0 && separator + 2 < id.length()) {
+        String suffix = id.substring(separator + 2);
+        if (suffix.matches("\\d+")) {
+          return "Example #" + suffix;
+        }
+      }
+    }
+    return "Example execution";
   }
 
   private String tags(Feature feature, Element element) {
