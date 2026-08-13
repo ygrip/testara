@@ -45,7 +45,7 @@ class JteReportRendererTest {
     assertTrue(html.contains("QA2"));
     assertTrue(html.contains("Chrome 150"));
     assertTrue(html.contains("Pass rate"));
-    assertTrue(html.contains("Test results"));
+    assertTrue(html.contains("Quality distribution"));
     assertTrue(html.contains("data-email-bento"));
     assertTrue(html.contains("<!--[if mso]>"));
     assertTrue(html.contains("font-size:14px"));
