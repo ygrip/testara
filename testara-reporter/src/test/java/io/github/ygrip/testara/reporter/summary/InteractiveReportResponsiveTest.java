@@ -20,7 +20,7 @@ class InteractiveReportResponsiveTest {
   @TempDir Path tempDir;
 
   @Test
-  void rendersFocusedExplorerWithInPlaceScenarioDetail() throws Exception {
+  void rendersCleanTableExplorerWithInPlaceScenarioDetail() throws Exception {
     ReportConfiguration configuration = new ReportConfiguration();
     configuration.getInteractive().setEnabled(true);
     String reportPath = System.getProperty("user.dir") + "/src/test/resources/cucumber/multiple/";
@@ -37,8 +37,10 @@ class InteractiveReportResponsiveTest {
     assertTrue(html.contains("data-quality-signal"));
     assertTrue(html.contains("data-quality-breakdown"));
     assertTrue(html.contains("data-coverage-scroll"));
+    assertTrue(html.contains("data-clean-explorer-table"));
+    assertTrue(html.contains("data-responsive-table-scroll"));
     assertTrue(html.contains("<svg class=\"search-icon\""));
-    assertTrue(html.contains("data-clear-filters"));
+    assertTrue(html.contains("data-inline-clear"));
     assertTrue(html.contains("data-sort-column=\"status\""));
     assertTrue(html.contains("data-sort-column=\"name\""));
     assertTrue(html.contains("data-sort-column=\"feature\""));
@@ -47,7 +49,8 @@ class InteractiveReportResponsiveTest {
     assertTrue(html.contains("data-scenario-detail-view"));
     assertTrue(html.contains("data-open-scenario"));
     assertTrue(html.contains("data-close-scenario"));
-    assertTrue(html.contains("data-mobile-sort-strip"));
+    assertFalse(html.contains("data-mobile-sort-strip"));
+    assertFalse(html.contains("clear-icon-button"));
     assertFalse(html.contains("data-failed-only"));
     assertFalse(html.contains("data-filter-pane-toggle"));
     assertFalse(html.contains("data-detail-toggle"));
