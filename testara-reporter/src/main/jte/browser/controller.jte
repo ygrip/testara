@@ -9,10 +9,12 @@
   var featureFilter = document.querySelector('[data-feature-filter]');
   var suiteFilter = document.querySelector('[data-suite-filter]');
   var tagFilter = document.querySelector('[data-tag-filter]');
-  var sort = document.querySelector('[data-report-sort]');
   var failedOnly = document.querySelector('[data-failed-only]');
   var clear = document.querySelector('[data-clear-filters]');
   var count = document.querySelector('[data-result-count]');
+  var sortButtons = Array.from(document.querySelectorAll('[data-sort-column]'));
+  var sortColumn = 'duration';
+  var sortDirection = 'desc';
 
   function detailFor(row) {
     var next = row.nextElementSibling;
@@ -36,15 +38,34 @@
     return (row.dataset.tags || '').split(/[\s,]+/).map(function (tag) { return tag.trim(); }).filter(Boolean);
   }));
 
-  function sortRows() {
-    var mode = sort.value;
+  function compareRows(a, b) {
     var statusOrder = {FAILED: 0, PENDING: 1, UNDEFINED: 2, SKIPPED: 3, PASSED: 4};
-    rows.sort(function (a, b) {
-      if (mode === 'duration-asc') return Number(a.dataset.duration) - Number(b.dataset.duration);
-      if (mode === 'name-asc') return a.cells[1].textContent.trim().localeCompare(b.cells[1].textContent.trim());
-      if (mode === 'status') return (statusOrder[a.dataset.status] || 9) - (statusOrder[b.dataset.status] || 9);
-      return Number(b.dataset.duration) - Number(a.dataset.duration);
+    var result;
+
+    if (sortColumn === 'duration') {
+      result = Number(a.dataset.duration) - Number(b.dataset.duration);
+    } else if (sortColumn === 'status') {
+      result = (statusOrder[a.dataset.status] ?? 9) - (statusOrder[b.dataset.status] ?? 9);
+    } else {
+      result = a.cells[1].textContent.trim().localeCompare(b.cells[1].textContent.trim());
+    }
+
+    return sortDirection === 'asc' ? result : -result;
+  }
+
+  function updateSortHeaders() {
+    sortButtons.forEach(function (button) {
+      var active = button.dataset.sortColumn === sortColumn;
+      var indicator = button.querySelector('[data-sort-indicator]');
+      button.classList.toggle('active', active);
+      button.dataset.sortDirection = active ? sortDirection : '';
+      if (indicator) indicator.textContent = active ? (sortDirection === 'asc' ? '↑' : '↓') : '';
+      button.closest('th').setAttribute('aria-sort', active ? (sortDirection === 'asc' ? 'ascending' : 'descending') : 'none');
     });
+  }
+
+  function sortRows() {
+    rows.sort(compareRows);
   }
 
   function apply() {
@@ -71,12 +92,26 @@
     });
 
     count.innerHTML = '<strong>' + visible + '</strong> / ' + rows.length + ' visible';
+    updateSortHeaders();
   }
 
-  [statusFilter, featureFilter, suiteFilter, tagFilter, sort, failedOnly].forEach(function (control) {
+  [statusFilter, featureFilter, suiteFilter, tagFilter, failedOnly].forEach(function (control) {
     control.addEventListener('change', apply);
   });
   search.addEventListener('input', apply);
+
+  sortButtons.forEach(function (button) {
+    button.addEventListener('click', function () {
+      var nextColumn = button.dataset.sortColumn;
+      if (sortColumn === nextColumn) {
+        sortDirection = sortDirection === 'asc' ? 'desc' : 'asc';
+      } else {
+        sortColumn = nextColumn;
+        sortDirection = nextColumn === 'duration' ? 'desc' : 'asc';
+      }
+      apply();
+    });
+  });
 
   clear.addEventListener('click', function () {
     search.value = '';
@@ -84,7 +119,6 @@
     featureFilter.value = '';
     suiteFilter.value = '';
     tagFilter.value = '';
-    sort.value = 'duration-desc';
     failedOnly.checked = false;
     rows.forEach(function (row) {
       var detail = detailFor(row);
