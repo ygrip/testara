@@ -11,7 +11,8 @@ public record ReportView(
     List<ReportFailure> frequentFailures,
     List<ReportUnstableFeature> unstableFeatures,
     List<ReportDurationItem> longestScenarios,
-    List<ReportDurationItem> longestSteps
+    List<ReportDurationItem> longestSteps,
+    List<ReportScenario> scenarios
 ) {
   public record ReportMetadata(
       String title,
@@ -39,6 +40,7 @@ public record ReportView(
       String overallStatus,
       String overallColor,
       String overallBackground,
+      int passRate,
       List<ReportStatusMetric> metrics
   ) {}
 
@@ -63,6 +65,7 @@ public record ReportView(
       String name,
       int testCount,
       String successRate,
+      int passPercentage,
       String duration
   ) {}
 
@@ -70,6 +73,7 @@ public record ReportView(
       String name,
       String error,
       int count,
+      int relativePercentage,
       String severity
   ) {}
 
@@ -80,5 +84,26 @@ public record ReportView(
       String duration,
       int percentage,
       Integer count
+  ) {}
+
+  public record ReportScenario(
+      String id,
+      String name,
+      String feature,
+      String suite,
+      String tags,
+      String status,
+      String duration,
+      long durationNanos,
+      String error,
+      List<ReportScenarioStep> steps
+  ) {}
+
+  public record ReportScenarioStep(
+      String keyword,
+      String name,
+      String status,
+      String duration,
+      String error
   ) {}
 }
