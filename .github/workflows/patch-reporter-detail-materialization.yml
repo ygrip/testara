@@ -1,0 +1,107 @@
+name: Patch reporter detail materialization
+
+on:
+  push:
+    branches:
+      - agent/testcontainers-grid-client
+    paths:
+      - .github/workflows/patch-reporter-detail-materialization.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: agent/testcontainers-grid-client
+      - name: Patch reporter detail materialization
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          factory = Path('testara-reporter/src/main/java/io/github/ygrip/testara/reporter/view/CucumberReportViewFactory.java')
+          text = factory.read_text()
+          old = '''  public ReportView create(List<Feature> input, String reportName, ReportConfiguration configuration) {
+              List<Feature> features = input == null ? List.of() : List.copyOf(input);
+              ReportConfiguration config = configuration == null ? new ReportConfiguration() : configuration;
+
+              int totalScenarios = features.stream().mapToInt(Feature::getScenarios).sum();
+              int totalSteps = features.stream().mapToInt(Feature::getSteps).sum();
+              List<ReportStatusMetric> metrics = statusMetrics(features, totalScenarios);
+
+              return new ReportView(
+                metadata(features, reportName, totalScenarios, totalSteps),
+                branding(config),
+                statusSummary(features, totalScenarios, metrics),
+                customFields(config),
+                coverage(features),
+                frequentFailures(features),
+                unstableFeatures(features),
+                longestScenarios(features),
+                longestSteps(features),
+                scenarioViews(features)
+              );
+            }
+          '''.replace('            ', '')
+          new = '''  public ReportView create(List<Feature> input, String reportName, ReportConfiguration configuration) {
+              ReportConfiguration config = configuration == null ? new ReportConfiguration() : configuration;
+              return create(input, reportName, config, config.getInteractive().isEnabled());
+            }
+
+            public ReportView create(
+                List<Feature> input,
+                String reportName,
+                ReportConfiguration configuration,
+                boolean includeScenarioDetails
+            ) {
+              List<Feature> features = input == null ? List.of() : List.copyOf(input);
+              ReportConfiguration config = configuration == null ? new ReportConfiguration() : configuration;
+
+              int totalScenarios = features.stream().mapToInt(Feature::getScenarios).sum();
+              int totalSteps = features.stream().mapToInt(Feature::getSteps).sum();
+              List<ReportStatusMetric> metrics = statusMetrics(features, totalScenarios);
+              List<ReportScenario> scenarioDetails = includeScenarioDetails ? scenarioViews(features) : List.of();
+
+              return new ReportView(
+                metadata(features, reportName, totalScenarios, totalSteps),
+                branding(config),
+                statusSummary(features, totalScenarios, metrics),
+                customFields(config),
+                coverage(features),
+                frequentFailures(features),
+                unstableFeatures(features),
+                longestScenarios(features),
+                longestSteps(features),
+                scenarioDetails
+              );
+            }
+          '''.replace('            ', '')
+          if old not in text:
+              raise SystemExit('factory target block not found')
+          factory.write_text(text.replace(old, new, 1))
+
+          generator = Path('testara-reporter/src/main/java/io/github/ygrip/testara/reporter/cucumber/CucumberSummaryReportGenerator.java')
+          text = generator.read_text()
+          old = '    ReportView view = VIEW_FACTORY.create(features, reportName, configuration);\n'
+          new = '''    boolean includeScenarioDetails = style == ReportStyle.SINGLE_PAGE || configuration.getInteractive().isEnabled();
+              ReportView view = VIEW_FACTORY.create(features, reportName, configuration, includeScenarioDetails);
+          '''.replace('              ', '')
+          if old not in text:
+              raise SystemExit('generator target line not found')
+          generator.write_text(text.replace(old, new, 1))
+
+          test = Path('testara-reporter/src/test/java/io/github/ygrip/testara/reporter/summary/JteReportRendererTest.java')
+          text = test.read_text().replace('import io.github.ygrip.testara.reporter.cucumber.CucumberSummaryReportGenerator;\n', '')
+          test.write_text(text)
+          PY
+      - name: Commit patch
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add testara-reporter
+          git diff --cached --quiet && exit 0
+          git commit -m "perf(reporter): materialize scenario details only when needed"
+          git push origin HEAD:agent/testcontainers-grid-client
