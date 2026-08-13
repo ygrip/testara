@@ -9,6 +9,7 @@
   <title>${view.metadata().title()} · Interactive report</title>
   @template.browser.styles()
   @template.browser.theme()
+  @template.browser.small()
 </head>
 <body>
   <main class="report-page">
