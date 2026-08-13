@@ -63,7 +63,7 @@ class JteReportRendererTest {
   }
 
   @Test
-  void rendersInteractiveSinglePageWithProportionalSetaraFirstLayoutAndTableSorting() throws Exception {
+  void rendersInteractiveSinglePageWithBlendedLayoutAndRowDrivenDetail() throws Exception {
     ReportConfiguration configuration = new ReportConfiguration();
     configuration.getInteractive().setEnabled(true);
     ReportView view = new CucumberReportViewFactory().create(reportFeatures(), "Automation", configuration);
@@ -83,19 +83,25 @@ class JteReportRendererTest {
     assertTrue(html.contains("data-full-row=\"failure-signals\""));
     assertTrue(html.contains("data-full-row=\"execution-hotspots\""));
     assertTrue(html.contains("data-full-row=\"functional-coverage\""));
+    assertTrue(html.contains("data-coverage-scroll"));
     assertTrue(html.contains("data-report-search"));
     assertTrue(html.contains("data-status-filter"));
     assertTrue(html.contains("data-feature-filter"));
     assertTrue(html.contains("data-tag-filter"));
-    assertTrue(html.contains("data-failed-only"));
+    assertFalse(html.contains("data-failed-only"));
+    assertFalse(html.contains("data-filter-pane-toggle"));
     assertTrue(html.contains("data-clear-filters"));
     assertTrue(html.contains("data-sort-column=\"status\""));
     assertTrue(html.contains("data-sort-column=\"name\""));
+    assertTrue(html.contains("data-sort-column=\"feature\""));
     assertTrue(html.contains("data-sort-column=\"duration\""));
     assertFalse(html.contains("data-report-sort"));
-    assertTrue(html.contains("data-scenario-row"));
+    assertTrue(html.contains("data-open-scenario"));
+    assertTrue(html.contains("data-scenario-detail-view"));
+    assertTrue(html.contains("data-close-scenario"));
+    assertFalse(html.contains("data-detail-toggle"));
     assertTrue(html.contains("<script"));
-    assertTrue(html.contains("Scenario details"));
+    assertTrue(html.contains("Scenario execution detail"));
     assertTrue(html.contains("Failure signals"));
   }
 
