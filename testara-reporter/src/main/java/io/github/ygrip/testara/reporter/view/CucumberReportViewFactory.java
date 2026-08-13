@@ -5,13 +5,14 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.ToIntFunction;
 import java.util.stream.Collectors;
 
@@ -21,6 +22,7 @@ import io.github.ygrip.testara.reporter.cucumber.Element;
 import io.github.ygrip.testara.reporter.cucumber.Feature;
 import io.github.ygrip.testara.reporter.cucumber.Status;
 import io.github.ygrip.testara.reporter.cucumber.Step;
+import io.github.ygrip.testara.reporter.cucumber.Tag;
 import io.github.ygrip.testara.reporter.support.CommonUtil;
 import io.github.ygrip.testara.reporter.view.ReportView.ReportBranding;
 import io.github.ygrip.testara.reporter.view.ReportView.ReportCoverageGroup;
@@ -29,6 +31,8 @@ import io.github.ygrip.testara.reporter.view.ReportView.ReportDurationItem;
 import io.github.ygrip.testara.reporter.view.ReportView.ReportFailure;
 import io.github.ygrip.testara.reporter.view.ReportView.ReportField;
 import io.github.ygrip.testara.reporter.view.ReportView.ReportMetadata;
+import io.github.ygrip.testara.reporter.view.ReportView.ReportScenario;
+import io.github.ygrip.testara.reporter.view.ReportView.ReportScenarioStep;
 import io.github.ygrip.testara.reporter.view.ReportView.ReportStatusMetric;
 import io.github.ygrip.testara.reporter.view.ReportView.ReportStatusSummary;
 import io.github.ygrip.testara.reporter.view.ReportView.ReportUnstableFeature;
@@ -63,7 +67,8 @@ public class CucumberReportViewFactory {
       frequentFailures(features),
       unstableFeatures(features),
       longestScenarios(features),
-      longestSteps(features)
+      longestSteps(features),
+      scenarioViews(features)
     );
   }
 
@@ -106,6 +111,8 @@ public class CucumberReportViewFactory {
 
   private ReportStatusSummary statusSummary(List<Feature> features, int totalScenarios, List<ReportStatusMetric> metrics) {
     int failed = count(features, Feature::getFailedScenarios);
+    int passed = count(features, Feature::getPassedScenarios);
+    int passRate = totalScenarios == 0 ? 0 : (int) Math.round((double) passed * 100D / totalScenarios);
     String overall;
     if (totalScenarios == 0 || features.stream().allMatch(feature -> feature.getStatus().isPassed())) {
       overall = "PASSED";
@@ -113,25 +120,25 @@ public class CucumberReportViewFactory {
       overall = totalScenarios > 0 && ((double) failed / totalScenarios) > 0.15 ? "FAILED" : "PENDING";
     }
     String color = switch (overall) {
-      case "FAILED" -> "#dc2626";
-      case "PENDING" -> "#b45309";
-      default -> "#15803d";
+      case "FAILED" -> "#EF4444";
+      case "PENDING" -> "#F59E0B";
+      default -> "#22C55E";
     };
     String background = switch (overall) {
-      case "FAILED" -> "#fef2f2";
-      case "PENDING" -> "#fffbeb";
-      default -> "#f0fdf4";
+      case "FAILED" -> "#FEF2F2";
+      case "PENDING" -> "#FFFBEB";
+      default -> "#F0FDF4";
     };
-    return new ReportStatusSummary(overall, color, background, List.copyOf(metrics));
+    return new ReportStatusSummary(overall, color, background, passRate, List.copyOf(metrics));
   }
 
   private List<ReportStatusMetric> statusMetrics(List<Feature> features, int total) {
     return List.of(
-      metric("Passed", "✓", "#15803d", "#f0fdf4", count(features, Feature::getPassedScenarios), total),
-      metric("Failed", "!", "#dc2626", "#fef2f2", count(features, Feature::getFailedScenarios), total),
-      metric("Skipped", "–", "#64748b", "#f8fafc", count(features, Feature::getSkippedScenarios), total),
-      metric("Pending", "…", "#b45309", "#fffbeb", count(features, Feature::getPendingScenarios), total),
-      metric("Undefined", "?", "#c2410c", "#fff7ed", count(features, Feature::getUndefinedScenarios), total)
+      metric("Passed", "✓", "#16A34A", "#F0FDF4", count(features, Feature::getPassedScenarios), total),
+      metric("Failed", "×", "#DC2626", "#FEF2F2", count(features, Feature::getFailedScenarios), total),
+      metric("Skipped", "–", "#64748B", "#F8FAFC", count(features, Feature::getSkippedScenarios), total),
+      metric("Pending", "◷", "#D97706", "#FFFBEB", count(features, Feature::getPendingScenarios), total),
+      metric("Undefined", "?", "#EA580C", "#FFF7ED", count(features, Feature::getUndefinedScenarios), total)
     );
   }
 
@@ -173,10 +180,12 @@ public class CucumberReportViewFactory {
       List<ReportCoverageItem> items = entry.getValue().stream().map(feature -> {
         int total = feature.getScenarios();
         int passed = feature.getPassedScenarios();
+        int percentage = total == 0 ? 0 : (int) Math.round((double) passed * 100D / total);
         return new ReportCoverageItem(
           feature.getName(),
           total,
-          total == 0 ? "0%" : Math.round((double) passed * 100D / total) + "%",
+          percentage + "%",
+          percentage,
           CommonUtil.formatDuration(feature.getDuration())
         );
       }).toList();
@@ -212,13 +221,18 @@ public class CucumberReportViewFactory {
         Collectors.groupingBy(result -> result.getStatus() == Status.FAILED ? "failure" : "error", Collectors.summingInt(value -> 1))
       ));
 
-    return grouped.entrySet().stream().map(entry -> {
+    List<FailureSeed> seeds = grouped.entrySet().stream().map(entry -> {
       int total = entry.getValue().values().stream().mapToInt(Integer::intValue).sum();
       String severity = entry.getValue().entrySet().stream().max(Map.Entry.comparingByValue())
         .map(Map.Entry::getKey).orElse("failure");
       String[] parts = entry.getKey().split("\\.");
-      return new ReportFailure(toLabel(parts[parts.length - 1]), entry.getKey(), total, severity);
-    }).sorted(Comparator.comparingInt(ReportFailure::count).reversed()).limit(10).toList();
+      return new FailureSeed(toLabel(parts[parts.length - 1]), entry.getKey(), total, severity);
+    }).sorted(Comparator.comparingInt(FailureSeed::count).reversed()).limit(10).toList();
+
+    int max = seeds.stream().mapToInt(FailureSeed::count).max().orElse(0);
+    return seeds.stream().map(seed -> new ReportFailure(
+      seed.name(), seed.error(), seed.count(), relative(seed.count(), max), seed.severity()
+    )).toList();
   }
 
   private List<ReportUnstableFeature> unstableFeatures(List<Feature> features) {
@@ -248,6 +262,62 @@ public class CucumberReportViewFactory {
     return entries.stream().map(entry -> new ReportDurationItem(
       entry.getKey(), entry.getValue().range(), relative(entry.getValue().max, max), entry.getValue().count
     )).toList();
+  }
+
+  private List<ReportScenario> scenarioViews(List<Feature> features) {
+    List<ReportScenario> result = new ArrayList<>();
+    int scenarioIndex = 0;
+    for (Feature feature : features) {
+      String suite = suiteTitle(feature);
+      for (Element element : feature.getElements()) {
+        if (!element.isScenario()) {
+          continue;
+        }
+        scenarioIndex++;
+        List<ReportScenarioStep> steps = element.getSteps().stream().map(this::scenarioStep).toList();
+        String error = steps.stream().map(ReportScenarioStep::error).filter(value -> !isBlank(value)).findFirst().orElse(null);
+        result.add(new ReportScenario(
+          "scenario-" + scenarioIndex,
+          element.getName(),
+          feature.getName(),
+          suite,
+          tags(feature, element),
+          element.getStatus().name(),
+          CommonUtil.formatDuration(element.getDuration()),
+          element.getDuration(),
+          error,
+          steps
+        ));
+      }
+    }
+    return List.copyOf(result);
+  }
+
+  private ReportScenarioStep scenarioStep(Step step) {
+    String error = step.getResult().getErrorMessage();
+    return new ReportScenarioStep(
+      stepKeyword(step),
+      step.getName(),
+      step.getResult().getStatus().name(),
+      CommonUtil.formatDuration(step.getDuration()),
+      isBlank(error) ? null : error
+    );
+  }
+
+  private String tags(Feature feature, Element element) {
+    Set<String> tags = new LinkedHashSet<>();
+    feature.getTags().stream().map(Tag::getName).filter(value -> !isBlank(value)).forEach(tags::add);
+    element.getTags().stream().map(Tag::getName).filter(value -> !isBlank(value)).forEach(tags::add);
+    return String.join(", ", tags);
+  }
+
+  private String stepKeyword(Step step) {
+    try {
+      String keyword = step.getKeyword();
+      return isBlank(keyword) ? "Step" : keyword.trim();
+    } catch (RuntimeException ignored) {
+      return "Step";
+    }
   }
 
   private List<Element> scenarios(List<Feature> features) {
@@ -281,6 +351,8 @@ public class CucumberReportViewFactory {
   private boolean isBlank(String value) {
     return value == null || value.isBlank();
   }
+
+  private record FailureSeed(String name, String error, int count, String severity) {}
 
   private static final class StepDuration implements Comparable<StepDuration> {
     private int count;
