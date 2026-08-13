@@ -6,7 +6,7 @@
       <div>
         <div class="card-eyebrow">Execution detail</div>
         <h2 class="card-title">Scenario explorer</h2>
-        <p>Search, filter, sort, and inspect the run without a server or external asset.</p>
+        <p>Search and filter the run, then sort directly from the table headers.</p>
       </div>
       <span class="result-count" data-result-count><strong>${view.scenarios().size()}</strong> / ${view.scenarios().size()} visible</span>
     </div>
@@ -21,7 +21,7 @@
           <input type="checkbox" data-failed-only>
           <span>Failed only</span>
         </label>
-        <button class="filter-button secondary" type="button" data-clear-filters>Clear filters</button>
+        <button class="filter-button secondary" type="button" data-clear-filters>Clear</button>
       </div>
       <div class="control-secondary">
         <label class="control-label">
@@ -47,25 +47,23 @@
           <span>Tag</span>
           <select data-tag-filter><option value="">All tags</option></select>
         </label>
-        <label class="control-label">
-          <span>Sort</span>
-          <select data-report-sort>
-            <option value="duration-desc">Duration · slowest</option>
-            <option value="duration-asc">Duration · fastest</option>
-            <option value="name-asc">Scenario · A–Z</option>
-            <option value="status">Status</option>
-          </select>
-        </label>
       </div>
     </div>
 
     @if(view.scenarios().isEmpty())
       <div class="empty-state">Interactive scenario detail is not available for this report.</div>
     @else
-      <div style="overflow-x:auto;">
+      <div class="scenario-table-shell">
         <table class="scenario-table">
           <thead>
-            <tr><th>Status</th><th>Scenario</th><th>Feature</th><th>Suite / tags</th><th>Duration</th><th></th></tr>
+            <tr>
+              <th><button class="sort-header" type="button" data-sort-column="status">Status <span data-sort-indicator></span></button></th>
+              <th><button class="sort-header" type="button" data-sort-column="name">Scenario <span data-sort-indicator></span></button></th>
+              <th>Feature</th>
+              <th>Suite / tags</th>
+              <th><button class="sort-header active" type="button" data-sort-column="duration" data-sort-direction="desc">Duration <span data-sort-indicator>↓</span></button></th>
+              <th><span class="sr-only">Details</span></th>
+            </tr>
           </thead>
           <tbody data-scenario-body>
             @for(var scenario : view.scenarios())
@@ -81,19 +79,19 @@
                 <td colspan="6">
                   <div class="detail-panel">
                     <div class="card-eyebrow">Scenario details</div>
-                    <div class="detail-grid" style="margin-top:10px;">
+                    <div class="detail-grid">
                       <div>
                         <div class="step-list">
                           @for(var step : scenario.steps())
                             <div class="step-item">
                               <span class="step-dot" style="background:@if(step.status().equalsIgnoreCase("PASSED"))#22C55E@elseif(step.status().equalsIgnoreCase("FAILED"))#EF4444@else#64748B@endif;"></span>
                               <div>
-                                <strong style="font-size:12px;">${step.keyword()} ${step.name()}</strong>
+                                <strong>${step.keyword()} ${step.name()}</strong>
                                 @if(step.error() != null && !step.error().isBlank())
-                                  <small style="display:block;color:#B91C1C;margin-top:2px;">${step.error()}</small>
+                                  <small class="step-error">${step.error()}</small>
                                 @endif
                               </div>
-                              <small style="color:var(--muted);white-space:nowrap;">${step.duration()}</small>
+                              <small class="step-duration">${step.duration()}</small>
                             </div>
                           @endfor
                         </div>
