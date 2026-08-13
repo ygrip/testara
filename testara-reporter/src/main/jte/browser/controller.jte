@@ -9,25 +9,26 @@
   var featureFilter = document.querySelector('[data-feature-filter]');
   var suiteFilter = document.querySelector('[data-suite-filter]');
   var tagFilter = document.querySelector('[data-tag-filter]');
-  var failedOnly = document.querySelector('[data-failed-only]');
   var clear = document.querySelector('[data-clear-filters]');
   var count = document.querySelector('[data-result-count]');
   var sortButtons = Array.from(document.querySelectorAll('[data-sort-column]'));
-  var filterPaneToggle = document.querySelector('[data-filter-pane-toggle]');
-  var filterPane = document.querySelector('[data-filter-pane]');
-  var mobileQuery = window.matchMedia('(max-width: 620px)');
+  var listView = document.querySelector('[data-scenario-list-view]');
+  var detailView = document.querySelector('[data-scenario-detail-view]');
+  var closeDetail = document.querySelector('[data-close-scenario]');
+  var detailPanels = Array.from(document.querySelectorAll('[data-scenario-detail-panel]'));
+  var reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
   var sortColumn = 'duration';
   var sortDirection = 'desc';
+  var activePanel = null;
+  var activeRow = null;
 
-  function detailFor(row) {
-    var next = row.nextElementSibling;
-    return next && next.matches('[data-detail-row]') ? next : null;
+  function panelFor(row) {
+    var id = row.dataset.scenarioId;
+    return detailPanels.find(function (panel) { return panel.dataset.scenarioDetailPanel === id; }) || null;
   }
 
   function addOptions(select, values) {
-    Array.from(new Set(values.filter(Boolean))).sort(function (a, b) {
-      return a.localeCompare(b);
-    }).forEach(function (value) {
+    Array.from(new Set(values.filter(Boolean))).sort(function (a, b) { return a.localeCompare(b); }).forEach(function (value) {
       var option = document.createElement('option');
       option.value = value;
       option.textContent = value;
@@ -44,15 +45,15 @@
   function compareRows(a, b) {
     var statusOrder = {FAILED: 0, PENDING: 1, UNDEFINED: 2, SKIPPED: 3, PASSED: 4};
     var result;
-
     if (sortColumn === 'duration') {
       result = Number(a.dataset.duration) - Number(b.dataset.duration);
     } else if (sortColumn === 'status') {
       result = (statusOrder[a.dataset.status] ?? 9) - (statusOrder[b.dataset.status] ?? 9);
+    } else if (sortColumn === 'feature') {
+      result = (a.dataset.feature || '').localeCompare(b.dataset.feature || '');
     } else {
-      result = a.cells[1].textContent.trim().localeCompare(b.cells[1].textContent.trim());
+      result = (a.dataset.name || '').localeCompare(b.dataset.name || '');
     }
-
     return sortDirection === 'asc' ? result : -result;
   }
 
@@ -65,68 +66,83 @@
       button.dataset.sortDirection = active ? sortDirection : '';
       button.setAttribute('aria-pressed', active ? 'true' : 'false');
       if (indicator) indicator.textContent = active ? (sortDirection === 'asc' ? '↑' : '↓') : '';
-      if (header) {
-        header.setAttribute('aria-sort', active ? (sortDirection === 'asc' ? 'ascending' : 'descending') : 'none');
-      }
+      if (header) header.setAttribute('aria-sort', active ? (sortDirection === 'asc' ? 'ascending' : 'descending') : 'none');
     });
   }
 
-  function setFilterPaneExpanded(expanded) {
-    if (!filterPaneToggle || !filterPane) return;
-    filterPane.classList.toggle('is-open', expanded);
-    filterPaneToggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
-    var indicator = filterPaneToggle.querySelector('.filter-toggle-indicator');
-    if (indicator) indicator.textContent = expanded ? '⌃' : '⌄';
-  }
-
-  function syncFilterPaneForViewport() {
-    if (!mobileQuery.matches) {
-      setFilterPaneExpanded(false);
-    }
-  }
-
-  function sortRows() {
-    rows.sort(compareRows);
+  function detailText(row) {
+    var panel = panelFor(row);
+    return panel ? panel.textContent : '';
   }
 
   function apply() {
-    sortRows();
+    rows.sort(compareRows);
     var query = search.value.trim().toLowerCase();
     var visible = 0;
-
     rows.forEach(function (row) {
-      var detail = detailFor(row);
       body.appendChild(row);
-      if (detail) body.appendChild(detail);
-
-      var searchable = (row.textContent + ' ' + (detail ? detail.textContent : '')).toLowerCase();
+      var searchable = (row.textContent + ' ' + detailText(row)).toLowerCase();
       var matches = (!query || searchable.indexOf(query) >= 0)
         && (!statusFilter.value || row.dataset.status === statusFilter.value)
         && (!featureFilter.value || row.dataset.feature === featureFilter.value)
         && (!suiteFilter.value || row.dataset.suite === suiteFilter.value)
-        && (!tagFilter.value || (row.dataset.tags || '').split(/[\s,]+/).indexOf(tagFilter.value) >= 0)
-        && (!failedOnly.checked || row.dataset.status === 'FAILED');
-
+        && (!tagFilter.value || (row.dataset.tags || '').split(/[\s,]+/).indexOf(tagFilter.value) >= 0);
       row.hidden = !matches;
-      if (!matches && detail) detail.hidden = true;
       if (matches) visible++;
     });
-
     count.innerHTML = '<strong>' + visible + '</strong> / ' + rows.length + ' visible';
     updateSortHeaders();
   }
 
-  [statusFilter, featureFilter, suiteFilter, tagFilter, failedOnly].forEach(function (control) {
-    control.addEventListener('change', apply);
-  });
+  function animate(element, frames) {
+    if (reducedMotion.matches || !element.animate) return null;
+    return element.animate(frames, {duration: 230, easing: 'cubic-bezier(.2,.75,.25,1)', fill: 'both'});
+  }
+
+  function openScenario(row) {
+    var panel = panelFor(row);
+    if (!panel || !detailView.hidden) return;
+    activeRow = row;
+    activePanel = panel;
+    detailPanels.forEach(function (candidate) { candidate.hidden = candidate !== panel; });
+    detailView.hidden = false;
+
+    var exit = animate(listView, [{opacity: 1, transform: 'translateX(0)'}, {opacity: 0, transform: 'translateX(-36px)'}]);
+    animate(detailView, [{opacity: 0, transform: 'translateX(36px)'}, {opacity: 1, transform: 'translateX(0)'}]);
+
+    if (exit) {
+      exit.addEventListener('finish', function () { listView.hidden = true; listView.getAnimations().forEach(function (item) { item.cancel(); }); }, {once: true});
+    } else {
+      listView.hidden = true;
+    }
+    window.requestAnimationFrame(function () { if (closeDetail) closeDetail.focus(); });
+  }
+
+  function closeScenario() {
+    if (detailView.hidden) return;
+    listView.hidden = false;
+    var exit = animate(detailView, [{opacity: 1, transform: 'translateX(0)'}, {opacity: 0, transform: 'translateX(36px)'}]);
+    animate(listView, [{opacity: 0, transform: 'translateX(-36px)'}, {opacity: 1, transform: 'translateX(0)'}]);
+
+    function finish() {
+      detailView.hidden = true;
+      detailView.getAnimations().forEach(function (item) { item.cancel(); });
+      if (activePanel) activePanel.hidden = true;
+      if (activeRow) activeRow.focus();
+      activePanel = null;
+      activeRow = null;
+    }
+    if (exit) exit.addEventListener('finish', finish, {once: true}); else finish();
+  }
+
+  [statusFilter, featureFilter, suiteFilter, tagFilter].forEach(function (control) { control.addEventListener('change', apply); });
   search.addEventListener('input', apply);
 
   sortButtons.forEach(function (button) {
     button.addEventListener('click', function () {
       var nextColumn = button.dataset.sortColumn;
-      if (sortColumn === nextColumn) {
-        sortDirection = sortDirection === 'asc' ? 'desc' : 'asc';
-      } else {
+      if (sortColumn === nextColumn) sortDirection = sortDirection === 'asc' ? 'desc' : 'asc';
+      else {
         sortColumn = nextColumn;
         sortDirection = nextColumn === 'duration' ? 'desc' : 'asc';
       }
@@ -134,45 +150,31 @@
     });
   });
 
-  if (filterPaneToggle && filterPane) {
-    filterPaneToggle.addEventListener('click', function () {
-      var expanded = filterPaneToggle.getAttribute('aria-expanded') === 'true';
-      setFilterPaneExpanded(!expanded);
-    });
-    if (mobileQuery.addEventListener) {
-      mobileQuery.addEventListener('change', syncFilterPaneForViewport);
-    } else if (mobileQuery.addListener) {
-      mobileQuery.addListener(syncFilterPaneForViewport);
-    }
-    syncFilterPaneForViewport();
-  }
-
   clear.addEventListener('click', function () {
     search.value = '';
     statusFilter.value = '';
     featureFilter.value = '';
     suiteFilter.value = '';
     tagFilter.value = '';
-    failedOnly.checked = false;
-    rows.forEach(function (row) {
-      var detail = detailFor(row);
-      if (detail) detail.hidden = true;
-      var button = row.querySelector('[data-detail-toggle]');
-      if (button) button.textContent = 'View details';
-    });
     apply();
     search.focus();
   });
 
-  document.addEventListener('click', function (event) {
-    var button = event.target.closest('[data-detail-toggle]');
-    if (!button) return;
-    var row = button.closest('[data-scenario-row]');
-    var detail = detailFor(row);
-    if (!detail) return;
-    detail.hidden = !detail.hidden;
-    button.textContent = detail.hidden ? 'View details' : 'Hide details';
+  rows.forEach(function (row) {
+    row.addEventListener('click', function (event) {
+      if (event.target.closest('a,button,input,select,video,audio')) return;
+      openScenario(row);
+    });
+    row.addEventListener('keydown', function (event) {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        openScenario(row);
+      }
+    });
   });
+
+  if (closeDetail) closeDetail.addEventListener('click', closeScenario);
+  document.addEventListener('keydown', function (event) { if (event.key === 'Escape' && !detailView.hidden) closeScenario(); });
 
   apply();
 })();
