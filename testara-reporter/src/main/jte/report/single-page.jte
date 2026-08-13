@@ -8,6 +8,7 @@
   <meta name="color-scheme" content="light">
   <title>${view.metadata().title()} · Interactive report</title>
   @template.browser.styles()
+  @template.browser.theme()
 </head>
 <body>
   <main class="report-page">
