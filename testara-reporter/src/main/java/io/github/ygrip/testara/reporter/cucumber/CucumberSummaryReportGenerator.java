@@ -22,6 +22,7 @@ public class CucumberSummaryReportGenerator {
   private static final Logger LOG = Logger.getLogger(CucumberSummaryReportGenerator.class.getName());
   private static final CucumberReportViewFactory VIEW_FACTORY = new CucumberReportViewFactory();
   private static final ReportRenderer RENDERER = JteReportRenderer.INSTANCE;
+  private static final String INTERACTIVE_REPORT_NAME = "report";
 
   private final String DIR = System.getProperty("user.dir");
   private final String REPORT_PATH;
@@ -126,11 +127,35 @@ public class CucumberSummaryReportGenerator {
     ReportView view = VIEW_FACTORY.create(features, reportName, configuration);
     Path output = Path.of(OUTPUT_PATH, fileName + ".html");
     RENDERER.render(style, view, output);
+
+    Path interactiveOutput = renderInteractiveCompanion(configuration, style, view, output);
+    String locations = interactiveOutput == null
+      ? output.toAbsolutePath().toString()
+      : output.toAbsolutePath() + System.lineSeparator() + "Interactive report : " + interactiveOutput.toAbsolutePath();
+
     LOG.info(String.format(
       "Generating %s report %s took %s ms%nReport location : %s",
       style.name().toLowerCase(), reportName,
-      stopwatch.stop().elapsed(TimeUnit.MILLISECONDS), output.toAbsolutePath()
+      stopwatch.stop().elapsed(TimeUnit.MILLISECONDS), locations
     ));
+  }
+
+  private Path renderInteractiveCompanion(
+      ReportConfiguration configuration,
+      ReportStyle style,
+      ReportView view,
+      Path summaryOutput
+  ) throws Exception {
+    if (!configuration.getInteractive().isEnabled() || style == ReportStyle.SINGLE_PAGE) {
+      return null;
+    }
+
+    Path interactiveOutput = Path.of(OUTPUT_PATH, INTERACTIVE_REPORT_NAME + ".html");
+    if (interactiveOutput.toAbsolutePath().normalize().equals(summaryOutput.toAbsolutePath().normalize())) {
+      interactiveOutput = Path.of(OUTPUT_PATH, "interactive-report.html");
+    }
+    RENDERER.render(ReportStyle.SINGLE_PAGE, view, interactiveOutput);
+    return interactiveOutput;
   }
 
   private ReportConfiguration reportConfiguration() {
