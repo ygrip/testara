@@ -9,21 +9,31 @@
       <div class="explorer-stage">
         <div class="scenario-list-view" data-scenario-list-view>
           <div class="results-heading">
-            <div><div class="card-eyebrow">Execution detail</div><h2 class="card-title">Scenario explorer</h2><p>Search and filter the run. Select any row to inspect its complete Cucumber execution detail.</p></div>
+            <div>
+              <div class="card-eyebrow">Execution detail</div>
+              <h2 class="card-title">Scenario explorer</h2>
+              <p>Search, filter, and sort the execution table. Select a scenario row to inspect its complete Cucumber detail.</p>
+            </div>
             <span class="result-count" data-result-count><strong>${view.scenarios().size()}</strong> / ${view.scenarios().size()} visible</span>
           </div>
 
-          <div class="control-dock" data-control-dock>
-            <div class="control-primary explorer-primary">
-              <div class="search-shell">
-                <svg class="search-icon" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path></svg>
-                <input type="search" placeholder="Search scenario, feature, suite, tag, step, or error…" aria-label="Search report" data-report-search>
+          <div class="control-dock clean-explorer-controls" data-control-dock>
+            <div class="explorer-search-row">
+              <div class="search-shell clean-search-shell">
+                <svg class="search-icon" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="11" cy="11" r="7"></circle>
+                  <path d="m20 20-3.5-3.5"></path>
+                </svg>
+                <input type="search" placeholder="Search scenarios, features, tags, steps, or errors" aria-label="Search scenarios" data-report-search>
+                <button class="inline-clear-button" type="button" data-inline-clear data-clear-filters aria-label="Clear search and filters" title="Clear search and filters" hidden>
+                  <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                    <path d="M6 6l12 12"></path>
+                    <path d="M18 6L6 18"></path>
+                  </svg>
+                </button>
               </div>
-              <button class="clear-icon-button" type="button" data-clear-filters aria-label="Clear search and filters" title="Clear search and filters">
-                <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7"></path><path d="M3 4v6h6"></path></svg>
-              </button>
             </div>
-            <div class="control-secondary explorer-filter-rail">
+            <div class="control-secondary explorer-filter-grid" aria-label="Scenario filters">
               <label class="control-label"><span>Status</span><select data-status-filter><option value="">All statuses</option><option value="PASSED">Passed</option><option value="FAILED">Failed</option><option value="SKIPPED">Skipped</option><option value="PENDING">Pending</option><option value="UNDEFINED">Undefined</option></select></label>
               <label class="control-label"><span>Feature</span><select data-feature-filter><option value="">All features</option></select></label>
               <label class="control-label"><span>Suite</span><select data-suite-filter><option value="">All suites</option></select></label>
@@ -31,31 +41,25 @@
             </div>
           </div>
 
-          <div class="mobile-sort-strip" data-mobile-sort-strip aria-label="Sort scenarios">
-            <span class="mobile-sort-label">Sort</span>
-            <button class="sort-header mobile-sort-button" type="button" data-sort-column="status" aria-pressed="false">Status <span data-sort-indicator></span></button>
-            <button class="sort-header mobile-sort-button" type="button" data-sort-column="name" aria-pressed="false">Scenario <span data-sort-indicator></span></button>
-            <button class="sort-header mobile-sort-button" type="button" data-sort-column="feature" aria-pressed="false">Feature <span data-sort-indicator></span></button>
-            <button class="sort-header mobile-sort-button active" type="button" data-sort-column="duration" data-sort-direction="desc" aria-pressed="true">Duration <span data-sort-indicator>↓</span></button>
-          </div>
-
-          <div class="scenario-table-shell">
-            <table class="scenario-table">
-              <thead><tr>
-                <th><button class="sort-header" type="button" data-sort-column="status">Status <span data-sort-indicator></span></button></th>
-                <th><button class="sort-header" type="button" data-sort-column="name">Scenario <span data-sort-indicator></span></button></th>
-                <th><button class="sort-header" type="button" data-sort-column="feature">Feature <span data-sort-indicator></span></button></th>
-                <th>Suite / tags</th>
-                <th><button class="sort-header active" type="button" data-sort-column="duration" data-sort-direction="desc">Duration <span data-sort-indicator>↓</span></button></th>
-              </tr></thead>
+          <div class="scenario-table-shell clean-table-shell" data-responsive-table-scroll tabindex="0" aria-label="Scenario results table. Scroll horizontally on narrow screens.">
+            <table class="scenario-table clean-scenario-table" data-clean-explorer-table>
+              <thead>
+                <tr>
+                  <th scope="col"><button class="sort-header" type="button" data-sort-column="status">Status <span data-sort-indicator></span></button></th>
+                  <th scope="col"><button class="sort-header" type="button" data-sort-column="name">Scenario <span data-sort-indicator></span></button></th>
+                  <th scope="col"><button class="sort-header" type="button" data-sort-column="feature">Feature <span data-sort-indicator></span></button></th>
+                  <th scope="col">Suite / tags</th>
+                  <th scope="col"><button class="sort-header active" type="button" data-sort-column="duration" data-sort-direction="desc">Duration <span data-sort-indicator>↓</span></button></th>
+                </tr>
+              </thead>
               <tbody data-scenario-body>
                 @for(var scenario : view.scenarios())
-                  <tr data-scenario-row data-open-scenario data-scenario-id="${scenario.id()}" data-name="${scenario.name()}" data-status="${scenario.status()}" data-feature="${scenario.feature()}" data-suite="${scenario.suite()}" data-tags="${scenario.tags()}" data-duration="${scenario.durationNanos()}" tabindex="0" role="button" aria-label="Open scenario details: ${scenario.name()}">
-                    <td data-label="Status"><span class="status-pill status-${scenario.status().toLowerCase()}">${scenario.status()}</span></td>
-                    <td data-label="Scenario"><span class="scenario-name">${scenario.name()}</span><span class="scenario-meta">${scenario.steps().size()} steps@if(scenario.exampleExecution()) · ${scenario.exampleLabel()}@endif</span></td>
-                    <td data-label="Feature">${scenario.feature()}</td>
-                    <td data-label="Suite / tags"><span>${scenario.suite()}</span>@if(scenario.tags() != null && !scenario.tags().isBlank())<span class="scenario-meta">${scenario.tags()}</span>@endif</td>
-                    <td data-label="Duration"><strong>${scenario.duration()}</strong></td>
+                  <tr data-scenario-row data-open-scenario data-scenario-id="${scenario.id()}" data-name="${scenario.name()}" data-status="${scenario.status()}" data-feature="${scenario.feature()}" data-suite="${scenario.suite()}" data-tags="${scenario.tags()}" data-duration="${scenario.durationNanos()}" tabindex="0" aria-label="Open scenario details: ${scenario.name()}">
+                    <td><span class="status-pill status-${scenario.status().toLowerCase()}">${scenario.status()}</span></td>
+                    <td><span class="scenario-name">${scenario.name()}</span><span class="scenario-meta">${scenario.steps().size()} steps@if(scenario.exampleExecution()) · ${scenario.exampleLabel()}@endif</span></td>
+                    <td>${scenario.feature()}</td>
+                    <td><span>${scenario.suite()}</span>@if(scenario.tags() != null && !scenario.tags().isBlank())<span class="scenario-meta">${scenario.tags()}</span>@endif</td>
+                    <td><strong>${scenario.duration()}</strong></td>
                   </tr>
                 @endfor
               </tbody>
