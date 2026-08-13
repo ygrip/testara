@@ -43,7 +43,7 @@ public class GenerateCucumberSummaryReportMojo extends AbstractMojo {
    * @property property="${report-template}"
    * @required
    */
-  @Parameter(property = "report-template", defaultValue = "testara-style-report")
+  @Parameter(property = "report-template", defaultValue = "modern")
   private String reportTemplate;
 
   /**
@@ -94,7 +94,7 @@ public class GenerateCucumberSummaryReportMojo extends AbstractMojo {
       }
     }
     if (output == null || output.trim().isEmpty()) {
-      output = "testara-style-report";
+      output = "modern";
     }
     return output;
   }
