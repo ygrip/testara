@@ -28,36 +28,36 @@
     <div class="metric-top">
       <div>
         <div class="metric-label">Scenario range</div>
-        <div class="metric-value" style="font-size:23px;">${view.metadata().fastestTest()} → ${view.metadata().slowestTest()}</div>
+        <div class="metric-value compact">${view.metadata().fastestTest()} → ${view.metadata().slowestTest()}</div>
       </div>
       <span class="icon-tile">↗</span>
     </div>
-    <p class="metric-note">Fastest to slowest execution. Large gaps usually expose expensive setup, waits, or downstream latency.</p>
+    <p class="metric-note">Fastest to slowest execution, useful for spotting wait-heavy or downstream-bound scenarios.</p>
   </article>
 
-  <article class="glass-card card-pad status-chart-card span-8" data-glass-card data-status-chart data-chart-voice>
+  <article class="glass-card card-pad status-chart-card span-12" data-glass-card data-status-chart data-chart-voice>
     <div class="card-head">
       <div>
         <div class="card-eyebrow">Execution status</div>
         <h2 class="card-title">Quality distribution</h2>
-        <p class="card-subtitle">A louder view of the run, so failures do not disappear inside a polite table.</p>
+        <p class="card-subtitle">The run at a glance, with failure weight and scenario distribution kept visually explicit.</p>
       </div>
       <span class="icon-tile">◉</span>
     </div>
     <div class="chart-layout">
-      <div>
+      <div class="chart-primary">
         <div class="radial-chart" style="--pass:${view.status().passRate()}%;">
           <div class="radial-center">
             <strong>${view.status().passRate()}%</strong>
-            <span>pass rate</span>
+            <span>scenario pass rate</span>
           </div>
         </div>
         <div class="chart-voice">
-          <strong>${view.status().overallStatus()}</strong> · ${view.metadata().totalScenarios()} scenarios executed with ${view.metadata().totalSteps()} total steps.
+          <strong>${view.status().overallStatus()}</strong> · ${view.metadata().totalScenarios()} scenarios across ${view.metadata().totalFeatures()} features and ${view.metadata().totalSteps()} steps.
         </div>
       </div>
-      <div>
-        <div class="status-stack">
+      <div class="chart-secondary">
+        <div class="status-stack" aria-label="Scenario status distribution">
           @if(view.metadata().totalScenarios() == 0)
             <span style="width:100%;background:#DDE6EC;"></span>
           @else
@@ -82,8 +82,8 @@
     </div>
   </article>
 
-  <article class="glass-card card-pad span-4" data-glass-card>
-    <div class="card-head">
+  <article class="glass-card card-pad span-12" data-glass-card>
+    <div class="card-head compact-head">
       <div>
         <div class="card-eyebrow">Run context</div>
         <h2 class="card-title">Additional information</h2>
@@ -94,13 +94,17 @@
     @if(view.customFields().isEmpty())
       <div class="empty-state">No additional report fields were supplied.</div>
     @else
-      <div class="info-grid">
-        @for(var field : view.customFields())
-          <div class="info-item">
-            <span>${field.label()}</span>
-            <strong>${field.value()}</strong>
-          </div>
-        @endfor
+      <div class="context-table-shell">
+        <table class="context-table" data-run-context-table>
+          <tbody>
+            @for(var field : view.customFields())
+              <tr>
+                <th scope="row">${field.label()}</th>
+                <td>${field.value()}</td>
+              </tr>
+            @endfor
+          </tbody>
+        </table>
       </div>
     @endif
   </article>
