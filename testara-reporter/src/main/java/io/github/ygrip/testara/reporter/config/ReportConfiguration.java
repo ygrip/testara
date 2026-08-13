@@ -14,4 +14,10 @@ public class ReportConfiguration {
   private String organizationName;
   private String organizationLogo;
   private String organizationDetail;
+  private InteractiveConfiguration interactive = new InteractiveConfiguration();
+
+  @Data
+  public static class InteractiveConfiguration {
+    private boolean enabled = false;
+  }
 }
