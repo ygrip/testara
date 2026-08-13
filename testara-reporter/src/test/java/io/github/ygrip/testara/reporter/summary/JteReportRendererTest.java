@@ -12,7 +12,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import io.github.ygrip.testara.reporter.config.ReportConfiguration;
-import io.github.ygrip.testara.reporter.cucumber.CucumberSummaryReportGenerator;
 import io.github.ygrip.testara.reporter.cucumber.CucumberReportMergeFactory;
 import io.github.ygrip.testara.reporter.model.ReportStyle;
 import io.github.ygrip.testara.reporter.reader.CucumberReportReader;

@@ -124,7 +124,8 @@ public class CucumberSummaryReportGenerator {
     ReportStyle style = reportStyle == null ? ReportStyle.from(configuration.getStyle()) : reportStyle;
     List<Feature> features = CucumberReportMergeFactory.Builder.using(CucumberReportReader.getReportPaths(reportPath))
       .getMergedFeatures();
-    ReportView view = VIEW_FACTORY.create(features, reportName, configuration);
+    boolean includeScenarioDetails = style == ReportStyle.SINGLE_PAGE || configuration.getInteractive().isEnabled();
+    ReportView view = VIEW_FACTORY.create(features, reportName, configuration, includeScenarioDetails);
     Path output = Path.of(OUTPUT_PATH, fileName + ".html");
     RENDERER.render(style, view, output);
 

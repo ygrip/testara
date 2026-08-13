@@ -51,12 +51,23 @@ public class CucumberReportViewFactory {
   }
 
   public ReportView create(List<Feature> input, String reportName, ReportConfiguration configuration) {
+    ReportConfiguration config = configuration == null ? new ReportConfiguration() : configuration;
+    return create(input, reportName, config, config.getInteractive().isEnabled());
+  }
+
+  public ReportView create(
+      List<Feature> input,
+      String reportName,
+      ReportConfiguration configuration,
+      boolean includeScenarioDetails
+  ) {
     List<Feature> features = input == null ? List.of() : List.copyOf(input);
     ReportConfiguration config = configuration == null ? new ReportConfiguration() : configuration;
 
     int totalScenarios = features.stream().mapToInt(Feature::getScenarios).sum();
     int totalSteps = features.stream().mapToInt(Feature::getSteps).sum();
     List<ReportStatusMetric> metrics = statusMetrics(features, totalScenarios);
+    List<ReportScenario> scenarioDetails = includeScenarioDetails ? scenarioViews(features) : List.of();
 
     return new ReportView(
       metadata(features, reportName, totalScenarios, totalSteps),
@@ -68,7 +79,7 @@ public class CucumberReportViewFactory {
       unstableFeatures(features),
       longestScenarios(features),
       longestSteps(features),
-      scenarioViews(features)
+      scenarioDetails
     );
   }
 
