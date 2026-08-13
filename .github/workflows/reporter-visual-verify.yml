@@ -22,9 +22,3 @@ jobs:
         run: mvn -pl testara-reporter -am install -DskipTests -B --no-transfer-progress
       - name: Run reporter tests
         run: mvn -pl testara-reporter test -DskipTests=false -B --no-transfer-progress
-      - name: Upload reporter previews
-        uses: actions/upload-artifact@v4
-        with:
-          name: reporter-preview
-          path: testara-reporter/target/reporter-preview
-          if-no-files-found: error
