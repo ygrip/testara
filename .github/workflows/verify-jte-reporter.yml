@@ -1,0 +1,26 @@
+name: Verify JTE reporter
+
+on:
+  push:
+    branches:
+      - agent/testcontainers-grid-client
+    paths:
+      - .github/workflows/verify-jte-reporter.yml
+
+permissions:
+  contents: read
+
+jobs:
+  reporter:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - name: Build reporter dependencies and generated JTE templates
+        run: mvn -B -pl testara-reporter -am install -DskipTests
+      - name: Run focused reporter tests
+        run: mvn -B -pl testara-reporter -Dtest=ReportStyleTest,JteReportRendererTest test
