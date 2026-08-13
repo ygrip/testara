@@ -10,6 +10,7 @@
   @template.browser.styles()
   @template.browser.theme()
   @template.browser.small()
+  @template.browser.explorer()
 </head>
 <body>
   <main class="report-page">
@@ -20,5 +21,6 @@
     @template.browser.footer(view)
   </main>
   @template.browser.controller()
+  @template.browser.explorerState()
 </body>
 </html>
