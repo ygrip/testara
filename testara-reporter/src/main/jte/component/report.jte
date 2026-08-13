@@ -14,7 +14,7 @@
     body,table,td,a{-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%;}
     table,td{mso-table-lspace:0;mso-table-rspace:0;border-collapse:separate;}
     img{-ms-interpolation-mode:bicubic;border:0;outline:none;text-decoration:none;}
-    @media only screen and (max-width:700px){
+    @@media only screen and (max-width:700px){
       .report-shell{width:100%!important;max-width:100%!important;}
       .report-pad{padding-left:18px!important;padding-right:18px!important;}
       .metric-cell{display:block!important;width:100%!important;padding:0 0 8px 0!important;}
