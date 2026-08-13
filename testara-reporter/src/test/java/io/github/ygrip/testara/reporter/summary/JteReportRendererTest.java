@@ -46,6 +46,7 @@ class JteReportRendererTest {
     assertTrue(html.contains("Chrome 150"));
     assertTrue(html.contains("Pass rate"));
     assertTrue(html.contains("Test results"));
+    assertTrue(html.contains("data-email-bento"));
     assertTrue(html.contains("<!--[if mso]>"));
     assertTrue(html.contains("font-size:14px"));
     assertFalse(html.contains("<script"));
@@ -74,12 +75,19 @@ class JteReportRendererTest {
     JteReportRenderer.INSTANCE.render(ReportStyle.SINGLE_PAGE, view, output);
 
     String html = Files.readString(output);
+    assertTrue(html.contains("data-bento-grid"));
+    assertTrue(html.contains("data-glass-card"));
+    assertTrue(html.contains("data-status-chart"));
+    assertTrue(html.contains("data-chart-voice"));
+    assertTrue(html.contains("data-control-dock"));
+    assertTrue(html.contains("backdrop-filter"));
     assertTrue(html.contains("data-report-search"));
     assertTrue(html.contains("data-status-filter"));
     assertTrue(html.contains("data-feature-filter"));
     assertTrue(html.contains("data-tag-filter"));
     assertTrue(html.contains("data-report-sort"));
     assertTrue(html.contains("data-failed-only"));
+    assertTrue(html.contains("data-clear-filters"));
     assertTrue(html.contains("data-scenario-row"));
     assertTrue(html.contains("<script"));
     assertTrue(html.contains("Scenario details"));
