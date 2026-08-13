@@ -13,6 +13,9 @@
   var clear = document.querySelector('[data-clear-filters]');
   var count = document.querySelector('[data-result-count]');
   var sortButtons = Array.from(document.querySelectorAll('[data-sort-column]'));
+  var filterPaneToggle = document.querySelector('[data-filter-pane-toggle]');
+  var filterPane = document.querySelector('[data-filter-pane]');
+  var mobileQuery = window.matchMedia('(max-width: 620px)');
   var sortColumn = 'duration';
   var sortDirection = 'desc';
 
@@ -57,11 +60,29 @@
     sortButtons.forEach(function (button) {
       var active = button.dataset.sortColumn === sortColumn;
       var indicator = button.querySelector('[data-sort-indicator]');
+      var header = button.closest('th');
       button.classList.toggle('active', active);
       button.dataset.sortDirection = active ? sortDirection : '';
+      button.setAttribute('aria-pressed', active ? 'true' : 'false');
       if (indicator) indicator.textContent = active ? (sortDirection === 'asc' ? '↑' : '↓') : '';
-      button.closest('th').setAttribute('aria-sort', active ? (sortDirection === 'asc' ? 'ascending' : 'descending') : 'none');
+      if (header) {
+        header.setAttribute('aria-sort', active ? (sortDirection === 'asc' ? 'ascending' : 'descending') : 'none');
+      }
     });
+  }
+
+  function setFilterPaneExpanded(expanded) {
+    if (!filterPaneToggle || !filterPane) return;
+    filterPane.classList.toggle('is-open', expanded);
+    filterPaneToggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+    var indicator = filterPaneToggle.querySelector('.filter-toggle-indicator');
+    if (indicator) indicator.textContent = expanded ? '⌃' : '⌄';
+  }
+
+  function syncFilterPaneForViewport() {
+    if (!mobileQuery.matches) {
+      setFilterPaneExpanded(false);
+    }
   }
 
   function sortRows() {
@@ -112,6 +133,19 @@
       apply();
     });
   });
+
+  if (filterPaneToggle && filterPane) {
+    filterPaneToggle.addEventListener('click', function () {
+      var expanded = filterPaneToggle.getAttribute('aria-expanded') === 'true';
+      setFilterPaneExpanded(!expanded);
+    });
+    if (mobileQuery.addEventListener) {
+      mobileQuery.addEventListener('change', syncFilterPaneForViewport);
+    } else if (mobileQuery.addListener) {
+      mobileQuery.addListener(syncFilterPaneForViewport);
+    }
+    syncFilterPaneForViewport();
+  }
 
   clear.addEventListener('click', function () {
     search.value = '';
