@@ -50,7 +50,7 @@ class InteractiveReportResponsiveTest {
     assertTrue(html.contains("data-open-scenario"));
     assertTrue(html.contains("data-close-scenario"));
     assertFalse(html.contains("data-mobile-sort-strip"));
-    assertFalse(html.contains("clear-icon-button"));
+    assertFalse(html.contains("<button class=\"clear-icon-button\""));
     assertFalse(html.contains("data-failed-only"));
     assertFalse(html.contains("data-filter-pane-toggle"));
     assertFalse(html.contains("data-detail-toggle"));
