@@ -1,24 +1,24 @@
 @import io.github.ygrip.testara.reporter.view.ReportView
 @param ReportView view
 <section class="bento-grid">
-  <article class="glass-card card-pad span-5" data-glass-card>
+  <article class="glass-card card-pad span-12" data-glass-card data-full-row="failure-signals">
     <div class="card-head">
       <div>
-        <div class="card-eyebrow">Reliability</div>
+        <div class="card-eyebrow danger-eyebrow">Reliability</div>
         <h2 class="card-title">Failure signals</h2>
-        <p class="card-subtitle">The errors with enough frequency to deserve attention before the next rerun.</p>
+        <p class="card-subtitle">Recurring failures and unstable features, ranked so the largest reliability risks are obvious first.</p>
       </div>
       <span class="icon-tile danger">!</span>
     </div>
     @if(view.frequentFailures().isEmpty())
       <div class="empty-state">No recurring failure signatures were detected.</div>
     @else
-      <div class="rank-list">
+      <div class="rank-list wide-rank-list">
         @for(var failure : view.frequentFailures())
-          <div class="rank-item">
+          <div class="rank-item signal-row">
             <div class="rank-head">
               <span>${failure.name()}</span>
-              <strong style="color:#B91C1C;">${failure.count()}×</strong>
+              <strong class="danger-value">${failure.count()}×</strong>
             </div>
             <div class="bar-track danger"><span style="width:${failure.relativePercentage()}%;"></span></div>
             <small>${failure.error()}</small>
@@ -27,9 +27,9 @@
       </div>
     @endif
     @if(!view.unstableFeatures().isEmpty())
-      <div style="margin-top:20px;padding-top:17px;border-top:1px solid rgba(126,145,166,.2);">
-        <div class="card-eyebrow" style="color:#B45309;">Unstable features</div>
-        <div class="rank-list" style="margin-top:10px;">
+      <div class="subsection-block">
+        <div class="card-eyebrow warning-eyebrow">Unstable features</div>
+        <div class="rank-list wide-rank-list subsection-list">
           @for(var feature : view.unstableFeatures())
             <div class="rank-item">
               <div class="rank-head"><span>${feature.name()}</span><strong>${feature.failurePercentage()}% failed</strong></div>
@@ -41,19 +41,19 @@
     @endif
   </article>
 
-  <article class="glass-card card-pad span-7" data-glass-card>
+  <article class="glass-card card-pad span-12" data-glass-card data-full-row="execution-hotspots">
     <div class="card-head">
       <div>
         <div class="card-eyebrow">Performance</div>
         <h2 class="card-title">Execution hotspots</h2>
-        <p class="card-subtitle">Slow scenarios and steps ranked by relative duration, with the outliers made deliberately hard to ignore.</p>
+        <p class="card-subtitle">Slow scenarios and step families ranked by relative duration, with enough horizontal space to compare outliers properly.</p>
       </div>
       <span class="icon-tile info">↗</span>
     </div>
     @if(view.longestScenarios().isEmpty())
       <div class="empty-state">No scenario duration data is available.</div>
     @else
-      <div class="rank-list">
+      <div class="rank-list wide-rank-list">
         @for(var item : view.longestScenarios())
           <div class="rank-item">
             <div class="rank-head"><span>${item.label()}</span><strong>${item.duration()}</strong></div>
@@ -63,9 +63,9 @@
       </div>
     @endif
     @if(!view.longestSteps().isEmpty())
-      <div style="margin-top:20px;padding-top:17px;border-top:1px solid rgba(126,145,166,.2);">
+      <div class="subsection-block">
         <div class="card-eyebrow">Slow step families</div>
-        <div class="rank-list" style="margin-top:10px;">
+        <div class="rank-list wide-rank-list subsection-list">
           @for(var item : view.longestSteps())
             <div class="rank-item">
               <div class="rank-head"><span>${item.label()}</span><strong>${item.duration()}</strong></div>
@@ -80,19 +80,19 @@
     @endif
   </article>
 
-  <article class="glass-card card-pad span-12" data-glass-card>
+  <article class="glass-card card-pad span-12" data-glass-card data-full-row="functional-coverage">
     <div class="card-head">
       <div>
         <div class="card-eyebrow">Coverage</div>
         <h2 class="card-title">Functional coverage</h2>
-        <p class="card-subtitle">Feature pass rates and execution density, grouped by the report suites Testara inferred from your Cucumber structure.</p>
+        <p class="card-subtitle">Feature pass rates and execution density across the full report width, grouped by the suites Testara inferred from your Cucumber structure.</p>
       </div>
       <span class="icon-tile">▦</span>
     </div>
     @if(view.coverage().isEmpty())
       <div class="empty-state">No feature coverage data is available.</div>
     @else
-      <div class="coverage-grid">
+      <div class="coverage-grid coverage-full">
         @for(var group : view.coverage())
           <section class="coverage-group">
             <div class="coverage-head"><strong>${group.title()}</strong><span>${group.duration()}</span></div>
