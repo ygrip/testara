@@ -11,6 +11,7 @@
   var tagFilter = document.querySelector('[data-tag-filter]');
   var clear = document.querySelector('[data-clear-filters]');
   var count = document.querySelector('[data-result-count]');
+  var empty = document.querySelector('[data-empty-results]');
   var sortButtons = Array.from(document.querySelectorAll('[data-sort-column]'));
   var listView = document.querySelector('[data-scenario-list-view]');
   var detailView = document.querySelector('[data-scenario-detail-view]');
@@ -90,6 +91,7 @@
       if (matches) visible++;
     });
     count.innerHTML = '<strong>' + visible + '</strong> / ' + rows.length + ' visible';
+    if (empty) empty.hidden = visible !== 0;
     updateSortHeaders();
   }
 
