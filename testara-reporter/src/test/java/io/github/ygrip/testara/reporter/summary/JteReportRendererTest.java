@@ -51,6 +51,7 @@ class JteReportRendererTest {
     assertTrue(html.contains("font-size:14px"));
     assertFalse(html.contains("<script"));
     assertFalse(html.contains("data-th-"));
+    assertValidCssAtRules(html);
   }
 
   @Test
@@ -103,6 +104,7 @@ class JteReportRendererTest {
     assertTrue(html.contains("<script"));
     assertTrue(html.contains("Scenario execution detail"));
     assertTrue(html.contains("Failure signals"));
+    assertValidCssAtRules(html);
   }
 
   @Test
@@ -114,7 +116,17 @@ class JteReportRendererTest {
       String html = Files.readString(output);
       assertTrue(html.contains("Automation"));
       assertTrue(html.contains("Testara"));
+      assertValidCssAtRules(html);
     }
+  }
+
+  private static void assertValidCssAtRules(String html) {
+    assertFalse(html.contains("@@media"));
+    assertFalse(html.contains("@@supports"));
+    assertFalse(html.contains("@@keyframes"));
+    assertFalse(html.contains("@@font-face"));
+    assertFalse(html.contains("@@container"));
+    assertFalse(html.contains("@@layer"));
   }
 
   private List<io.github.ygrip.testara.reporter.cucumber.Feature> reportFeatures() throws Exception {
