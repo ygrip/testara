@@ -47,7 +47,7 @@
   .step-number{display:inline-grid;place-items:center;width:26px;height:26px;flex:0 0 26px;border:1px solid rgba(0,175,165,.2);border-radius:8px;background:rgba(0,175,165,.09);color:var(--teal-dark);font-size:12px;font-weight:800;line-height:1}
   .step-number::before{content:counter(scenario-step)}
 
-@@media(max-width:760px){
+@media(max-width:760px){
   .results-heading{align-items:flex-start}
   .explorer-filter-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important}
   .clean-table-shell{overflow-x:auto!important;max-width:100%}
@@ -60,7 +60,7 @@
   .clean-scenario-table td:before{content:none!important;display:none!important}
 }
 
-@@media(max-width:420px){
+@media(max-width:420px){
   .clean-explorer-controls{padding:10px}
   .explorer-filter-grid{grid-template-columns:1fr 1fr!important;gap:7px}
   .clean-search-shell input{font-size:12px}
