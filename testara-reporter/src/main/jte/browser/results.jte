@@ -92,9 +92,8 @@
                 <div class="detail-duration"><span>Duration</span><strong>${scenario.duration()}</strong></div>
               </header>
 
-              @if(scenario.error() != null && !scenario.error().isBlank())
-                <pre class="error-box scenario-error">${scenario.error()}</pre>
-              @endif
+              @template.browser.hooks("Before scenario", scenario.beforeHooks())
+              @template.browser.error("Scenario error", scenario.error())
 
               <div class="detail-section-head"><div><div class="card-eyebrow">Steps</div><h4>${scenario.steps().size()} executed steps</h4></div></div>
               <div class="step-list rich-step-list">
@@ -103,7 +102,13 @@
                     <span class="step-dot" style="background:@if(step.status().equalsIgnoreCase("PASSED"))#22C55E@elseif(step.status().equalsIgnoreCase("FAILED"))#EF4444@else#64748B@endif;"></span>
                     <div class="step-content">
                       <div class="step-title-row"><span class="step-number" aria-hidden="true"></span><strong>${step.keyword()} ${step.name()}</strong><small class="step-duration">${step.duration()}</small></div>
-                      @if(step.error() != null && !step.error().isBlank())<pre class="error-box step-error">${step.error()}</pre>@endif
+                      @if(step.line() != null || (step.matchLocation() != null && !step.matchLocation().isBlank()) || (step.arguments() != null && !step.arguments().isEmpty()))
+                        <div class="step-source-meta">@if(step.line() != null)<span>Line ${step.line()}</span>@endif @if(step.matchLocation() != null && !step.matchLocation().isBlank())<span>${step.matchLocation()}</span>@endif @for(var argument : step.arguments())<span>${argument.value()}@if(argument.offset() != null) · offset ${argument.offset()}@endif</span>@endfor</div>
+                      @endif
+                      @template.browser.hooks("Before step", step.beforeHooks())
+                      @template.browser.error("Step error", step.error())
+                      @if(step.outputs() != null && !step.outputs().isEmpty())<div class="step-artifact"><div class="artifact-label">Output</div><div class="output-list">@for(var output : step.outputs())<div>${output}</div>@endfor</div></div>@endif
+                      @if(step.comments() != null && !step.comments().isEmpty())<div class="step-artifact"><div class="artifact-label">Comments</div><div class="output-list">@for(var comment : step.comments())<div>${comment}</div>@endfor</div></div>@endif
 
                       @if(step.dataTable() != null && !step.dataTable().isEmpty())
                         <div class="step-artifact"><div class="artifact-label">DataTable</div><div class="step-data-table-shell"><table class="step-data-table"><tbody>
@@ -113,29 +118,19 @@
                         </tbody></table></div></div>
                       @endif
 
-                      @if(step.docString() != null && !step.docString().isBlank())
-                        <div class="step-artifact"><div class="artifact-label">Multiline text</div><pre class="step-doc-string">${step.docString()}</pre></div>
+                      @if(step.docString() != null)
+                        <div class="step-artifact"><div class="artifact-label">Multiline text@if(step.docString().contentType() != null && !step.docString().contentType().isBlank()) · ${step.docString().contentType()}@endif@if(step.docString().line() != null) · line ${step.docString().line()}@endif</div><pre class="step-doc-string">${step.docString().value()}</pre></div>
                       @endif
 
                       @if(step.attachments() != null && !step.attachments().isEmpty())
-                        <div class="step-artifact"><div class="artifact-label">Attachments</div><div class="attachment-grid">
-                          @for(var attachment : step.attachments())
-                            @if(attachment.kind().equals("image"))
-                              <figure class="attachment-card"><img class="attachment-image" src="${attachment.uri()}" alt="${attachment.name()}" loading="lazy"><figcaption>${attachment.name()}</figcaption></figure>
-                            @elseif(attachment.kind().equals("video"))
-                              <figure class="attachment-card"><video class="attachment-video" controls preload="metadata"><source src="${attachment.uri()}" type="${attachment.mimeType()}"></video><figcaption>${attachment.name()}</figcaption></figure>
-                            @elseif(attachment.kind().equals("audio"))
-                              <div class="attachment-card attachment-audio"><audio controls preload="metadata"><source src="${attachment.uri()}" type="${attachment.mimeType()}"></audio><span>${attachment.name()}</span></div>
-                            @else
-                              <a class="attachment-file" href="${attachment.uri()}" download="${attachment.name()}">${attachment.name()} · ${attachment.mimeType()}</a>
-                            @endif
-                          @endfor
-                        </div></div>
+                        <div class="step-artifact"><div class="artifact-label">Attachments</div>@template.browser.attachments(step.attachments())</div>
                       @endif
+                      @template.browser.hooks("After step", step.afterHooks())
                     </div>
                   </section>
                 @endfor
               </div>
+              @template.browser.hooks("After scenario", scenario.afterHooks())
             </article>
           @endfor
         </section>

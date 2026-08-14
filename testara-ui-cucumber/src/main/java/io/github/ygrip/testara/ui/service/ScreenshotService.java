@@ -29,6 +29,10 @@ public final class ScreenshotService {
   }
 
   public static void startRecording(Actor actor, int frameRates, boolean forceResolution, int bitRate, Scenario scenario) {
+    if (actor == null) {
+      log.debug("Skipping screen recording because no actor is available");
+      return;
+    }
     final var id = scenario.getId();
     if (!recordingMap.containsKey(id)) {
       try {
@@ -77,9 +81,17 @@ public final class ScreenshotService {
   }
 
   private static void takeScreenshot(String name, Scenario scenario) {
-    Actor actor = ActorManager.currentActor();
-    if (actor == null)
+    Actor actor;
+    try {
+      actor = ActorManager.currentActor();
+    } catch (IllegalStateException e) {
+      log.debug("Skipping screenshot because no driver session or actor is available: {}", e.getMessage());
       return;
+    }
+    if (actor == null) {
+      log.debug("Skipping screenshot because no actor is available");
+      return;
+    }
 
     try {
       byte[] screenshot = actor.observe(Capture.page()

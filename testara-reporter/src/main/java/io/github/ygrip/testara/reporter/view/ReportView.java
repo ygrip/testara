@@ -14,108 +14,35 @@ public record ReportView(
     List<ReportDurationItem> longestSteps,
     List<ReportScenario> scenarios
 ) {
-  public record ReportMetadata(
-      String title,
-      String startTime,
-      String endTime,
-      String generatedAt,
-      String reportLink,
-      int totalFeatures,
-      int totalScenarios,
-      int totalSteps,
-      String totalExecutionTime,
-      String averageExecutionTime,
-      String fastestTest,
-      String slowestTest
-  ) {}
-
-  public record ReportBranding(
-      String organizationName,
-      String logoUri,
-      String organizationDetail,
-      boolean whiteLabeled
-  ) {}
-
-  public record ReportStatusSummary(
-      String overallStatus,
-      String overallColor,
-      String overallBackground,
-      int passRate,
-      List<ReportStatusMetric> metrics
-  ) {}
-
-  public record ReportStatusMetric(
-      String label,
-      int count,
-      int percentage,
-      String color,
-      String background,
-      String icon
-  ) {}
-
+  public record ReportMetadata(String title, String startTime, String endTime, String generatedAt, String reportLink, int totalFeatures, int totalScenarios, int totalSteps, String totalExecutionTime, String averageExecutionTime, String fastestTest, String slowestTest) {}
+  public record ReportBranding(String organizationName, String logoUri, String organizationDetail, boolean whiteLabeled) {}
+  public record ReportStatusSummary(String overallStatus, String overallColor, String overallBackground, int passRate, List<ReportStatusMetric> metrics) {}
+  public record ReportStatusMetric(String label, int count, int percentage, String color, String background, String icon) {}
   public record ReportField(String label, String value) {}
-
-  public record ReportCoverageGroup(
-      String title,
-      String duration,
-      List<ReportCoverageItem> items
-  ) {}
-
-  public record ReportCoverageItem(
-      String name,
-      int testCount,
-      String successRate,
-      int passPercentage,
-      String duration
-  ) {}
-
-  public record ReportFailure(
-      String name,
-      String error,
-      int count,
-      int relativePercentage,
-      String severity
-  ) {}
-
+  public record ReportCoverageGroup(String title, String duration, List<ReportCoverageItem> items) {}
+  public record ReportCoverageItem(String name, int testCount, String successRate, int passPercentage, String duration) {}
+  public record ReportFailure(String name, String error, int count, int relativePercentage, String severity) {}
   public record ReportUnstableFeature(String name, int failurePercentage) {}
-
-  public record ReportDurationItem(
-      String label,
-      String duration,
-      int percentage,
-      Integer count
-  ) {}
+  public record ReportDurationItem(String label, String duration, int percentage, Integer count) {}
 
   public record ReportScenario(
-      String id,
-      String name,
-      String feature,
-      String suite,
-      String tags,
-      String status,
-      String duration,
-      long durationNanos,
-      boolean exampleExecution,
-      String exampleLabel,
-      String error,
-      List<ReportScenarioStep> steps
+      String id, String name, String feature, String suite, String tags, String status, String duration, long durationNanos,
+      boolean exampleExecution, String exampleLabel, String error, String keyword, String description, Integer line,
+      String startedAt, List<ReportHook> beforeHooks, List<ReportHook> afterHooks, List<ReportScenarioStep> steps
   ) {}
 
   public record ReportScenarioStep(
-      String keyword,
-      String name,
-      String status,
-      String duration,
-      String error,
-      List<List<String>> dataTable,
-      String docString,
-      List<ReportAttachment> attachments
+      String keyword, String name, String status, String duration, String error, Integer line, String matchLocation,
+      List<ReportArgument> arguments, List<String> outputs, List<String> comments, List<List<String>> dataTable,
+      ReportDocString docString, List<ReportAttachment> attachments, List<ReportHook> beforeHooks, List<ReportHook> afterHooks
   ) {}
 
-  public record ReportAttachment(
-      String name,
-      String mimeType,
-      String uri,
-      String kind
+  public record ReportHook(
+      String status, String duration, String location, String error, List<ReportArgument> arguments,
+      List<String> outputs, List<ReportAttachment> attachments
   ) {}
+
+  public record ReportArgument(String value, Integer offset) {}
+  public record ReportDocString(String value, Integer line, String contentType) {}
+  public record ReportAttachment(String name, String mimeType, String uri, String kind) {}
 }

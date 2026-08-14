@@ -18,13 +18,18 @@ import java.util.stream.Collectors;
 
 import io.github.ygrip.testara.reporter.branding.BrandingLogoResolver;
 import io.github.ygrip.testara.reporter.config.ReportConfiguration;
+import io.github.ygrip.testara.reporter.cucumber.Argument;
 import io.github.ygrip.testara.reporter.cucumber.Element;
 import io.github.ygrip.testara.reporter.cucumber.Embedding;
 import io.github.ygrip.testara.reporter.cucumber.Feature;
+import io.github.ygrip.testara.reporter.cucumber.Hook;
+import io.github.ygrip.testara.reporter.cucumber.Match;
+import io.github.ygrip.testara.reporter.cucumber.Output;
 import io.github.ygrip.testara.reporter.cucumber.Status;
 import io.github.ygrip.testara.reporter.cucumber.Step;
 import io.github.ygrip.testara.reporter.cucumber.Tag;
 import io.github.ygrip.testara.reporter.support.CommonUtil;
+import io.github.ygrip.testara.reporter.view.ReportView.ReportArgument;
 import io.github.ygrip.testara.reporter.view.ReportView.ReportAttachment;
 import io.github.ygrip.testara.reporter.view.ReportView.ReportBranding;
 import io.github.ygrip.testara.reporter.view.ReportView.ReportCoverageGroup;
@@ -32,6 +37,8 @@ import io.github.ygrip.testara.reporter.view.ReportView.ReportCoverageItem;
 import io.github.ygrip.testara.reporter.view.ReportView.ReportDurationItem;
 import io.github.ygrip.testara.reporter.view.ReportView.ReportFailure;
 import io.github.ygrip.testara.reporter.view.ReportView.ReportField;
+import io.github.ygrip.testara.reporter.view.ReportView.ReportDocString;
+import io.github.ygrip.testara.reporter.view.ReportView.ReportHook;
 import io.github.ygrip.testara.reporter.view.ReportView.ReportMetadata;
 import io.github.ygrip.testara.reporter.view.ReportView.ReportScenario;
 import io.github.ygrip.testara.reporter.view.ReportView.ReportScenarioStep;
@@ -288,21 +295,16 @@ public class CucumberReportViewFactory {
         }
         scenarioIndex++;
         List<ReportScenarioStep> steps = element.getSteps().stream().map(this::scenarioStep).toList();
-        String error = steps.stream().map(ReportScenarioStep::error).filter(value -> !isBlank(value)).findFirst().orElse(null);
+        List<ReportHook> beforeHooks = element.getBefore().stream().map(this::hook).toList();
+        List<ReportHook> afterHooks = element.getAfter().stream().map(this::hook).toList();
+        String error = firstError(beforeHooks, steps, afterHooks);
         boolean exampleExecution = element.isScenarioOutline();
         result.add(new ReportScenario(
-          "scenario-" + scenarioIndex,
-          element.getName(),
-          feature.getName(),
-          suite,
-          tags(feature, element),
-          element.getStatus().name(),
-          CommonUtil.formatDuration(element.getDuration()),
-          element.getDuration(),
-          exampleExecution,
-          exampleExecution ? exampleLabel(element) : null,
-          error,
-          steps
+          "scenario-" + scenarioIndex, element.getName(), feature.getName(), suite, tags(feature, element),
+          element.getStatus().name(), CommonUtil.formatDuration(element.getDuration()), element.getDuration(),
+          exampleExecution, exampleExecution ? exampleLabel(element) : null, error, element.getKeyword(),
+          element.getDescription(), element.getLine(), element.getStartTime() == null ? null : element.getStartTime().toString(),
+          beforeHooks, afterHooks, steps
         ));
       }
     }
@@ -311,19 +313,70 @@ public class CucumberReportViewFactory {
 
   private ReportScenarioStep scenarioStep(Step step) {
     String error = step.getResult().getErrorMessage();
-    String docString = step.getDocString() == null || isBlank(step.getDocString().getValue())
+    ReportDocString docString = step.getDocString() == null || isBlank(step.getDocString().getValue())
       ? null
-      : step.getDocString().getValue();
+      : new ReportDocString(step.getDocString().getValue(), step.getDocString().getLine(), step.getDocString().getContentType());
+    Match match = step.getMatch();
+    List<Argument> sourceArguments = match != null && !match.getArguments().isEmpty() ? match.getArguments() : step.getArguments();
     return new ReportScenarioStep(
-      stepKeyword(step),
-      step.getName(),
-      step.getResult().getStatus().name(),
-      CommonUtil.formatDuration(step.getDuration()),
-      isBlank(error) ? null : error,
-      dataTable(step),
-      docString,
-      step.getEmbeddings().stream().map(this::attachment).toList()
+      stepKeyword(step), step.getName(), step.getResult().getStatus().name(), CommonUtil.formatDuration(step.getDuration()),
+      isBlank(error) ? null : error, step.getLine(), match == null ? null : match.getLocation(), arguments(sourceArguments),
+      outputs(step.getOutputs()), List.copyOf(step.getComments()), dataTable(step), docString, attachments(step.getEmbeddings()),
+      step.getBefore().stream().map(this::hook).toList(), step.getAfter().stream().map(this::hook).toList()
     );
+  }
+
+  private ReportHook hook(Hook hook) {
+    Match match = hook.getMatch();
+    String error = hook.getResult().getErrorMessage();
+    return new ReportHook(
+      hook.getResult().getStatus().name(), CommonUtil.formatDuration(hook.getResult().getDuration()),
+      match == null ? null : match.getLocation(), isBlank(error) ? null : error,
+      arguments(match == null ? List.of() : match.getArguments()), outputs(hook.getOutputs()), attachments(hook.getEmbeddings())
+    );
+  }
+
+  private List<ReportArgument> arguments(List<Argument> values) {
+    if (values == null || values.isEmpty()) {
+      return List.of();
+    }
+    return values.stream().map(value -> new ReportArgument(value.getVal(), value.getOffset())).toList();
+  }
+
+  private List<String> outputs(List<Output> values) {
+    if (values == null || values.isEmpty()) {
+      return List.of();
+    }
+    return values.stream().filter(value -> value != null && value.getMessages() != null)
+      .flatMap(value -> value.getMessages().stream()).filter(value -> !isBlank(value)).toList();
+  }
+
+  private List<ReportAttachment> attachments(List<Embedding> values) {
+    if (values == null || values.isEmpty()) {
+      return List.of();
+    }
+    return values.stream().map(this::attachment).toList();
+  }
+
+  private String firstError(List<ReportHook> beforeHooks, List<ReportScenarioStep> steps, List<ReportHook> afterHooks) {
+    String error = beforeHooks.stream().map(ReportHook::error).filter(value -> !isBlank(value)).findFirst().orElse(null);
+    if (!isBlank(error)) {
+      return error;
+    }
+    for (ReportScenarioStep step : steps) {
+      if (!isBlank(step.error())) {
+        return step.error();
+      }
+      error = step.beforeHooks().stream().map(ReportHook::error).filter(value -> !isBlank(value)).findFirst().orElse(null);
+      if (!isBlank(error)) {
+        return error;
+      }
+      error = step.afterHooks().stream().map(ReportHook::error).filter(value -> !isBlank(value)).findFirst().orElse(null);
+      if (!isBlank(error)) {
+        return error;
+      }
+    }
+    return afterHooks.stream().map(ReportHook::error).filter(value -> !isBlank(value)).findFirst().orElse(null);
   }
 
   private List<List<String>> dataTable(Step step) {
