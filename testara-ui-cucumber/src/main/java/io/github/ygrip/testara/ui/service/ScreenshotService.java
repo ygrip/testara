@@ -36,14 +36,14 @@ public final class ScreenshotService {
     final var id = scenario.getId();
     if (!recordingMap.containsKey(id)) {
       try {
-        // Encode the string
         String encodedParam = URLEncoder.encode(id, StandardCharsets.UTF_8);
         final var instance = ScreenRecorder.instance()
           .withActor(actor).forceResolution(forceResolution).bitRate(bitRate);
 
         instance.startRecording("./target/recording/" + encodedParam, frameRates);
-        // Safe marker to identify this scenario already recorded
         recordingMap.put(id, instance.outputPath());
+      } catch (IllegalStateException err) {
+        log.debug("Skipping screen recording because the driver is unavailable: {}", err.getMessage());
       } catch (Exception err) {
         log.error("Fail to record screen, {}", err.getMessage());
       }
@@ -55,11 +55,9 @@ public final class ScreenshotService {
     final String id = scenario.getId();
 
     try {
-      // Stop async
       CompletableFuture<File> recordingFuture = ScreenRecorder.instance()
         .stopRecordingAsync();
 
-      // Only block here (safe point)
       File video = recordingFuture.join();
 
       if (video.exists() && video.length() > 0) {
@@ -100,6 +98,8 @@ public final class ScreenshotService {
       if (screenshot != null && screenshot.length > 0) {
         scenario.attach(screenshot, "image/png", name);
       }
+    } catch (IllegalStateException e) {
+      log.debug("Skipping screenshot because the driver is unavailable: {}", e.getMessage());
     } catch (Exception e) {
       log.warn("Screenshot failed: {}", e.getMessage());
     }
