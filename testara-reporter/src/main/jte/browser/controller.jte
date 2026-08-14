@@ -16,7 +16,6 @@
   var detailView = document.querySelector('[data-scenario-detail-view]');
   var closeDetail = document.querySelector('[data-close-scenario]');
   var detailPanels = Array.from(document.querySelectorAll('[data-scenario-detail-panel]'));
-  var reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
   var sortColumn = 'duration';
   var sortDirection = 'desc';
   var activePanel = null;
@@ -94,45 +93,36 @@
     updateSortHeaders();
   }
 
-  function animate(element, frames) {
-    if (reducedMotion.matches || !element.animate) return null;
-    return element.animate(frames, {duration: 230, easing: 'cubic-bezier(.2,.75,.25,1)', fill: 'both'});
-  }
-
   function openScenario(row) {
     var panel = panelFor(row);
     if (!panel || !detailView.hidden) return;
+
     activeRow = row;
     activePanel = panel;
     detailPanels.forEach(function (candidate) { candidate.hidden = candidate !== panel; });
+
+    listView.hidden = true;
     detailView.hidden = false;
 
-    var exit = animate(listView, [{opacity: 1, transform: 'translateX(0)'}, {opacity: 0, transform: 'translateX(-36px)'}]);
-    animate(detailView, [{opacity: 0, transform: 'translateX(36px)'}, {opacity: 1, transform: 'translateX(0)'}]);
-
-    if (exit) {
-      exit.addEventListener('finish', function () { listView.hidden = true; listView.getAnimations().forEach(function (item) { item.cancel(); }); }, {once: true});
-    } else {
-      listView.hidden = true;
-    }
-    window.requestAnimationFrame(function () { if (closeDetail) closeDetail.focus(); });
+    window.requestAnimationFrame(function () {
+      detailView.scrollIntoView({block: 'start', behavior: 'auto'});
+      if (closeDetail) closeDetail.focus({preventScroll: true});
+    });
   }
 
   function closeScenario() {
     if (detailView.hidden) return;
-    listView.hidden = false;
-    var exit = animate(detailView, [{opacity: 1, transform: 'translateX(0)'}, {opacity: 0, transform: 'translateX(36px)'}]);
-    animate(listView, [{opacity: 0, transform: 'translateX(-36px)'}, {opacity: 1, transform: 'translateX(0)'}]);
 
-    function finish() {
-      detailView.hidden = true;
-      detailView.getAnimations().forEach(function (item) { item.cancel(); });
-      if (activePanel) activePanel.hidden = true;
-      if (activeRow) activeRow.focus();
-      activePanel = null;
-      activeRow = null;
-    }
-    if (exit) exit.addEventListener('finish', finish, {once: true}); else finish();
+    var rowToRestore = activeRow;
+    detailView.hidden = true;
+    if (activePanel) activePanel.hidden = true;
+    listView.hidden = false;
+    activePanel = null;
+    activeRow = null;
+
+    window.requestAnimationFrame(function () {
+      if (rowToRestore) rowToRestore.focus();
+    });
   }
 
   [statusFilter, featureFilter, suiteFilter, tagFilter].forEach(function (control) { control.addEventListener('change', apply); });
