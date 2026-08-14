@@ -53,6 +53,10 @@ public final class ScreenshotService {
   public static void attachRecording(ScreenshotStrategy screenshotStrategy, Scenario scenario) {
     final String scenarioName = scenario.getName();
     final String id = scenario.getId();
+    if (!recordingMap.containsKey(id)) {
+      log.debug("Skipping recording attachment because no recording is available for scenario {}", scenarioName);
+      return;
+    }
 
     try {
       CompletableFuture<File> recordingFuture = ScreenRecorder.instance()
