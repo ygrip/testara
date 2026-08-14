@@ -49,6 +49,10 @@ class InteractiveReportResponsiveTest {
     assertTrue(html.contains("data-scenario-detail-view"));
     assertTrue(html.contains("data-open-scenario"));
     assertTrue(html.contains("data-close-scenario"));
+    assertTrue(html.contains("data-empty-results"));
+    assertTrue(html.contains("class=\"step-number\""));
+    assertTrue(html.contains(".clean-scenario-table tr[hidden]{display:none!important}"));
+    assertTrue(html.contains("if (empty) empty.hidden = visible !== 0;"));
     assertTrue(html.contains("listView.hidden = true;\n    detailView.hidden = false;"));
     assertTrue(html.contains("detailView.scrollIntoView"));
     assertTrue(html.contains("rowToRestore.focus"));
