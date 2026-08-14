@@ -51,7 +51,12 @@ class InteractiveReportResponsiveTest {
     assertTrue(html.contains("data-close-scenario"));
     assertTrue(html.contains("listView.hidden = true;\n    detailView.hidden = false;"));
     assertTrue(html.contains("detailView.scrollIntoView"));
-    assertTrue(html.contains("activeRow.focus"));
+    assertTrue(html.contains("rowToRestore.focus"));
+    assertTrue(html.contains(".results-card{min-width:0;overflow:hidden"));
+    assertTrue(html.contains(".scenario-detail-view{width:100%;max-width:100%;min-width:0;overflow-x:hidden"));
+    assertTrue(html.contains(".step-data-table-shell{width:100%;max-width:100%;overflow-x:auto"));
+    assertTrue(html.contains(".scenario-detail-head>div:first-child{min-width:0"));
+    assertTrue(html.contains(".scenario-detail-head h3,.scenario-detail-head p,.detail-tags,.step-title-row strong{overflow-wrap:anywhere"));
     assertFalse(html.contains("function animate("));
     assertFalse(html.contains("data-mobile-sort-strip"));
     assertFalse(html.contains("<button class=\"clear-icon-button\""));
