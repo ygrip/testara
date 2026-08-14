@@ -65,6 +65,10 @@
               </tbody>
             </table>
           </div>
+          <div class="explorer-empty-state" data-empty-results hidden role="status">
+            <strong>No scenarios match these filters</strong>
+            <p>Adjust the search or filters to bring scenarios back into view.</p>
+          </div>
         </div>
 
         <section class="scenario-detail-view" data-scenario-detail-view hidden aria-live="polite">
@@ -98,7 +102,7 @@
                   <section class="step-item rich-step-item">
                     <span class="step-dot" style="background:@if(step.status().equalsIgnoreCase("PASSED"))#22C55E@elseif(step.status().equalsIgnoreCase("FAILED"))#EF4444@else#64748B@endif;"></span>
                     <div class="step-content">
-                      <div class="step-title-row"><strong>${step.keyword()} ${step.name()}</strong><small class="step-duration">${step.duration()}</small></div>
+                      <div class="step-title-row"><span class="step-number" aria-hidden="true"></span><strong>${step.keyword()} ${step.name()}</strong><small class="step-duration">${step.duration()}</small></div>
                       @if(step.error() != null && !step.error().isBlank())<pre class="error-box step-error">${step.error()}</pre>@endif
 
                       @if(step.dataTable() != null && !step.dataTable().isEmpty())
