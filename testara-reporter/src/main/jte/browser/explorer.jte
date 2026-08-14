@@ -19,6 +19,7 @@
   .clean-scenario-table thead{display:table-header-group!important}
   .clean-scenario-table tbody{display:table-row-group!important}
   .clean-scenario-table tr{display:table-row!important;width:auto!important;border:0!important;border-radius:0!important;padding:0!important;box-shadow:none!important;background:#FFF}
+  .clean-scenario-table tr[hidden]{display:none!important}
   .clean-scenario-table th,.clean-scenario-table td{display:table-cell!important;width:auto!important;padding:12px 14px!important;border:0!important;border-bottom:1px solid var(--line)!important;text-align:left;vertical-align:middle}
   .clean-scenario-table th{background:#F7FAFB!important;color:#657586;font-size:10px;font-weight:800;letter-spacing:.055em;text-transform:uppercase;white-space:nowrap}
   .clean-scenario-table th:nth-child(1){width:116px}
@@ -36,6 +37,16 @@
   .clean-scenario-table .scenario-name{display:block;font-size:13px;font-weight:750;color:var(--ink)}
   .clean-scenario-table .scenario-meta{display:block;margin-top:2px;color:var(--muted);font-size:11px;line-height:1.35}
 
+  .explorer-empty-state{margin:18px 0 0;padding:34px 24px;border:1px dashed rgba(11,18,32,.18);border-radius:14px;background:linear-gradient(145deg,rgba(232,248,246,.68),rgba(255,255,255,.92));text-align:center;color:var(--muted)}
+  .explorer-empty-state[hidden]{display:none!important}
+  .explorer-empty-state strong{display:block;color:var(--ink);font-size:15px;font-weight:760}
+  .explorer-empty-state p{margin:5px 0 0;font-size:12px}
+
+  .rich-step-list{counter-reset:scenario-step}
+  .rich-step-item{counter-increment:scenario-step}
+  .step-number{display:inline-grid;place-items:center;width:26px;height:26px;flex:0 0 26px;border:1px solid rgba(0,175,165,.2);border-radius:8px;background:rgba(0,175,165,.09);color:var(--teal-dark);font-size:12px;font-weight:800;line-height:1}
+  .step-number::before{content:counter(scenario-step)}
+
 @@media(max-width:760px){
   .results-heading{align-items:flex-start}
   .explorer-filter-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important}
@@ -44,6 +55,7 @@
   .clean-scenario-table thead{display:table-header-group!important}
   .clean-scenario-table tbody{display:table-row-group!important}
   .clean-scenario-table tr{display:table-row!important;width:auto!important;padding:0!important;border:0!important;border-radius:0!important;box-shadow:none!important}
+  .clean-scenario-table tr[hidden]{display:none!important}
   .clean-scenario-table th,.clean-scenario-table td{display:table-cell!important;width:auto!important;padding:10px 11px!important;border-bottom:1px solid var(--line)!important}
   .clean-scenario-table td:before{content:none!important;display:none!important}
 }
