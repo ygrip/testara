@@ -24,7 +24,7 @@ public final class ScreenshotReferenceResolver {
   }
 
   public Optional<ResolvedScreenshot> resolve(Embedding embedding) {
-    if (embedding == null || !MIME_TYPE.equalsIgnoreCase(embedding.getMimeType())) {
+    if (embedding == null || !MIME_TYPE.equalsIgnoreCase(embedding.getStoredMimeType())) {
       return Optional.empty();
     }
 
