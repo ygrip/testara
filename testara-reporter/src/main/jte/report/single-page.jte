@@ -11,16 +11,25 @@
   @template.browser.theme()
   @template.browser.small()
   @template.browser.explorer()
+  @template.browser.spa()
 </head>
 <body>
   <main class="report-page">
-    @template.browser.hero(view)
-    @template.browser.overview(view)
-    @template.browser.insights(view)
-    @template.browser.results(view)
+    @template.browser.navigation()
+    @template.browser.pageOverview(view)
+    @template.browser.pageAdditionalInfo(view)
+    @template.browser.pageFailures(view)
+    @template.browser.pageHotspots(view)
+    @template.browser.pageCoverage(view)
+    @template.browser.pageScenarios(view)
     @template.browser.footer(view)
   </main>
+  @template.browser.stepHooksDialog(view)
+  @template.browser.mediaViewer()
   @template.browser.controller()
   @template.browser.explorerState()
+  @template.browser.hotspotsController()
+  @template.browser.dialogsController()
+  @template.browser.router()
 </body>
 </html>
