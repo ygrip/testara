@@ -54,8 +54,9 @@ class InteractiveReportResponsiveTest {
     assertTrue(html.contains(".clean-scenario-table tr[hidden]{display:none!important}"));
     assertTrue(html.contains("if (empty) empty.hidden = visible !== 0;"));
     assertTrue(html.contains("listView.hidden = true;\n    detailView.hidden = false;"));
-    assertTrue(html.contains("detailView.scrollIntoView"));
+    assertFalse(html.contains("detailView.scrollIntoView"));
     assertTrue(html.contains("rowToRestore.focus"));
+    assertTrue(html.contains("data-report-page=\"scenarios\""));
     assertTrue(html.contains(".scenario-detail-view{width:100%;max-width:100%;min-width:0;overflow-x:clip"));
     assertTrue(html.contains(".scenario-detail-panel{width:100%;max-width:100%;min-width:0"));
     assertTrue(html.contains(".scenario-detail-head>div:first-child{min-width:0;max-width:100%"));
