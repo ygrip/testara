@@ -11,6 +11,7 @@ import io.github.ygrip.testara.ui.config.EngineProperties;
 import io.github.ygrip.testara.ui.executor.Actor;
 import io.github.ygrip.testara.ui.executor.ActorManager;
 import io.github.ygrip.testara.ui.model.ScreenshotOutputType;
+import io.github.ygrip.testara.ui.model.ScreenshotQuality;
 import io.github.ygrip.testara.ui.model.ScreenshotStrategy;
 import io.github.ygrip.testara.ui.service.ScreenshotService;
 
@@ -18,6 +19,7 @@ import io.github.ygrip.testara.ui.service.ScreenshotService;
 public class ScreenshotHooks {
   private ScreenshotStrategy screenshotStrategy;
   private ScreenshotOutputType screenshotOutputType;
+  private ScreenshotQuality screenshotQuality;
   private Integer frameRates;
   private Integer bitRate;
   private Boolean forceResolution;
@@ -38,6 +40,15 @@ public class ScreenshotHooks {
       screenshotOutputType = config.getScreenshotOutputType();
     }
     return screenshotOutputType;
+  }
+
+  public ScreenshotQuality getScreenshotQuality() {
+    if (screenshotQuality == null) {
+      EngineProperties config = TestFramework.configuration()
+        .get(EngineProperties.class);
+      screenshotQuality = config.getScreenshotQuality();
+    }
+    return screenshotQuality;
   }
 
   public int getFrameRates() {
@@ -71,7 +82,7 @@ public class ScreenshotHooks {
   public void afterScenario(Scenario scenario) {
     ScreenshotOutputType type = getOutputType();
     if (type.equals(ScreenshotOutputType.IMAGE)) {
-      ScreenshotService.attachScenarioScreenshot(getStrategy(), scenario);
+      ScreenshotService.attachScenarioScreenshot(getStrategy(), getScreenshotQuality(), scenario);
     }
   }
 
@@ -87,7 +98,7 @@ public class ScreenshotHooks {
   public void afterStep(Scenario scenario) {
     ScreenshotOutputType type = getOutputType();
     if (type.equals(ScreenshotOutputType.IMAGE)) {
-      ScreenshotService.attachStepScreenshot(getStrategy(), scenario);
+      ScreenshotService.attachStepScreenshot(getStrategy(), getScreenshotQuality(), scenario);
     }
   }
 
