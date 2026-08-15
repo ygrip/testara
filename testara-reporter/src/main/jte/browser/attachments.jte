@@ -5,7 +5,7 @@
 <div class="attachment-grid">
   @for(var attachment : attachments)
     @if(attachment.kind().equals("image"))
-      <button class="attachment-card attachment-button attachment-visual-card" type="button" data-open-image data-attachment-name="${attachment.name()}" data-attachment-src="${attachment.uri()}" aria-label="Open image attachment ${attachment.name()}">
+      <button class="attachment-card attachment-button attachment-visual-card" type="button" data-open-image data-attachment-name="${attachment.name()}" aria-label="Open image attachment ${attachment.name()}">
         <span class="attachment-visual-stage"><img class="attachment-image" src="${attachment.uri()}" alt="${attachment.name()}" loading="lazy"></span>
         <span class="attachment-caption"><span>${attachment.name()}</span><small>Open image</small></span>
       </button>
