@@ -64,7 +64,11 @@ class InteractiveReportSpaTest {
     assertTrue(html.contains(".report-theme-toggle{min-height:var(--nav-control-size)"));
     assertTrue(html.contains("border-radius:999px"));
     assertTrue(html.contains(".report-nav-link{min-height:var(--nav-control-size)"));
-    assertTrue(html.contains(".report-nav-link span,.theme-toggle-label{display:inline!important}"));
+    assertTrue(html.contains("class=\"report-navigation-shell\""));
+    assertTrue(html.contains("class=\"report-theme-container\""));
+    assertTrue(html.indexOf("</nav>") < html.indexOf("class=\"report-theme-container\""));
+    assertTrue(html.contains(".report-nav-link span{display:inline!important}"));
+    assertTrue(html.contains(".theme-toggle-label{display:none!important}"));
 
     assertTrue(html.contains("data-additional-info-scroll"));
     assertTrue(html.contains("role=\"tablist\""));
