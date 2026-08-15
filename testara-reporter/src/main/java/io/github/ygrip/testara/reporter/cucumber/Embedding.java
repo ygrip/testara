@@ -7,9 +7,11 @@ import java.util.Locale;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 
 import io.github.ygrip.testara.reporter.support.ScreenshotReferenceResolver;
 
+@JsonSerialize(using = EmbeddingJsonSerializer.class)
 public class Embedding implements Serializable {
   @JsonIgnore
   private static final String FILE_EXTENSION_PATTERN = "[a-z0-9]+";
@@ -54,6 +56,11 @@ public class Embedding implements Serializable {
   @JsonIgnore
   public String getStoredMimeType() {
     return this.mimeType;
+  }
+
+  @JsonIgnore
+  public String getStoredData() {
+    return this.data;
   }
 
   @JsonIgnore
