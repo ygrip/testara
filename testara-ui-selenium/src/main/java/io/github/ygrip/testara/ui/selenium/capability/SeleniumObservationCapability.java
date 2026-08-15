@@ -6,6 +6,7 @@ import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.time.Duration;
+import java.util.Base64;
 import java.util.Date;
 import java.util.List;
 import java.util.Objects;
@@ -21,10 +22,16 @@ import org.openqa.selenium.OutputType;
 import org.openqa.selenium.TakesScreenshot;
 import org.openqa.selenium.WebDriver;
 import org.openqa.selenium.WebElement;
+import org.openqa.selenium.bidi.HasBiDi;
+import org.openqa.selenium.bidi.browsingcontext.BrowsingContext;
+import org.openqa.selenium.bidi.browsingcontext.CaptureScreenshotParameters;
 
 import io.github.ygrip.testara.ui.capability.ObservationCapability;
 import io.github.ygrip.testara.ui.model.CapturedCookie;
+import io.github.ygrip.testara.ui.model.CapturedScreenshot;
+import io.github.ygrip.testara.ui.model.ScreenshotQuality;
 import io.github.ygrip.testara.ui.page.Element;
+import io.github.ygrip.testara.ui.support.Screenshots;
 
 import lombok.extern.log4j.Log4j2;
 
@@ -34,6 +41,7 @@ import lombok.extern.log4j.Log4j2;
 @Log4j2
 public final class SeleniumObservationCapability extends SeleniumElementResolver
   implements ObservationCapability<WebElement> {
+  private static final String JPEG_MIME_TYPE = "image/jpeg";
   private final WebDriver driver;
 
   public SeleniumObservationCapability(WebDriver driver) {
@@ -163,6 +171,26 @@ public final class SeleniumObservationCapability extends SeleniumElementResolver
       @Override
       public byte[] visibleOnViewPort() {
         return ((TakesScreenshot) driver).getScreenshotAs(OutputType.BYTES);
+      }
+
+      @Override
+      public CapturedScreenshot visibleOnViewPort(ScreenshotQuality quality) {
+        ScreenshotQuality selected = quality == null ? ScreenshotQuality.STANDARD : quality;
+        if (driver instanceof HasBiDi hasBiDi && hasBiDi.maybeGetBiDi().isPresent()) {
+          try {
+            String encoded = new BrowsingContext(driver, driver.getWindowHandle())
+              .captureScreenshot(new CaptureScreenshotParameters()
+                .imageFormat(JPEG_MIME_TYPE, selected.jpegQuality()));
+            byte[] jpeg = Base64.getDecoder().decode(encoded);
+            Screenshots.OptimizedScreenshot optimized = Screenshots.optimize(jpeg, JPEG_MIME_TYPE, selected);
+            return new CapturedScreenshot(optimized.bytes(), optimized.mimeType());
+          } catch (Exception e) {
+            log.debug("BiDi screenshot capture unavailable, using WebDriver fallback: {}", e.getMessage());
+          }
+        }
+
+        Screenshots.OptimizedScreenshot optimized = Screenshots.optimize(visibleOnViewPort(), selected);
+        return new CapturedScreenshot(optimized.bytes(), optimized.mimeType());
       }
 
       @Override
