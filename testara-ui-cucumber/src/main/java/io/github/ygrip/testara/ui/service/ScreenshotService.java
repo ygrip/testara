@@ -7,6 +7,7 @@ import java.nio.file.Files;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
 
 import io.cucumber.java.Scenario;
 import io.github.ygrip.testara.ui.context.StepContext;
@@ -17,11 +18,14 @@ import io.github.ygrip.testara.ui.model.ScreenshotQuality;
 import io.github.ygrip.testara.ui.model.ScreenshotStrategy;
 import io.github.ygrip.testara.ui.observation.Capture;
 import io.github.ygrip.testara.ui.support.ScreenRecorder;
+import io.github.ygrip.testara.ui.support.ScreenshotAttachmentStore;
 import lombok.extern.log4j.Log4j2;
 
 @Log4j2
 public final class ScreenshotService {
+  private static final String SCREENSHOT_REFERENCE_MIME_TYPE = "application/vnd.testara.screenshot-reference";
   private static final Map<String, String> recordingMap = new ConcurrentHashMap<>();
+  private static final ScreenshotAttachmentStore screenshotStore = ScreenshotAttachmentStore.instance();
 
   public static void attachStepScreenshot(ScreenshotStrategy screenshotStrategy, Scenario scenario) {
     attachStepScreenshot(screenshotStrategy, ScreenshotQuality.STANDARD, scenario);
@@ -105,17 +109,46 @@ public final class ScreenshotService {
       return;
     }
 
+    long startedAt = System.nanoTime();
     try {
       CapturedScreenshot screenshot = actor.observe(Capture.page()
-        .visibleOnViewPort(screenshotQuality));
+        .fastVisibleOnViewPort(screenshotQuality));
+      long capturedAt = System.nanoTime();
 
       if (screenshot != null && screenshot.bytes() != null && screenshot.bytes().length > 0) {
-        scenario.attach(screenshot.bytes(), screenshot.mimeType(), name);
+        ScreenshotAttachmentStore.Reference reference = screenshotStore.store(
+          scenario.getId(),
+          screenshot,
+          screenshotQuality
+        );
+        scenario.attach(
+          reference.id().getBytes(StandardCharsets.UTF_8),
+          SCREENSHOT_REFERENCE_MIME_TYPE,
+          name
+        );
+        long queuedAt = System.nanoTime();
+        log.debug(
+          "Screenshot captured in {} ms and queued in {} ms for asynchronous optimization",
+          elapsedMillis(startedAt, capturedAt),
+          elapsedMillis(capturedAt, queuedAt)
+        );
       }
     } catch (IllegalStateException e) {
       log.debug("Skipping screenshot because the driver is unavailable: {}", e.getMessage());
     } catch (Exception e) {
       log.warn("Screenshot failed: {}", e.getMessage());
+    }
+  }
+
+  public static void awaitScreenshots(Scenario scenario) {
+    if (scenario == null) {
+      return;
+    }
+    long startedAt = System.nanoTime();
+    screenshotStore.await(scenario.getId());
+    long elapsed = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedAt);
+    if (elapsed > 0) {
+      log.debug("Drained asynchronous screenshot processing for scenario in {} ms", elapsed);
     }
   }
 
@@ -136,5 +169,9 @@ public final class ScreenshotService {
     } else if (screenshotStrategy.equals(ScreenshotStrategy.ON_EACH_SCENARIO)) {
       takeScreenshot(scenarioName, screenshotQuality, scenario);
     }
+  }
+
+  private static long elapsedMillis(long from, long to) {
+    return TimeUnit.NANOSECONDS.toMillis(to - from);
   }
 }
