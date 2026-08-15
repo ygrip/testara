@@ -26,10 +26,7 @@
                 </svg>
                 <input type="search" placeholder="Search scenarios, features, tags, steps, or errors" aria-label="Search scenarios" data-report-search>
                 <button class="inline-clear-button" type="button" data-inline-clear data-clear-filters aria-label="Clear search and filters" title="Clear search and filters" hidden>
-                  <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-                    <path d="M6 6l12 12"></path>
-                    <path d="M18 6L6 18"></path>
-                  </svg>
+                  <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12"></path><path d="M18 6L6 18"></path></svg>
                 </button>
               </div>
             </div>
@@ -65,18 +62,12 @@
               </tbody>
             </table>
           </div>
-          <div class="explorer-empty-state" data-empty-results hidden role="status">
-            <strong>No scenarios match these filters</strong>
-            <p>Adjust the search or filters to bring scenarios back into view.</p>
-          </div>
+          <div class="explorer-empty-state" data-empty-results hidden role="status"><strong>No scenarios match these filters</strong><p>Adjust the search or filters to bring scenarios back into view.</p></div>
         </div>
 
         <section class="scenario-detail-view" data-scenario-detail-view hidden aria-live="polite">
           <div class="scenario-detail-toolbar">
-            <button class="back-button" type="button" data-close-scenario>
-              <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"></path></svg>
-              <span>Back to scenarios</span>
-            </button>
+            <button class="back-button" type="button" data-close-scenario><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"></path></svg><span>Back to scenarios</span></button>
             <span class="detail-hint">Scenario execution detail</span>
           </div>
 
@@ -88,11 +79,17 @@
                   <h3>${scenario.name()}</h3>
                   <p>${scenario.feature()} · ${scenario.suite()}</p>
                   @if(scenario.tags() != null && !scenario.tags().isBlank())<div class="detail-tags">${scenario.tags()}</div>@endif
+                  <div class="scenario-detail-actions">
+                    <button class="detail-info-button" type="button" data-open-step-hooks data-scenario-id="${scenario.id()}" aria-label="View step hooks for ${scenario.name()}">
+                      <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M12 11v5"></path><path d="M12 8h.01"></path></svg>
+                      <span>Step hooks</span>
+                    </button>
+                  </div>
                 </div>
                 <div class="detail-duration"><span>Duration</span><strong>${scenario.duration()}</strong></div>
               </header>
 
-              @template.browser.hooks("Before scenario", scenario.beforeHooks())
+              @template.browser.scenarioHooks(scenario)
               @template.browser.error("Scenario error", scenario.error())
 
               <div class="detail-section-head"><div><div class="card-eyebrow">Steps</div><h4>${scenario.steps().size()} executed steps</h4></div></div>
@@ -102,10 +99,9 @@
                     <span class="step-dot" style="background:@if(step.status().equalsIgnoreCase("PASSED"))#22C55E@elseif(step.status().equalsIgnoreCase("FAILED"))#EF4444@else#64748B@endif;"></span>
                     <div class="step-content">
                       <div class="step-title-row"><span class="step-number" aria-hidden="true"></span><strong>${step.keyword()} ${step.name()}</strong><small class="step-duration">${step.duration()}</small></div>
-                      @if(step.line() != null || (step.matchLocation() != null && !step.matchLocation().isBlank()) || (step.arguments() != null && !step.arguments().isEmpty()))
-                        <div class="step-source-meta">@if(step.line() != null)<span>Line ${step.line()}</span>@endif @if(step.matchLocation() != null && !step.matchLocation().isBlank())<span>${step.matchLocation()}</span>@endif @for(var argument : step.arguments())<span>${argument.value()}@if(argument.offset() != null) · offset ${argument.offset()}@endif</span>@endfor</div>
+                      @if(step.line() != null || (step.matchLocation() != null && !step.matchLocation().isBlank()))
+                        <div class="step-source-meta">@if(step.line() != null)<span>Line ${step.line()}</span>@endif @if(step.matchLocation() != null && !step.matchLocation().isBlank())<span>${step.matchLocation()}</span>@endif</div>
                       @endif
-                      @template.browser.hooks("Before step", step.beforeHooks())
                       @template.browser.error("Step error", step.error())
                       @if(step.outputs() != null && !step.outputs().isEmpty())<div class="step-artifact"><div class="artifact-label">Output</div><div class="output-list">@for(var output : step.outputs())<div>${output}</div>@endfor</div></div>@endif
                       @if(step.comments() != null && !step.comments().isEmpty())<div class="step-artifact"><div class="artifact-label">Comments</div><div class="output-list">@for(var comment : step.comments())<div>${comment}</div>@endfor</div></div>@endif
@@ -125,12 +121,12 @@
                       @if(step.attachments() != null && !step.attachments().isEmpty())
                         <div class="step-artifact"><div class="artifact-label">Attachments</div>@template.browser.attachments(step.attachments())</div>
                       @endif
-                      @template.browser.hooks("After step", step.afterHooks())
+                      @template.browser.hookAttachments(step.beforeHooks())
+                      @template.browser.hookAttachments(step.afterHooks())
                     </div>
                   </section>
                 @endfor
               </div>
-              @template.browser.hooks("After scenario", scenario.afterHooks())
             </article>
           @endfor
         </section>
