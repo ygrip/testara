@@ -16,7 +16,6 @@ import io.github.ygrip.testara.ui.model.CapturedCookie;
 import io.github.ygrip.testara.ui.model.CapturedScreenshot;
 import io.github.ygrip.testara.ui.model.ScreenshotQuality;
 import io.github.ygrip.testara.ui.page.Element;
-import io.github.ygrip.testara.ui.support.Screenshots;
 import com.microsoft.playwright.Page;
 import com.microsoft.playwright.options.Cookie;
 import com.microsoft.playwright.options.ScreenshotScale;
@@ -186,7 +185,7 @@ public final class PlaywrightObservationCapability extends PlaywrightElementReso
       }
 
       @Override
-      public CapturedScreenshot visibleOnViewPort(ScreenshotQuality quality) {
+      public CapturedScreenshot fastVisibleOnViewPort(ScreenshotQuality quality) {
         ScreenshotQuality selected = quality == null ? ScreenshotQuality.STANDARD : quality;
         byte[] jpeg = session.runOnApiThread(() -> session.pageForApi().screenshot(
           new Page.ScreenshotOptions()
@@ -194,8 +193,7 @@ public final class PlaywrightObservationCapability extends PlaywrightElementReso
             .setQuality(Math.round(selected.jpegQuality() * 100))
             .setScale(ScreenshotScale.CSS)
         ));
-        Screenshots.OptimizedScreenshot optimized = Screenshots.optimize(jpeg, JPEG_MIME_TYPE, selected);
-        return new CapturedScreenshot(optimized.bytes(), optimized.mimeType());
+        return new CapturedScreenshot(jpeg, JPEG_MIME_TYPE);
       }
 
       @Override
