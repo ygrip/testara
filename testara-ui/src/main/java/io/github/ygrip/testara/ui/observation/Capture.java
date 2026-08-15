@@ -2,7 +2,9 @@ package io.github.ygrip.testara.ui.observation;
 
 import io.github.ygrip.testara.ui.executor.Actor;
 import io.github.ygrip.testara.ui.interaction.InteractionContext;
+import io.github.ygrip.testara.ui.model.CapturedScreenshot;
 import io.github.ygrip.testara.ui.model.Locator;
+import io.github.ygrip.testara.ui.model.ScreenshotQuality;
 import io.github.ygrip.testara.ui.page.Element;
 
 /**
@@ -27,13 +29,9 @@ public final class Capture implements Observation<byte[]> {
     this.dimension = dimension;
   }
 
-  // --- page() fluent entry ---
-
   public static PageCapture page() {
     return new PageCapture();
   }
-
-  // --- element() entry points ---
 
   public static Capture element(String locator) {
     return new Capture(Target.ELEMENT, Element.of(locator).build(), null);
@@ -46,8 +44,6 @@ public final class Capture implements Observation<byte[]> {
   public static Capture element(Element.ElementContext locator) {
     return new Capture(Target.ELEMENT, locator.build(), null);
   }
-
-  // --- dimension() entry points ---
 
   public static Capture dimension(Dimension dimension) {
     return new Capture(Target.REGION, null, dimension);
@@ -84,14 +80,20 @@ public final class Capture implements Observation<byte[]> {
   /** Defines a rectangular region on the page (position + size). */
   public record Dimension(int x, int y, int width, int height) {}
 
-  /**
-   * Fluent step returned by {@link Capture#page()} to choose the capture mode.
-   */
+  /** Fluent step returned by {@link Capture#page()} to choose the capture mode. */
   public static final class PageCapture {
     PageCapture() {}
 
     public Capture visibleOnViewPort() {
       return new Capture(Target.VIEWPORT, null, null);
+    }
+
+    public Observation<CapturedScreenshot> fastVisibleOnViewPort(ScreenshotQuality quality) {
+      return context -> context.observation().capturePage().fastVisibleOnViewPort(quality);
+    }
+
+    public Observation<CapturedScreenshot> visibleOnViewPort(ScreenshotQuality quality) {
+      return context -> context.observation().capturePage().visibleOnViewPort(quality);
     }
 
     public Capture fullPage() {

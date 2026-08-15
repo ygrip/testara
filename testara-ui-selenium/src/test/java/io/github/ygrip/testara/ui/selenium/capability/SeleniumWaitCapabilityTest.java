@@ -1,6 +1,7 @@
 package io.github.ygrip.testara.ui.selenium.capability;
 
 import java.lang.reflect.Field;
+import java.lang.reflect.Proxy;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
@@ -10,22 +11,23 @@ import java.util.function.Supplier;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.junit.jupiter.api.Test;
+import org.openqa.selenium.WebDriver;
 
 import io.github.ygrip.testara.ui.config.AbstractDriverProperties;
 import io.github.ygrip.testara.ui.driver.DriverSession;
 import io.github.ygrip.testara.ui.model.Locator;
+import io.github.ygrip.testara.ui.page.Element;
 import io.github.ygrip.testara.ui.page.NamedPage;
 import io.github.ygrip.testara.ui.page.PageContext;
 import io.github.ygrip.testara.ui.page.PageFinder;
 import io.github.ygrip.testara.ui.populator.ElementCatalog;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Regression coverage for {@link SeleniumWaitCapability#untilPageLoaded(NamedPage)}: the
- * finder's current page must only be activated when the page actually confirms it is the
- * current page within the given timeout.
+ * Regression coverage for Selenium wait semantics.
  */
 class SeleniumWaitCapabilityTest {
 
@@ -105,7 +107,7 @@ class SeleniumWaitCapabilityTest {
   }
 
   @Test
-  void doesNotSetCurrentPageWhenPageIsNotCurrent() {
+  void pageWaitRemainsNonFatalWhenPageIsNotCurrent() {
     FakePage page = new FakePage(false);
     FakeFinder finder = new FakeFinder(page);
     NamedPage namedPage = NamedPage.of(FakePage.class)
@@ -116,5 +118,28 @@ class SeleniumWaitCapabilityTest {
       .forDuration(Duration.ofMillis(10));
 
     assertFalse(finder.wasCurrentPageSet(), "current page must not be activated when isCurrentPage returns false");
+  }
+
+  @Test
+  void missingElementCannotSatisfyDisabledWait() {
+    FakeFinder finder = new FakeFinder(null);
+    Element<?> missing = Element.instance(finder, null, null);
+    SeleniumWaitCapability waits = new SeleniumWaitCapability(stubWebDriver());
+    waits.withTimeout(Duration.ofMillis(10));
+
+    assertThrows(RuntimeException.class, () -> waits.untilDisabled(missing));
+  }
+
+  private WebDriver stubWebDriver() {
+    return (WebDriver) Proxy.newProxyInstance(
+      WebDriver.class.getClassLoader(),
+      new Class<?>[]{WebDriver.class},
+      (proxy, method, args) -> switch (method.getName()) {
+        case "toString" -> "stub-web-driver";
+        case "hashCode" -> System.identityHashCode(proxy);
+        case "equals" -> proxy == args[0];
+        default -> null;
+      }
+    );
   }
 }

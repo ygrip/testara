@@ -55,10 +55,10 @@ public class TestaraReporter {
         .setDescription("single page report location, default : /target/destination/"));
     subOptionForCucumberSummary.add(new Option().setOption("single-page-template")
         .setAlias("spt")
-        .setSampleValue("testara-style-report | testara-single-page-report | testara-simple-report")
+        .setSampleValue("modern | classic | simple | single-page")
         .setRequired(false)
         .setValueRequired(false)
-        .setDescription("single page report template, default : testara-style-report"));
+        .setDescription("report style, default : modern"));
     subOptionForCucumberSummary.add(new Option().setOption("single-page-report-name")
         .setAlias("spn")
         .setSampleValue("summary")
@@ -163,7 +163,7 @@ public class TestaraReporter {
         case "cucumber-summary":
           checkSubOption(inputType);
           String targetPath = inputType.getSubOption("single-page-location", "/target/destination/");
-          String template = inputType.getSubOption("single-page-template", "testara-style-report");
+          String template = inputType.getSubOption("single-page-template", "modern");
           String reportFileName = inputType.getSubOption("single-page-report-name", "summary");
           log.info(String.format("Start generating cucumber custom summary report for %s", projectName));
           CucumberSummaryReportGenerator.fromLocation(path)
@@ -187,7 +187,7 @@ public class TestaraReporter {
           CucumberSummaryReportGenerator.fromLocation(path).mergeReportAs(mergedReportFileName, false);
           String aggregateReportName = inputType.getSubOption("aggregate-summary-file", "aggregate-summary.json");
           String targetSinglePagePath = inputType.getSubOption("single-page-location", "/target/destination/");
-          String templateReport = inputType.getSubOption("single-page-template", "testara-style-report");
+          String templateReport = inputType.getSubOption("single-page-template", "modern");
           String singlePageName = inputType.getSubOption("single-page-report-name", "summary");
           log.info(String.format("Start generating cucumber custom summary report for %s", projectName));
           CucumberSummaryReportGenerator.fromLocation(path)

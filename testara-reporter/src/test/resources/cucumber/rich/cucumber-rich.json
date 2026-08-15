@@ -1,0 +1,107 @@
+[
+  {
+    "line": 1,
+    "elements": [
+      {
+        "start_timestamp": "2026-08-13T10:00:00.000Z",
+        "line": 3,
+        "name": "Render rich scenario details",
+        "description": "Exercise the complete Cucumber JSON detail surface",
+        "id": "rich-scenario;render-rich-scenario-details;;2",
+        "type": "scenario",
+        "keyword": "Scenario Outline",
+        "before": [
+          {
+            "match": {"location": "hooks.RichHooks.beforeScenario()"},
+            "result": {"duration": 500000, "status": "passed"},
+            "output": ["before scenario output"],
+            "embeddings": [
+              {"mime_type": "text/plain", "data": "YmVmb3Jl", "name": "before-scenario.txt"}
+            ]
+          }
+        ],
+        "steps": [
+          {
+            "result": {"duration": 1000000, "status": "passed"},
+            "line": 4,
+            "name": "a cucumber data table",
+            "rows": [
+              {"cells": ["key", "value"]},
+              {"cells": ["environment", "QA2"]}
+            ],
+            "keyword": "Given ",
+            "match": {
+              "location": "steps.RichSteps.a_cucumber_data_table(java.lang.String)",
+              "arguments": [{"val": "QA2", "offset": 2}]
+            },
+            "output": ["step output"],
+            "comments": ["step comment"],
+            "before": [
+              {
+                "match": {"location": "hooks.RichHooks.beforeStep()"},
+                "result": {"duration": 100000, "status": "passed"},
+                "output": ["before step output"]
+              }
+            ],
+            "after": [
+              {
+                "match": {"location": "hooks.RichHooks.afterStep()"},
+                "result": {
+                  "duration": 200000,
+                  "status": "failed",
+                  "error_message": "AfterStepException: cleanup failed\n\tat hooks.RichHooks.afterStep(RichHooks.java:42)"
+                },
+                "output": ["after step output"],
+                "embeddings": [
+                  {"mime_type": "image/png", "data": "aGVsbG8=", "name": "after-step.png"}
+                ]
+              }
+            ]
+          },
+          {
+            "result": {"duration": 2000000, "status": "passed"},
+            "line": 5,
+            "name": "a multiline request body",
+            "doc_string": {
+              "value": "{\n  \"campaign\": \"affiliate\"\n}",
+              "line": 6,
+              "content_type": "application/json"
+            },
+            "keyword": "When "
+          },
+          {
+            "result": {"duration": 3000000, "status": "passed"},
+            "line": 8,
+            "name": "attachments are captured",
+            "embeddings": [
+              {"mime_type": "image/png", "data": "aGVsbG8=", "name": "screenshot.png"},
+              {"mime_type": "video/mp4", "data": "aGVsbG8=", "name": "recording.mp4"}
+            ],
+            "keyword": "Then "
+          }
+        ],
+        "after": [
+          {
+            "match": {"location": "hooks.RichHooks.afterScenario()"},
+            "result": {
+              "duration": 600000,
+              "status": "failed",
+              "error_message": "AfterHookException: teardown failed\n\tat hooks.RichHooks.afterScenario(RichHooks.java:50)"
+            },
+            "output": ["after scenario output"],
+            "embeddings": [
+              {"mime_type": "image/png", "data": "d29ybGQ=", "name": "after-scenario.png"}
+            ]
+          }
+        ],
+        "tags": [{"name": "@Rich"}]
+      }
+    ],
+    "name": "Rich Cucumber rendering",
+    "description": "Feature description",
+    "id": "rich-cucumber-rendering",
+    "keyword": "Feature",
+    "uri": "file:src/test/resources/features/rich.feature",
+    "tags": []
+  }
+]

@@ -1,0 +1,138 @@
+package io.github.ygrip.testara.reporter.summary;
+
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.LinkedHashMap;
+import java.util.List;
+
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+
+import io.github.ygrip.testara.reporter.config.ReportConfiguration;
+import io.github.ygrip.testara.reporter.cucumber.CucumberReportMergeFactory;
+import io.github.ygrip.testara.reporter.model.ReportStyle;
+import io.github.ygrip.testara.reporter.reader.CucumberReportReader;
+import io.github.ygrip.testara.reporter.render.JteReportRenderer;
+import io.github.ygrip.testara.reporter.view.CucumberReportViewFactory;
+import io.github.ygrip.testara.reporter.view.ReportView;
+
+class JteReportRendererTest {
+  @TempDir
+  Path tempDir;
+
+  @Test
+  void rendersModernWhiteLabelReportAndPreservesOutlookComments() throws Exception {
+    ReportConfiguration configuration = new ReportConfiguration();
+    configuration.setOrganizationName("Blibli Affiliate");
+    configuration.setOrganizationLogo("https://example.com/blibli.png");
+    configuration.setOrganizationDetail("Blibli Affiliate - Automation reporting");
+    configuration.setCustomFields(new LinkedHashMap<>(java.util.Map.of(
+      "environment", "QA2",
+      "browser", "Chrome 150"
+    )));
+
+    ReportView view = new CucumberReportViewFactory().create(List.of(), "Affiliate Automation", configuration);
+    Path output = tempDir.resolve("summary.html");
+    JteReportRenderer.INSTANCE.render(ReportStyle.MODERN, view, output);
+
+    String html = Files.readString(output);
+    assertTrue(html.contains("Blibli Affiliate"));
+    assertTrue(html.contains("https://example.com/blibli.png"));
+    assertTrue(html.contains("Blibli Affiliate - Automation reporting"));
+    assertTrue(html.contains("QA2"));
+    assertTrue(html.contains("Chrome 150"));
+    assertTrue(html.contains("Pass rate"));
+    assertTrue(html.contains("Quality distribution"));
+    assertTrue(html.contains("data-email-bento"));
+    assertTrue(html.contains("<!--[if mso]>"));
+    assertTrue(html.contains("font-size:14px"));
+    assertFalse(html.contains("<script"));
+    assertFalse(html.contains("data-th-"));
+    assertValidCssAtRules(html);
+  }
+
+  @Test
+  void doesNotMaterializeScenarioDetailsForSummaryByDefault() throws Exception {
+    var features = reportFeatures();
+
+    ReportView view = new CucumberReportViewFactory().create(features, "Automation", new ReportConfiguration());
+
+    assertTrue(view.scenarios().isEmpty());
+  }
+
+  @Test
+  void rendersInteractiveSinglePageWithBlendedLayoutAndRowDrivenDetail() throws Exception {
+    ReportConfiguration configuration = new ReportConfiguration();
+    configuration.getInteractive().setEnabled(true);
+    ReportView view = new CucumberReportViewFactory().create(reportFeatures(), "Automation", configuration);
+
+    assertFalse(view.scenarios().isEmpty());
+    assertTrue(view.scenarios().stream().allMatch(scenario -> scenario.durationNanos() >= 0));
+
+    Path output = tempDir.resolve("report.html");
+    JteReportRenderer.INSTANCE.render(ReportStyle.SINGLE_PAGE, view, output);
+
+    String html = Files.readString(output);
+    assertTrue(html.contains("data-bento-grid"));
+    assertTrue(html.contains("data-status-chart"));
+    assertTrue(html.contains("data-chart-voice"));
+    assertTrue(html.contains("data-control-dock"));
+    assertTrue(html.contains("data-run-context-table"));
+    assertTrue(html.contains("data-full-row=\"failure-signals\""));
+    assertTrue(html.contains("data-full-row=\"execution-hotspots\""));
+    assertTrue(html.contains("data-full-row=\"functional-coverage\""));
+    assertTrue(html.contains("data-coverage-scroll"));
+    assertTrue(html.contains("data-report-search"));
+    assertTrue(html.contains("data-status-filter"));
+    assertTrue(html.contains("data-feature-filter"));
+    assertTrue(html.contains("data-tag-filter"));
+    assertFalse(html.contains("data-failed-only"));
+    assertFalse(html.contains("data-filter-pane-toggle"));
+    assertTrue(html.contains("data-clear-filters"));
+    assertTrue(html.contains("data-sort-column=\"status\""));
+    assertTrue(html.contains("data-sort-column=\"name\""));
+    assertTrue(html.contains("data-sort-column=\"feature\""));
+    assertTrue(html.contains("data-sort-column=\"duration\""));
+    assertFalse(html.contains("data-report-sort"));
+    assertTrue(html.contains("data-open-scenario"));
+    assertTrue(html.contains("data-scenario-detail-view"));
+    assertTrue(html.contains("data-close-scenario"));
+    assertFalse(html.contains("data-detail-toggle"));
+    assertTrue(html.contains("<script"));
+    assertTrue(html.contains("Scenario execution detail"));
+    assertTrue(html.contains("Failure signals"));
+    assertValidCssAtRules(html);
+  }
+
+  @Test
+  void rendersEverySupportedStyle() throws Exception {
+    ReportView view = new CucumberReportViewFactory().create(List.of(), "Automation", new ReportConfiguration());
+    for (ReportStyle style : ReportStyle.values()) {
+      Path output = tempDir.resolve(style.name().toLowerCase() + ".html");
+      JteReportRenderer.INSTANCE.render(style, view, output);
+      String html = Files.readString(output);
+      assertTrue(html.contains("Automation"));
+      assertTrue(html.contains("Testara"));
+      assertValidCssAtRules(html);
+    }
+  }
+
+  private static void assertValidCssAtRules(String html) {
+    assertFalse(html.contains("@@media"));
+    assertFalse(html.contains("@@supports"));
+    assertFalse(html.contains("@@keyframes"));
+    assertFalse(html.contains("@@font-face"));
+    assertFalse(html.contains("@@container"));
+    assertFalse(html.contains("@@layer"));
+  }
+
+  private List<io.github.ygrip.testara.reporter.cucumber.Feature> reportFeatures() throws Exception {
+    String reportPath = System.getProperty("user.dir") + "/src/test/resources/cucumber/multiple/";
+    return CucumberReportMergeFactory.Builder
+      .using(CucumberReportReader.getReportPaths(reportPath))
+      .getMergedFeatures();
+  }
+}

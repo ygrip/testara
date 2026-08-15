@@ -13,9 +13,13 @@ import org.apache.commons.lang3.ObjectUtils;
 
 import io.github.ygrip.testara.ui.capability.ObservationCapability;
 import io.github.ygrip.testara.ui.model.CapturedCookie;
+import io.github.ygrip.testara.ui.model.CapturedScreenshot;
+import io.github.ygrip.testara.ui.model.ScreenshotQuality;
 import io.github.ygrip.testara.ui.page.Element;
 import com.microsoft.playwright.Page;
 import com.microsoft.playwright.options.Cookie;
+import com.microsoft.playwright.options.ScreenshotScale;
+import com.microsoft.playwright.options.ScreenshotType;
 
 import io.github.ygrip.testara.ui.playwright.driver.PlaywrightSession;
 import lombok.extern.log4j.Log4j2;
@@ -23,6 +27,7 @@ import lombok.extern.log4j.Log4j2;
 @Log4j2
 public final class PlaywrightObservationCapability extends PlaywrightElementResolver
     implements ObservationCapability<com.microsoft.playwright.Locator> {
+  private static final String JPEG_MIME_TYPE = "image/jpeg";
 
   public PlaywrightObservationCapability(PlaywrightSession session) {
     super(session);
@@ -38,9 +43,7 @@ public final class PlaywrightObservationCapability extends PlaywrightElementReso
         + "\n}";
   }
 
-  /**
-   * Convert any Playwright Locator args to ElementHandle so they can be passed to page.evaluate().
-   */
+  /** Convert any Playwright Locator args to ElementHandle so they can be passed to page.evaluate(). */
   private static Object[] resolveEvalArgs(Object[] args) {
     Object[] resolved = new Object[args.length];
     for (int i = 0; i < args.length; i++) {
@@ -178,18 +181,25 @@ public final class PlaywrightObservationCapability extends PlaywrightElementReso
     return new ScreenshotCapture() {
       @Override
       public byte[] visibleOnViewPort() {
-        return session.runOnApiThread(() -> {
-          Page p = session.pageForApi();
-          return p.screenshot();
-        });
+        return session.runOnApiThread(() -> session.pageForApi().screenshot());
+      }
+
+      @Override
+      public CapturedScreenshot fastVisibleOnViewPort(ScreenshotQuality quality) {
+        ScreenshotQuality selected = quality == null ? ScreenshotQuality.STANDARD : quality;
+        byte[] jpeg = session.runOnApiThread(() -> session.pageForApi().screenshot(
+          new Page.ScreenshotOptions()
+            .setType(ScreenshotType.JPEG)
+            .setQuality(Math.round(selected.jpegQuality() * 100))
+            .setScale(ScreenshotScale.CSS)
+        ));
+        return new CapturedScreenshot(jpeg, JPEG_MIME_TYPE);
       }
 
       @Override
       public byte[] fullPage() {
-        return session.runOnApiThread(() -> {
-          Page p = session.pageForApi();
-          return p.screenshot(new Page.ScreenshotOptions().setFullPage(true));
-        });
+        return session.runOnApiThread(() -> session.pageForApi().screenshot(
+          new Page.ScreenshotOptions().setFullPage(true)));
       }
     };
   }

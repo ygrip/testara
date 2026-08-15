@@ -6,7 +6,7 @@
     <parent>
         <groupId>io.github.ygrip</groupId>
         <artifactId>testara-core-parent</artifactId>
-        <version>2.1.0</version>
+        <version>2.2.0</version>
     </parent>
 
     <artifactId>testara-reporter</artifactId>
@@ -20,6 +20,25 @@
 
     <build>
         <plugins>
+            <plugin>
+                <groupId>gg.jte</groupId>
+                <artifactId>jte-maven-plugin</artifactId>
+                <version>${jte.version}</version>
+                <configuration>
+                    <sourceDirectory>${project.basedir}/src/main/jte</sourceDirectory>
+                    <contentType>Html</contentType>
+                    <htmlCommentsPreserved>true</htmlCommentsPreserved>
+                    <trimControlStructures>true</trimControlStructures>
+                </configuration>
+                <executions>
+                    <execution>
+                        <phase>generate-sources</phase>
+                        <goals>
+                            <goal>generate</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
@@ -99,12 +118,9 @@
             <artifactId>joda-time</artifactId>
         </dependency>
         <dependency>
-            <groupId>org.thymeleaf</groupId>
-            <artifactId>thymeleaf</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.thymeleaf.extras</groupId>
-            <artifactId>thymeleaf-extras-java8time</artifactId>
+            <groupId>gg.jte</groupId>
+            <artifactId>jte</artifactId>
+            <version>${jte.version}</version>
         </dependency>
         <dependency>
             <groupId>commons-io</groupId>
@@ -114,7 +130,6 @@
             <groupId>org.codehaus.plexus</groupId>
             <artifactId>plexus-utils</artifactId>
         </dependency>
-        <!-- Test dependencies -->
         <dependency>
             <groupId>org.junit.jupiter</groupId>
             <artifactId>junit-jupiter</artifactId>
@@ -133,5 +148,4 @@
             <type>test-jar</type>
         </dependency>
     </dependencies>
-
 </project>

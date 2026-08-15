@@ -4,6 +4,7 @@ import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.List;
 
+import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
@@ -30,7 +31,8 @@ public class Step implements Serializable, Resultsable {
   @JsonDeserialize(using = EmbeddingDeserializer.class)
   private final List<Embedding> embeddings = new ArrayList<>();
   @JsonDeserialize(using = OutputsDeserializer.class)
-  @JsonProperty("outputs")
+  @JsonProperty("output")
+  @JsonAlias("outputs")
   @JsonInclude(JsonInclude.Include.NON_EMPTY)
   private final List<Output> outputs = new ArrayList<>();
   @JsonProperty("doc_string")
@@ -83,6 +85,11 @@ public class Step implements Serializable, Resultsable {
   @JsonInclude(JsonInclude.Include.NON_EMPTY)
   public List<Output> getOutputs() {
     return this.outputs;
+  }
+
+  @JsonInclude(JsonInclude.Include.NON_EMPTY)
+  public List<Argument> getArguments() {
+    return this.arguments;
   }
 
   public Match getMatch() {
@@ -144,6 +151,6 @@ public class Step implements Serializable, Resultsable {
     this.beforeStatus =
         (new StatusCounter(this.before.toArray(new Resultsable[0]))).getFinalStatus();
     this.afterStatus =
-        (new StatusCounter(this.before.toArray(new Resultsable[0]))).getFinalStatus();
+        (new StatusCounter(this.after.toArray(new Resultsable[0]))).getFinalStatus();
   }
 }

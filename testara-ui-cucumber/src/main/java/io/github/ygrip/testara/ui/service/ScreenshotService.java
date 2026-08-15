@@ -7,39 +7,57 @@ import java.nio.file.Files;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
 
 import io.cucumber.java.Scenario;
 import io.github.ygrip.testara.ui.context.StepContext;
 import io.github.ygrip.testara.ui.executor.Actor;
 import io.github.ygrip.testara.ui.executor.ActorManager;
+import io.github.ygrip.testara.ui.model.CapturedScreenshot;
+import io.github.ygrip.testara.ui.model.ScreenshotQuality;
 import io.github.ygrip.testara.ui.model.ScreenshotStrategy;
 import io.github.ygrip.testara.ui.observation.Capture;
 import io.github.ygrip.testara.ui.support.ScreenRecorder;
+import io.github.ygrip.testara.ui.support.ScreenshotAttachmentStore;
 import lombok.extern.log4j.Log4j2;
 
 @Log4j2
 public final class ScreenshotService {
+  private static final String SCREENSHOT_REFERENCE_MIME_TYPE = "application/vnd.testara.screenshot-reference";
   private static final Map<String, String> recordingMap = new ConcurrentHashMap<>();
+  private static final ScreenshotAttachmentStore screenshotStore = ScreenshotAttachmentStore.instance();
 
   public static void attachStepScreenshot(ScreenshotStrategy screenshotStrategy, Scenario scenario) {
+    attachStepScreenshot(screenshotStrategy, ScreenshotQuality.STANDARD, scenario);
+  }
+
+  public static void attachStepScreenshot(
+    ScreenshotStrategy screenshotStrategy,
+    ScreenshotQuality screenshotQuality,
+    Scenario scenario
+  ) {
     if (screenshotStrategy.equals(ScreenshotStrategy.ON_EACH_STEP)) {
       String stepName = StepContext.getStepName();
-      takeScreenshot(stepName, scenario);
+      takeScreenshot(stepName, screenshotQuality, scenario);
     }
   }
 
   public static void startRecording(Actor actor, int frameRates, boolean forceResolution, int bitRate, Scenario scenario) {
+    if (actor == null) {
+      log.debug("Skipping screen recording because no actor is available");
+      return;
+    }
     final var id = scenario.getId();
     if (!recordingMap.containsKey(id)) {
       try {
-        // Encode the string
         String encodedParam = URLEncoder.encode(id, StandardCharsets.UTF_8);
         final var instance = ScreenRecorder.instance()
           .withActor(actor).forceResolution(forceResolution).bitRate(bitRate);
 
         instance.startRecording("./target/recording/" + encodedParam, frameRates);
-        // Safe marker to identify this scenario already recorded
         recordingMap.put(id, instance.outputPath());
+      } catch (IllegalStateException err) {
+        log.debug("Skipping screen recording because the driver is unavailable: {}", err.getMessage());
       } catch (Exception err) {
         log.error("Fail to record screen, {}", err.getMessage());
       }
@@ -49,13 +67,15 @@ public final class ScreenshotService {
   public static void attachRecording(ScreenshotStrategy screenshotStrategy, Scenario scenario) {
     final String scenarioName = scenario.getName();
     final String id = scenario.getId();
+    if (!recordingMap.containsKey(id)) {
+      log.debug("Skipping recording attachment because no recording is available for scenario {}", scenarioName);
+      return;
+    }
 
     try {
-      // Stop async
       CompletableFuture<File> recordingFuture = ScreenRecorder.instance()
         .stopRecordingAsync();
 
-      // Only block here (safe point)
       File video = recordingFuture.join();
 
       if (video.exists() && video.length() > 0) {
@@ -76,31 +96,82 @@ public final class ScreenshotService {
     }
   }
 
-  private static void takeScreenshot(String name, Scenario scenario) {
-    Actor actor = ActorManager.currentActor();
-    if (actor == null)
-      return;
-
+  private static void takeScreenshot(String name, ScreenshotQuality screenshotQuality, Scenario scenario) {
+    Actor actor;
     try {
-      byte[] screenshot = actor.observe(Capture.page()
-        .visibleOnViewPort());
+      actor = ActorManager.currentActor();
+    } catch (IllegalStateException e) {
+      log.debug("Skipping screenshot because no driver session or actor is available: {}", e.getMessage());
+      return;
+    }
+    if (actor == null) {
+      log.debug("Skipping screenshot because no actor is available");
+      return;
+    }
 
-      if (screenshot != null && screenshot.length > 0) {
-        scenario.attach(screenshot, "image/png", name);
+    long startedAt = System.nanoTime();
+    try {
+      CapturedScreenshot screenshot = actor.observe(Capture.page()
+        .fastVisibleOnViewPort(screenshotQuality));
+      long capturedAt = System.nanoTime();
+
+      if (screenshot != null && screenshot.bytes() != null && screenshot.bytes().length > 0) {
+        ScreenshotAttachmentStore.Reference reference = screenshotStore.store(
+          scenario.getId(),
+          screenshot,
+          screenshotQuality
+        );
+        scenario.attach(
+          reference.id().getBytes(StandardCharsets.UTF_8),
+          SCREENSHOT_REFERENCE_MIME_TYPE,
+          name
+        );
+        long queuedAt = System.nanoTime();
+        log.debug(
+          "Screenshot captured in {} ms and queued in {} ms for asynchronous optimization",
+          elapsedMillis(startedAt, capturedAt),
+          elapsedMillis(capturedAt, queuedAt)
+        );
       }
+    } catch (IllegalStateException e) {
+      log.debug("Skipping screenshot because the driver is unavailable: {}", e.getMessage());
     } catch (Exception e) {
       log.warn("Screenshot failed: {}", e.getMessage());
     }
   }
 
+  public static void awaitScreenshots(Scenario scenario) {
+    if (scenario == null) {
+      return;
+    }
+    long startedAt = System.nanoTime();
+    screenshotStore.await(scenario.getId());
+    long elapsed = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedAt);
+    if (elapsed > 0) {
+      log.debug("Drained asynchronous screenshot processing for scenario in {} ms", elapsed);
+    }
+  }
+
   public static void attachScenarioScreenshot(ScreenshotStrategy screenshotStrategy, Scenario scenario) {
+    attachScenarioScreenshot(screenshotStrategy, ScreenshotQuality.STANDARD, scenario);
+  }
+
+  public static void attachScenarioScreenshot(
+    ScreenshotStrategy screenshotStrategy,
+    ScreenshotQuality screenshotQuality,
+    Scenario scenario
+  ) {
     String scenarioName = scenario.getName();
     if (screenshotStrategy.equals(ScreenshotStrategy.ON_FAILURE)) {
       if (scenario.isFailed()) {
-        takeScreenshot(scenarioName, scenario);
+        takeScreenshot(scenarioName, screenshotQuality, scenario);
       }
     } else if (screenshotStrategy.equals(ScreenshotStrategy.ON_EACH_SCENARIO)) {
-      takeScreenshot(scenarioName, scenario);
+      takeScreenshot(scenarioName, screenshotQuality, scenario);
     }
+  }
+
+  private static long elapsedMillis(long from, long to) {
+    return TimeUnit.NANOSECONDS.toMillis(to - from);
   }
 }

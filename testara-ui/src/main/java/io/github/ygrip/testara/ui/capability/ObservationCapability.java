@@ -4,7 +4,10 @@ import java.time.Duration;
 import java.util.List;
 
 import io.github.ygrip.testara.ui.model.CapturedCookie;
+import io.github.ygrip.testara.ui.model.CapturedScreenshot;
+import io.github.ygrip.testara.ui.model.ScreenshotQuality;
 import io.github.ygrip.testara.ui.page.Element;
+import io.github.ygrip.testara.ui.support.Screenshots;
 
 /**
  * Fluent observation (get text, get value, etc).
@@ -67,8 +70,32 @@ public interface ObservationCapability<E> {
 
   /** Fluent step for page-level screenshot capture. */
   interface ScreenshotCapture {
-    /** Capture only the visible viewport. */
+    /** Capture only the visible viewport as raw PNG bytes. */
     byte[] visibleOnViewPort();
+
+    /**
+     * Fast capture path intended for asynchronous post-processing.
+     * Engines may override this to return a browser-native JPEG without doing
+     * any ImageIO resize/re-encode work on the test step thread.
+     */
+    default CapturedScreenshot fastVisibleOnViewPort(ScreenshotQuality quality) {
+      return new CapturedScreenshot(visibleOnViewPort(), "image/png");
+    }
+
+    /**
+     * Capture the visible viewport using the requested quality preset.
+     * This remains the fully optimized synchronous API for direct callers.
+     */
+    default CapturedScreenshot visibleOnViewPort(ScreenshotQuality quality) {
+      CapturedScreenshot captured = fastVisibleOnViewPort(quality);
+      Screenshots.OptimizedScreenshot optimized = Screenshots.optimize(
+        captured.bytes(),
+        captured.mimeType(),
+        quality
+      );
+      return new CapturedScreenshot(optimized.bytes(), optimized.mimeType());
+    }
+
     /** Capture the full scrollable page. */
     byte[] fullPage();
   }

@@ -4,6 +4,7 @@ import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.List;
 
+import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
@@ -18,7 +19,8 @@ public class Hook implements Resultsable, Serializable {
   @JsonProperty("match")
   private final Match match = new Match();
   @JsonDeserialize(using = OutputsDeserializer.class)
-  @JsonProperty("outputs")
+  @JsonProperty("output")
+  @JsonAlias("outputs")
   @JsonInclude(JsonInclude.Include.NON_EMPTY)
   private final List<Output> outputs = new ArrayList<>();
   @JsonProperty("embeddings")
@@ -50,7 +52,7 @@ public class Hook implements Resultsable, Serializable {
 
   @JsonIgnore
   public boolean hasContent() {
-    if (!this.embeddings.isEmpty()) {
+    if (!this.embeddings.isEmpty() || !this.outputs.isEmpty()) {
       return true;
     } else {
       return this.result.getErrorMessage() != null && !this.result.getErrorMessage()

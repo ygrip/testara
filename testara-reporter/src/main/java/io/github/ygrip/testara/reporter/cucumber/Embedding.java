@@ -2,13 +2,16 @@ package io.github.ygrip.testara.reporter.cucumber;
 
 import java.io.Serializable;
 import java.nio.charset.StandardCharsets;
-import java.util.Locale;
-
 import java.util.Base64;
+import java.util.Locale;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 
+import io.github.ygrip.testara.reporter.support.ScreenshotReferenceResolver;
+
+@JsonSerialize(using = EmbeddingJsonSerializer.class)
 public class Embedding implements Serializable {
   @JsonIgnore
   private static final String FILE_EXTENSION_PATTERN = "[a-z0-9]+";
@@ -19,6 +22,10 @@ public class Embedding implements Serializable {
   private final String data;
   private final String name;
   private final String fileId;
+  @JsonIgnore
+  private transient volatile ScreenshotReferenceResolver.ResolvedScreenshot resolvedReference;
+  @JsonIgnore
+  private transient volatile boolean referenceResolutionAttempted;
 
   public Embedding(String mimeType, String data) {
     this(mimeType, data, null);
@@ -33,15 +40,27 @@ public class Embedding implements Serializable {
 
   @JsonProperty("mime_type")
   public String getMimeType() {
-    return this.mimeType;
+    ScreenshotReferenceResolver.ResolvedScreenshot resolved = resolveReference();
+    return resolved == null ? this.mimeType : resolved.mimeType();
   }
 
   public String getData() {
-    return this.data;
+    ScreenshotReferenceResolver.ResolvedScreenshot resolved = resolveReference();
+    return resolved == null ? this.data : Base64.getEncoder().encodeToString(resolved.bytes());
   }
 
   public String getName() {
     return this.name;
+  }
+
+  @JsonIgnore
+  public String getStoredMimeType() {
+    return this.mimeType;
+  }
+
+  @JsonIgnore
+  public String getStoredData() {
+    return this.data;
   }
 
   @JsonIgnore
@@ -60,7 +79,7 @@ public class Embedding implements Serializable {
 
   @JsonIgnore
   public String getExtension() {
-    String mime = this.mimeType;
+    String mime = this.getMimeType();
     if (mime.contains("+")) {
       mime = mime.substring(0, mime.indexOf(43));
     }
@@ -141,19 +160,34 @@ public class Embedding implements Serializable {
         String subtype;
         if (this.name != null && this.name.contains(".")) {
           subtype = this.name.substring(this.name.lastIndexOf(46) + 1);
-          if (subtype.matches("[a-z0-9]+")) {
+          if (subtype.matches(FILE_EXTENSION_PATTERN)) {
             return subtype;
           }
         }
 
         if (mime.contains("/")) {
           subtype = mime.substring(mime.indexOf(47) + 1);
-          if (subtype.matches("[a-z0-9]+")) {
+          if (subtype.matches(FILE_EXTENSION_PATTERN)) {
             return subtype;
           }
         }
 
-        return "unknown";
+        return UNKNOWN_FILE_EXTENSION;
     }
+  }
+
+  private ScreenshotReferenceResolver.ResolvedScreenshot resolveReference() {
+    if (!ScreenshotReferenceResolver.MIME_TYPE.equalsIgnoreCase(this.mimeType)) {
+      return null;
+    }
+    if (!referenceResolutionAttempted) {
+      synchronized (this) {
+        if (!referenceResolutionAttempted) {
+          resolvedReference = new ScreenshotReferenceResolver().resolve(this).orElse(null);
+          referenceResolutionAttempted = true;
+        }
+      }
+    }
+    return resolvedReference;
   }
 }

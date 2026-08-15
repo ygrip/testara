@@ -235,9 +235,16 @@ public class Element implements Serializable, Durationable, Comparable<Element> 
   }
 
   public void setMetaData() {
-    this.stepsStatus = (new StatusCounter(this.steps.toArray(new Resultsable[0]))).getFinalStatus();
-    this.beforeStatus = (new StatusCounter(this.after.toArray(new Resultsable[0]))).getFinalStatus();
-    this.afterStatus = (new StatusCounter(this.before.toArray(new Resultsable[0]))).getFinalStatus();
+    StatusCounter stepCounter = new StatusCounter();
+    for (Step step : this.steps) {
+      step.setMetaData();
+      stepCounter.incrementFor(step.getResult().getStatus());
+      stepCounter.incrementFor(step.getBeforeStatus());
+      stepCounter.incrementFor(step.getAfterStatus());
+    }
+    this.stepsStatus = stepCounter.getFinalStatus();
+    this.beforeStatus = (new StatusCounter(this.before.toArray(new Resultsable[0]))).getFinalStatus();
+    this.afterStatus = (new StatusCounter(this.after.toArray(new Resultsable[0]))).getFinalStatus();
   }
 
   private void calculateDuration() {
@@ -245,7 +252,13 @@ public class Element implements Serializable, Durationable, Comparable<Element> 
       this.duration += hook.getResult().getDuration();
     }
     for (Step step : this.steps) {
+      for (Hook hook : step.getBefore()) {
+        this.duration += hook.getResult().getDuration();
+      }
       this.duration += step.getResult().getDuration();
+      for (Hook hook : step.getAfter()) {
+        this.duration += hook.getResult().getDuration();
+      }
     }
     for (Hook hook : getAfter()) {
       this.duration += hook.getResult().getDuration();

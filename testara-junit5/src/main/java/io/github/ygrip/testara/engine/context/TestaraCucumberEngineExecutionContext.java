@@ -501,7 +501,6 @@ public final class TestaraCucumberEngineExecutionContext implements EngineExecut
             Model model = reader.read(new FileReader("pom.xml"));
             String applicationName = model.getName();
             CucumberSummaryReportGenerator.fromLocation(options.reportPath())
-                .withReportTemplate("testara-simple-report")
                 .withOutputFileName("summary")
                 .withReportName(applicationName)
                 .generateReport(false);
