@@ -42,6 +42,30 @@ class ScreenshotOptimizationTest {
   }
 
   @Test
+  void usesSmallerResolutionCapsForEveryQualityPreset() throws Exception {
+    Class<?> qualityType = qualityType();
+    Method maxLongEdge = requiredMethod(qualityType, "maxLongEdge");
+
+    assertEquals(1920, ((Number) maxLongEdge.invoke(enumValue(qualityType, "HIGH"))).intValue());
+    assertEquals(1280, ((Number) maxLongEdge.invoke(enumValue(qualityType, "STANDARD"))).intValue());
+    assertEquals(960, ((Number) maxLongEdge.invoke(enumValue(qualityType, "LOW"))).intValue());
+  }
+
+  @Test
+  void exposesQualityAwareViewportCaptureWithoutBreakingRawPngCapture() throws Exception {
+    Class<?> screenshotCapture = Class.forName(
+      "io.github.ygrip.testara.ui.capability.ObservationCapability$ScreenshotCapture"
+    );
+    Method optimizedCapture = requiredMethod(screenshotCapture, "visibleOnViewPort", qualityType());
+
+    assertEquals(
+      "io.github.ygrip.testara.ui.model.CapturedScreenshot",
+      optimizedCapture.getReturnType().getName()
+    );
+    assertEquals(byte[].class, requiredMethod(screenshotCapture, "visibleOnViewPort").getReturnType());
+  }
+
+  @Test
   void compressesLargeScreenshotsAndKeepsPresetOrderingMeaningful() throws Exception {
     byte[] original = randomPng(1600, 1000, 42L);
     Class<?> qualityType = qualityType();
@@ -61,6 +85,10 @@ class ScreenshotOptimizationTest {
     assertTrue(highBytes.length < original.length);
     assertTrue(standardBytes.length < highBytes.length);
     assertTrue(lowBytes.length < standardBytes.length);
+
+    BufferedImage standardImage = ImageIO.read(new java.io.ByteArrayInputStream(standardBytes));
+    assertEquals(1280, standardImage.getWidth());
+    assertEquals(800, standardImage.getHeight());
   }
 
   @Test
