@@ -52,12 +52,17 @@ class ScreenshotOptimizationTest {
   }
 
   @Test
-  void exposesQualityAwareViewportCaptureWithoutBreakingRawPngCapture() throws Exception {
+  void exposesFastAndQualityAwareViewportCaptureWithoutBreakingRawPngCapture() throws Exception {
     Class<?> screenshotCapture = Class.forName(
       "io.github.ygrip.testara.ui.capability.ObservationCapability$ScreenshotCapture"
     );
+    Method fastCapture = requiredMethod(screenshotCapture, "fastVisibleOnViewPort", qualityType());
     Method optimizedCapture = requiredMethod(screenshotCapture, "visibleOnViewPort", qualityType());
 
+    assertEquals(
+      "io.github.ygrip.testara.ui.model.CapturedScreenshot",
+      fastCapture.getReturnType().getName()
+    );
     assertEquals(
       "io.github.ygrip.testara.ui.model.CapturedScreenshot",
       optimizedCapture.getReturnType().getName()
