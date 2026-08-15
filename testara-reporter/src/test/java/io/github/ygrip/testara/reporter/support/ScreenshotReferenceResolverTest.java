@@ -38,6 +38,25 @@ class ScreenshotReferenceResolverTest {
     assertTrue(resolver.resolve(reference("../../pom.xml", "invalid")).isEmpty());
   }
 
+  @Test
+  void embeddingHydratesStoredScreenshotForExistingReportRendering() throws Exception {
+    Path directory = Path.of("target", "testara-screenshots");
+    Files.createDirectories(directory);
+    String id = UUID.randomUUID().toString();
+    Path screenshot = directory.resolve(id + ".image");
+    byte[] png = png();
+    Files.write(screenshot, png);
+
+    try {
+      Embedding embedding = reference(id, "step screenshot");
+
+      assertEquals("image/png", embedding.getMimeType());
+      assertArrayEquals(png, Base64.getDecoder().decode(embedding.getData()));
+    } finally {
+      Files.deleteIfExists(screenshot);
+    }
+  }
+
   private static Embedding reference(String id, String name) {
     String encoded = Base64.getEncoder().encodeToString(id.getBytes(StandardCharsets.UTF_8));
     return new Embedding(ScreenshotReferenceResolver.MIME_TYPE, encoded, name);
