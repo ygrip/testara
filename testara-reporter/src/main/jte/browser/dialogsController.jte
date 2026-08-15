@@ -80,12 +80,17 @@
     return Array.from(document.querySelectorAll('[data-scenario-detail-panel="' + id + '"],[data-step-hooks-panel="' + id + '"]'));
   }
 
+  function imageSource(trigger) {
+    var preview = trigger.querySelector('img');
+    return preview ? (preview.getAttribute('src') || '') : '';
+  }
+
   function scenarioImages(trigger) {
     var roots = scenarioRoots(scenarioIdFor(trigger));
     var candidates = roots.length ? roots.flatMap(function (root) { return Array.from(root.querySelectorAll('[data-open-image]')); }) : [trigger];
     var seen = new Set();
     return candidates.filter(function (candidate) {
-      var key = candidate.dataset.attachmentSrc + '\n' + candidate.dataset.attachmentName;
+      var key = imageSource(candidate) + '\n' + candidate.dataset.attachmentName;
       if (seen.has(key)) return false;
       seen.add(key);
       return true;
@@ -110,7 +115,7 @@
     if (!trigger) return;
     var name = trigger.dataset.attachmentName || 'Image attachment';
     title.textContent = name;
-    image.src = trigger.dataset.attachmentSrc || '';
+    image.src = imageSource(trigger);
     image.alt = name;
     if (prev) prev.disabled = images.length < 2;
     if (next) next.disabled = images.length < 2;
@@ -121,7 +126,7 @@
     prepareMediaDialog(trigger);
     images = scenarioImages(trigger);
     imageIndex = Math.max(0, images.findIndex(function (candidate) {
-      return candidate.dataset.attachmentSrc === trigger.dataset.attachmentSrc && candidate.dataset.attachmentName === trigger.dataset.attachmentName;
+      return imageSource(candidate) === imageSource(trigger) && candidate.dataset.attachmentName === trigger.dataset.attachmentName;
     }));
     videoView.hidden = true;
     imageView.hidden = false;
