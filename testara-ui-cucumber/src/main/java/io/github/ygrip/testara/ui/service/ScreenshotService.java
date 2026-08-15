@@ -12,11 +12,11 @@ import io.cucumber.java.Scenario;
 import io.github.ygrip.testara.ui.context.StepContext;
 import io.github.ygrip.testara.ui.executor.Actor;
 import io.github.ygrip.testara.ui.executor.ActorManager;
+import io.github.ygrip.testara.ui.model.CapturedScreenshot;
 import io.github.ygrip.testara.ui.model.ScreenshotQuality;
 import io.github.ygrip.testara.ui.model.ScreenshotStrategy;
 import io.github.ygrip.testara.ui.observation.Capture;
 import io.github.ygrip.testara.ui.support.ScreenRecorder;
-import io.github.ygrip.testara.ui.support.Screenshots;
 import lombok.extern.log4j.Log4j2;
 
 @Log4j2
@@ -106,12 +106,11 @@ public final class ScreenshotService {
     }
 
     try {
-      byte[] screenshot = actor.observe(Capture.page()
-        .visibleOnViewPort());
+      CapturedScreenshot screenshot = actor.observe(Capture.page()
+        .visibleOnViewPort(screenshotQuality));
 
-      if (screenshot != null && screenshot.length > 0) {
-        Screenshots.OptimizedScreenshot optimized = Screenshots.optimize(screenshot, screenshotQuality);
-        scenario.attach(optimized.bytes(), optimized.mimeType(), name);
+      if (screenshot != null && screenshot.bytes() != null && screenshot.bytes().length > 0) {
+        scenario.attach(screenshot.bytes(), screenshot.mimeType(), name);
       }
     } catch (IllegalStateException e) {
       log.debug("Skipping screenshot because the driver is unavailable: {}", e.getMessage());
