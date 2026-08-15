@@ -82,7 +82,11 @@ public class ScreenshotHooks {
   public void afterScenario(Scenario scenario) {
     ScreenshotOutputType type = getOutputType();
     if (type.equals(ScreenshotOutputType.IMAGE)) {
-      ScreenshotService.attachScenarioScreenshot(getStrategy(), getScreenshotQuality(), scenario);
+      try {
+        ScreenshotService.attachScenarioScreenshot(getStrategy(), getScreenshotQuality(), scenario);
+      } finally {
+        ScreenshotService.awaitScreenshots(scenario);
+      }
     }
   }
 
