@@ -12,9 +12,11 @@ import io.cucumber.java.Scenario;
 import io.github.ygrip.testara.ui.context.StepContext;
 import io.github.ygrip.testara.ui.executor.Actor;
 import io.github.ygrip.testara.ui.executor.ActorManager;
+import io.github.ygrip.testara.ui.model.ScreenshotQuality;
 import io.github.ygrip.testara.ui.model.ScreenshotStrategy;
 import io.github.ygrip.testara.ui.observation.Capture;
 import io.github.ygrip.testara.ui.support.ScreenRecorder;
+import io.github.ygrip.testara.ui.support.Screenshots;
 import lombok.extern.log4j.Log4j2;
 
 @Log4j2
@@ -22,9 +24,17 @@ public final class ScreenshotService {
   private static final Map<String, String> recordingMap = new ConcurrentHashMap<>();
 
   public static void attachStepScreenshot(ScreenshotStrategy screenshotStrategy, Scenario scenario) {
+    attachStepScreenshot(screenshotStrategy, ScreenshotQuality.STANDARD, scenario);
+  }
+
+  public static void attachStepScreenshot(
+    ScreenshotStrategy screenshotStrategy,
+    ScreenshotQuality screenshotQuality,
+    Scenario scenario
+  ) {
     if (screenshotStrategy.equals(ScreenshotStrategy.ON_EACH_STEP)) {
       String stepName = StepContext.getStepName();
-      takeScreenshot(stepName, scenario);
+      takeScreenshot(stepName, screenshotQuality, scenario);
     }
   }
 
@@ -82,7 +92,7 @@ public final class ScreenshotService {
     }
   }
 
-  private static void takeScreenshot(String name, Scenario scenario) {
+  private static void takeScreenshot(String name, ScreenshotQuality screenshotQuality, Scenario scenario) {
     Actor actor;
     try {
       actor = ActorManager.currentActor();
@@ -100,7 +110,8 @@ public final class ScreenshotService {
         .visibleOnViewPort());
 
       if (screenshot != null && screenshot.length > 0) {
-        scenario.attach(screenshot, "image/png", name);
+        Screenshots.OptimizedScreenshot optimized = Screenshots.optimize(screenshot, screenshotQuality);
+        scenario.attach(optimized.bytes(), optimized.mimeType(), name);
       }
     } catch (IllegalStateException e) {
       log.debug("Skipping screenshot because the driver is unavailable: {}", e.getMessage());
@@ -110,13 +121,21 @@ public final class ScreenshotService {
   }
 
   public static void attachScenarioScreenshot(ScreenshotStrategy screenshotStrategy, Scenario scenario) {
+    attachScenarioScreenshot(screenshotStrategy, ScreenshotQuality.STANDARD, scenario);
+  }
+
+  public static void attachScenarioScreenshot(
+    ScreenshotStrategy screenshotStrategy,
+    ScreenshotQuality screenshotQuality,
+    Scenario scenario
+  ) {
     String scenarioName = scenario.getName();
     if (screenshotStrategy.equals(ScreenshotStrategy.ON_FAILURE)) {
       if (scenario.isFailed()) {
-        takeScreenshot(scenarioName, scenario);
+        takeScreenshot(scenarioName, screenshotQuality, scenario);
       }
     } else if (screenshotStrategy.equals(ScreenshotStrategy.ON_EACH_SCENARIO)) {
-      takeScreenshot(scenarioName, scenario);
+      takeScreenshot(scenarioName, screenshotQuality, scenario);
     }
   }
 }
