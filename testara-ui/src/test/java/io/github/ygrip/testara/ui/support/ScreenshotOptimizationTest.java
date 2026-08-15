@@ -32,6 +32,16 @@ class ScreenshotOptimizationTest {
   }
 
   @Test
+  void usesRequestedCompressionLevelsForStandardAndLow() throws Exception {
+    Class<?> qualityType = qualityType();
+    Method jpegQuality = requiredMethod(qualityType, "jpegQuality");
+
+    assertEquals(0.90f, ((Number) jpegQuality.invoke(enumValue(qualityType, "HIGH"))).floatValue());
+    assertEquals(0.60f, ((Number) jpegQuality.invoke(enumValue(qualityType, "STANDARD"))).floatValue());
+    assertEquals(0.40f, ((Number) jpegQuality.invoke(enumValue(qualityType, "LOW"))).floatValue());
+  }
+
+  @Test
   void compressesLargeScreenshotsAndKeepsPresetOrderingMeaningful() throws Exception {
     byte[] original = randomPng(1600, 1000, 42L);
     Class<?> qualityType = qualityType();
