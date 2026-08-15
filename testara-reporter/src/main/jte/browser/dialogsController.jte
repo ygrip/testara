@@ -24,16 +24,29 @@
     }) || null;
   }
 
-  document.querySelectorAll('[data-open-step-hooks]').forEach(function (button) {
-    button.addEventListener('click', function () {
-      if (!hookDialog) return;
-      var panel = hookPanelFor(button.dataset.scenarioId, button.dataset.stepLine);
-      if (!panel) return;
-      hookPanels.forEach(function (candidate) { candidate.hidden = candidate !== panel; });
-      hookTrigger = button;
-      hookDialog.showModal();
-      var close = hookDialog.querySelector('[data-close-step-hooks]');
-      if (close) close.focus();
+  function openStepHooks(trigger) {
+    if (!hookDialog) return;
+    var panel = hookPanelFor(trigger.dataset.scenarioId, trigger.dataset.stepLine);
+    if (!panel) return;
+    hookPanels.forEach(function (candidate) { candidate.hidden = candidate !== panel; });
+    hookTrigger = trigger;
+    hookDialog.showModal();
+    var close = hookDialog.querySelector('[data-close-step-hooks]');
+    if (close) close.focus();
+  }
+
+  document.querySelectorAll('[data-open-step-hooks]').forEach(function (row) {
+    row.addEventListener('click', function (event) {
+      var nestedInteractive = event.target.closest('button,a,input,select,textarea,summary,[data-open-image],[data-open-video]');
+      if (nestedInteractive && nestedInteractive !== row) return;
+      openStepHooks(row);
+    });
+    row.addEventListener('keydown', function (event) {
+      if (event.target !== row) return;
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        openStepHooks(row);
+      }
     });
   });
 
