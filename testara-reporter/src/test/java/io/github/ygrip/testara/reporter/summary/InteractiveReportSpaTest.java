@@ -83,11 +83,12 @@ class InteractiveReportSpaTest {
     assertTrue(html.contains("After scenario"));
     assertFalse(html.contains("<strong>Scenario hooks</strong>"));
     assertTrue(html.contains("data-step-hooks-dialog"));
-    assertEquals(totalSteps, occurrences(html, "class=\"step-hook-info-button\""));
+    assertEquals(0, occurrences(html, "class=\"step-hook-info-button\""));
     assertEquals(totalSteps, occurrences(html, "class=\"step-hooks-panel\""));
-    assertTrue(html.contains("data-open-step-hooks"));
+    assertEquals(totalSteps, occurrences(html, "class=\"step-item rich-step-item\" data-open-step-hooks"));
     assertTrue(html.contains("data-step-line"));
-    assertTrue(html.contains("button.dataset.stepLine"));
+    assertTrue(html.contains("trigger.dataset.stepLine"));
+    assertTrue(html.contains("document.querySelectorAll('[data-open-step-hooks]').forEach(function (row)"));
     assertFalse(html.contains("<span>Step hooks</span>"));
     assertFalse(html.contains("data-inline-step-hook"));
     assertFalse(html.contains("· offset "));
