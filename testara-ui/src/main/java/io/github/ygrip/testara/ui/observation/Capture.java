@@ -88,6 +88,10 @@ public final class Capture implements Observation<byte[]> {
       return new Capture(Target.VIEWPORT, null, null);
     }
 
+    public Observation<CapturedScreenshot> fastVisibleOnViewPort(ScreenshotQuality quality) {
+      return context -> context.observation().capturePage().fastVisibleOnViewPort(quality);
+    }
+
     public Observation<CapturedScreenshot> visibleOnViewPort(ScreenshotQuality quality) {
       return context -> context.observation().capturePage().visibleOnViewPort(quality);
     }
