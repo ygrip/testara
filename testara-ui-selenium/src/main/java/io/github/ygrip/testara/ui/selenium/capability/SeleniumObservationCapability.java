@@ -9,6 +9,7 @@ import java.time.Duration;
 import java.util.Base64;
 import java.util.Date;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.stream.Collectors;
@@ -25,13 +26,13 @@ import org.openqa.selenium.WebElement;
 import org.openqa.selenium.bidi.HasBiDi;
 import org.openqa.selenium.bidi.browsingcontext.BrowsingContext;
 import org.openqa.selenium.bidi.browsingcontext.CaptureScreenshotParameters;
+import org.openqa.selenium.chromium.HasCdp;
 
 import io.github.ygrip.testara.ui.capability.ObservationCapability;
 import io.github.ygrip.testara.ui.model.CapturedCookie;
 import io.github.ygrip.testara.ui.model.CapturedScreenshot;
 import io.github.ygrip.testara.ui.model.ScreenshotQuality;
 import io.github.ygrip.testara.ui.page.Element;
-import io.github.ygrip.testara.ui.support.Screenshots;
 
 import lombok.extern.log4j.Log4j2;
 
@@ -42,6 +43,7 @@ import lombok.extern.log4j.Log4j2;
 public final class SeleniumObservationCapability extends SeleniumElementResolver
   implements ObservationCapability<WebElement> {
   private static final String JPEG_MIME_TYPE = "image/jpeg";
+  private static final String PNG_MIME_TYPE = "image/png";
   private final WebDriver driver;
 
   public SeleniumObservationCapability(WebDriver driver) {
@@ -174,23 +176,40 @@ public final class SeleniumObservationCapability extends SeleniumElementResolver
       }
 
       @Override
-      public CapturedScreenshot visibleOnViewPort(ScreenshotQuality quality) {
+      public CapturedScreenshot fastVisibleOnViewPort(ScreenshotQuality quality) {
         ScreenshotQuality selected = quality == null ? ScreenshotQuality.STANDARD : quality;
         if (driver instanceof HasBiDi hasBiDi && hasBiDi.maybeGetBiDi().isPresent()) {
           try {
             String encoded = new BrowsingContext(driver, driver.getWindowHandle())
               .captureScreenshot(new CaptureScreenshotParameters()
                 .imageFormat(JPEG_MIME_TYPE, selected.jpegQuality()));
-            byte[] jpeg = Base64.getDecoder().decode(encoded);
-            Screenshots.OptimizedScreenshot optimized = Screenshots.optimize(jpeg, JPEG_MIME_TYPE, selected);
-            return new CapturedScreenshot(optimized.bytes(), optimized.mimeType());
+            return new CapturedScreenshot(Base64.getDecoder().decode(encoded), JPEG_MIME_TYPE);
           } catch (Exception e) {
-            log.debug("BiDi screenshot capture unavailable, using WebDriver fallback: {}", e.getMessage());
+            log.debug("BiDi screenshot capture unavailable, trying CDP/WebDriver fallback: {}", e.getMessage());
           }
         }
 
-        Screenshots.OptimizedScreenshot optimized = Screenshots.optimize(visibleOnViewPort(), selected);
-        return new CapturedScreenshot(optimized.bytes(), optimized.mimeType());
+        if (driver instanceof HasCdp hasCdp) {
+          try {
+            Map<String, Object> result = hasCdp.executeCdpCommand(
+              "Page.captureScreenshot",
+              Map.of(
+                "format", "jpeg",
+                "quality", Math.round(selected.jpegQuality() * 100),
+                "captureBeyondViewport", false,
+                "optimizeForSpeed", true
+              )
+            );
+            Object data = result.get("data");
+            if (data instanceof String encoded && !encoded.isBlank()) {
+              return new CapturedScreenshot(Base64.getDecoder().decode(encoded), JPEG_MIME_TYPE);
+            }
+          } catch (Exception e) {
+            log.debug("CDP screenshot capture unavailable, using WebDriver PNG fallback: {}", e.getMessage());
+          }
+        }
+
+        return new CapturedScreenshot(visibleOnViewPort(), PNG_MIME_TYPE);
       }
 
       @Override
