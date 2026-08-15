@@ -89,15 +89,12 @@
               <div class="detail-section-head"><div><div class="card-eyebrow">Steps</div><h4>${scenario.steps().size()} executed steps</h4></div></div>
               <div class="step-list rich-step-list">
                 @for(var step : scenario.steps())
-                  <section class="step-item rich-step-item">
+                  <section class="step-item rich-step-item" data-open-step-hooks data-scenario-id="${scenario.id()}" data-step-line="${step.line()}" tabindex="0" role="button" aria-label="View hooks for step ${step.keyword()} ${step.name()}">
                     <span class="step-dot" style="background:@if(step.status().equalsIgnoreCase("PASSED"))#22C55E@elseif(step.status().equalsIgnoreCase("FAILED"))#EF4444@else#64748B@endif;"></span>
                     <div class="step-content">
                       <div class="step-title-row">
                         <span class="step-number" aria-hidden="true"></span>
                         <strong>${step.keyword()} ${step.name()}</strong>
-                        <button class="step-hook-info-button" type="button" data-open-step-hooks data-scenario-id="${scenario.id()}" data-step-line="${step.line()}" aria-label="View hooks for step ${step.keyword()} ${step.name()}" title="Step hooks">
-                          <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M12 11v5"></path><path d="M12 8h.01"></path></svg>
-                        </button>
                         <small class="step-duration">${step.duration()}</small>
                       </div>
                       @if(step.line() != null || (step.matchLocation() != null && !step.matchLocation().isBlank()))
