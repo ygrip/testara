@@ -1,9 +1,9 @@
 package io.github.ygrip.testara.ui.support;
 
-import java.awt.Color;
-import java.awt.Graphics2D;
-import java.awt.RenderingHints;
+import java.awt.geom.AffineTransform;
+import java.awt.image.AffineTransformOp;
 import java.awt.image.BufferedImage;
+import java.awt.image.ImagingOpException;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -68,16 +68,62 @@ public final class Screenshots {
     int targetWidth = Math.max(1, (int) Math.round(width * scale));
     int targetHeight = Math.max(1, (int) Math.round(height * scale));
 
+    if (targetWidth == width && targetHeight == height && !source.getColorModel().hasAlpha()) {
+      return source;
+    }
+
+    BufferedImage rgbSource = toRgb(source);
+    if (targetWidth == width && targetHeight == height) {
+      return rgbSource;
+    }
+
     BufferedImage target = new BufferedImage(targetWidth, targetHeight, BufferedImage.TYPE_INT_RGB);
-    Graphics2D graphics = target.createGraphics();
+    AffineTransform transform = AffineTransform.getScaleInstance(
+      targetWidth / (double) width,
+      targetHeight / (double) height
+    );
     try {
-      graphics.setColor(Color.WHITE);
-      graphics.fillRect(0, 0, targetWidth, targetHeight);
-      graphics.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
-      graphics.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
-      graphics.drawImage(source, 0, 0, targetWidth, targetHeight, null);
-    } finally {
-      graphics.dispose();
+      return new AffineTransformOp(transform, AffineTransformOp.TYPE_BILINEAR).filter(rgbSource, target);
+    } catch (ImagingOpException ignored) {
+      return resizeNearestNeighbor(rgbSource, targetWidth, targetHeight);
+    }
+  }
+
+  private static BufferedImage toRgb(BufferedImage source) {
+    if (source.getType() == BufferedImage.TYPE_INT_RGB) {
+      return source;
+    }
+
+    int width = source.getWidth();
+    int height = source.getHeight();
+    BufferedImage target = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
+    int[] row = new int[width];
+    for (int y = 0; y < height; y++) {
+      source.getRGB(0, y, width, 1, row, 0, width);
+      target.setRGB(0, y, width, 1, row, 0, width);
+    }
+    return target;
+  }
+
+  private static BufferedImage resizeNearestNeighbor(BufferedImage source, int targetWidth, int targetHeight) {
+    int sourceWidth = source.getWidth();
+    int sourceHeight = source.getHeight();
+    BufferedImage target = new BufferedImage(targetWidth, targetHeight, BufferedImage.TYPE_INT_RGB);
+    int[] sourceRow = new int[sourceWidth];
+    int[] targetRow = new int[targetWidth];
+    int previousSourceY = -1;
+
+    for (int y = 0; y < targetHeight; y++) {
+      int sourceY = Math.min(sourceHeight - 1, (int) ((long) y * sourceHeight / targetHeight));
+      if (sourceY != previousSourceY) {
+        source.getRGB(0, sourceY, sourceWidth, 1, sourceRow, 0, sourceWidth);
+        previousSourceY = sourceY;
+      }
+      for (int x = 0; x < targetWidth; x++) {
+        int sourceX = Math.min(sourceWidth - 1, (int) ((long) x * sourceWidth / targetWidth));
+        targetRow[x] = sourceRow[sourceX];
+      }
+      target.setRGB(0, y, targetWidth, 1, targetRow, 0, targetWidth);
     }
     return target;
   }
