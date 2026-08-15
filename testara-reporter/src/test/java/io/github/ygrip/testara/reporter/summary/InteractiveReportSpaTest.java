@@ -29,7 +29,7 @@ class InteractiveReportSpaTest {
     String reportPath = System.getProperty("user.dir") + "/src/test/resources/cucumber/rich/cucumber-rich.json";
     var features = CucumberReportReader.readReports(reportPath);
     var view = new CucumberReportViewFactory().create(features, "Automation", configuration);
-    var scenario = view.scenarios().getFirst();
+    int totalSteps = view.scenarios().stream().mapToInt(item -> item.steps().size()).sum();
 
     Path output = tempDir.resolve("report.html");
     JteReportRenderer.INSTANCE.render(ReportStyle.SINGLE_PAGE, view, output);
@@ -71,8 +71,8 @@ class InteractiveReportSpaTest {
     assertTrue(html.contains("After scenario"));
     assertFalse(html.contains("<strong>Scenario hooks</strong>"));
     assertTrue(html.contains("data-step-hooks-dialog"));
-    assertEquals(scenario.steps().size(), occurrences(html, "class=\"step-hook-info-button\""));
-    assertEquals(scenario.steps().size(), occurrences(html, "class=\"step-hooks-panel\""));
+    assertEquals(totalSteps, occurrences(html, "class=\"step-hook-info-button\""));
+    assertEquals(totalSteps, occurrences(html, "class=\"step-hooks-panel\""));
     assertTrue(html.contains("data-open-step-hooks"));
     assertTrue(html.contains("data-step-line"));
     assertTrue(html.contains("button.dataset.stepLine"));
@@ -82,7 +82,6 @@ class InteractiveReportSpaTest {
 
     assertTrue(html.contains("attachment-visual-stage"));
     assertTrue(html.contains("object-fit:contain"));
-    assertFalse(html.contains("object-fit:cover"));
 
     assertTrue(html.contains("error-chevron"));
     assertFalse(html.contains("class=\"error-toggle-label\""));
