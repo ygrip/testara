@@ -74,12 +74,25 @@ public interface ObservationCapability<E> {
     byte[] visibleOnViewPort();
 
     /**
+     * Fast capture path intended for asynchronous post-processing.
+     * Engines may override this to return a browser-native JPEG without doing
+     * any ImageIO resize/re-encode work on the test step thread.
+     */
+    default CapturedScreenshot fastVisibleOnViewPort(ScreenshotQuality quality) {
+      return new CapturedScreenshot(visibleOnViewPort(), "image/png");
+    }
+
+    /**
      * Capture the visible viewport using the requested quality preset.
-     * Engines can override this to use a native JPEG path; the default keeps
-     * every engine compatible through the lightweight common optimizer.
+     * This remains the fully optimized synchronous API for direct callers.
      */
     default CapturedScreenshot visibleOnViewPort(ScreenshotQuality quality) {
-      Screenshots.OptimizedScreenshot optimized = Screenshots.optimize(visibleOnViewPort(), quality);
+      CapturedScreenshot captured = fastVisibleOnViewPort(quality);
+      Screenshots.OptimizedScreenshot optimized = Screenshots.optimize(
+        captured.bytes(),
+        captured.mimeType(),
+        quality
+      );
       return new CapturedScreenshot(optimized.bytes(), optimized.mimeType());
     }
 
