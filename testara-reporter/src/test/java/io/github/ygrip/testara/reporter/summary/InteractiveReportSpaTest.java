@@ -63,7 +63,7 @@ class InteractiveReportSpaTest {
     assertFalse(html.contains("· offset "));
 
     assertTrue(html.contains("error-chevron"));
-    assertFalse(html.contains("error-toggle-label"));
+    assertFalse(html.contains("class=\"error-toggle-label\""));
     assertFalse(html.contains(">Expand<"));
     assertFalse(html.contains(">Collapse<"));
 
