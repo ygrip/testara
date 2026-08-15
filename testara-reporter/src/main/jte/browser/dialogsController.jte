@@ -18,14 +18,16 @@
   var hookPanels = hookDialog ? Array.from(hookDialog.querySelectorAll('[data-step-hooks-panel]')) : [];
   var hookTrigger = null;
 
-  function hookPanelFor(id) {
-    return hookPanels.find(function (panel) { return panel.dataset.stepHooksPanel === id; }) || null;
+  function hookPanelFor(id, line) {
+    return hookPanels.find(function (panel) {
+      return panel.dataset.stepHooksPanel === id && panel.dataset.stepLine === line;
+    }) || null;
   }
 
   document.querySelectorAll('[data-open-step-hooks]').forEach(function (button) {
     button.addEventListener('click', function () {
       if (!hookDialog) return;
-      var panel = hookPanelFor(button.dataset.scenarioId);
+      var panel = hookPanelFor(button.dataset.scenarioId, button.dataset.stepLine);
       if (!panel) return;
       hookPanels.forEach(function (candidate) { candidate.hidden = candidate !== panel; });
       hookTrigger = button;
