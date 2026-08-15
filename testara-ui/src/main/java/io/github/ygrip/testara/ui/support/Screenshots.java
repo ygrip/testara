@@ -13,8 +13,10 @@ import java.util.Iterator;
 
 import javax.imageio.IIOImage;
 import javax.imageio.ImageIO;
+import javax.imageio.ImageReader;
 import javax.imageio.ImageWriteParam;
 import javax.imageio.ImageWriter;
+import javax.imageio.stream.ImageInputStream;
 import javax.imageio.stream.ImageOutputStream;
 
 import io.github.ygrip.testara.ui.model.ScreenshotQuality;
@@ -31,31 +33,78 @@ public final class Screenshots {
   private Screenshots() {}
 
   /**
-   * Optimizes a screenshot using the requested quality preset.
-   * Small screenshots are left untouched to avoid unnecessary CPU work.
-   * If optimization cannot reduce the payload safely, the original PNG is returned.
+   * Optimizes a PNG screenshot using the requested quality preset.
    *
    * @param screenshot raw PNG screenshot bytes
    * @param quality requested quality preset, defaults to STANDARD when null
    * @return optimized screenshot bytes and matching MIME type
    */
   public static OptimizedScreenshot optimize(byte[] screenshot, ScreenshotQuality quality) {
-    if (screenshot == null || screenshot.length == 0 || screenshot.length <= OPTIMIZATION_THRESHOLD_BYTES) {
-      return new OptimizedScreenshot(screenshot, PNG_MIME_TYPE);
+    return optimize(screenshot, PNG_MIME_TYPE, quality);
+  }
+
+  /**
+   * Optimizes screenshot bytes without reprocessing an already-small JPEG.
+   * PNG payloads above the threshold are decoded once, resized when needed,
+   * and encoded once. Native JPEG captures are returned directly when they
+   * already fit the requested resolution cap.
+   */
+  public static OptimizedScreenshot optimize(byte[] screenshot, String mimeType, ScreenshotQuality quality) {
+    String sourceMimeType = normalizeMimeType(mimeType);
+    if (screenshot == null || screenshot.length == 0) {
+      return new OptimizedScreenshot(screenshot, sourceMimeType);
     }
 
     ScreenshotQuality selectedQuality = quality == null ? ScreenshotQuality.STANDARD : quality;
+    boolean jpegSource = JPEG_MIME_TYPE.equals(sourceMimeType);
+    boolean inspectSize = jpegSource || screenshot.length <= OPTIMIZATION_THRESHOLD_BYTES;
+    boolean oversized = false;
+
     try {
+      if (inspectSize) {
+        oversized = exceedsMaxLongEdge(screenshot, selectedQuality.maxLongEdge());
+        if (!oversized) {
+          return new OptimizedScreenshot(screenshot, sourceMimeType);
+        }
+      }
+
       BufferedImage source = toBufferedImage(screenshot);
+      oversized = Math.max(source.getWidth(), source.getHeight()) > selectedQuality.maxLongEdge();
       BufferedImage image = resizeForQuality(source, selectedQuality);
       byte[] jpeg = encodeJpeg(image, selectedQuality.jpegQuality());
-      if (jpeg.length > 0 && jpeg.length < screenshot.length) {
+      if (jpeg.length > 0 && (oversized || jpeg.length < screenshot.length)) {
         return new OptimizedScreenshot(jpeg, JPEG_MIME_TYPE);
       }
     } catch (Exception ignored) {
-      // Preserve screenshot attachment even when optimization is unsupported or fails.
+      // Preserve the screenshot even when optimization is unsupported or fails.
     }
-    return new OptimizedScreenshot(screenshot, PNG_MIME_TYPE);
+    return new OptimizedScreenshot(screenshot, sourceMimeType);
+  }
+
+  private static String normalizeMimeType(String mimeType) {
+    if (mimeType == null || mimeType.isBlank()) {
+      return PNG_MIME_TYPE;
+    }
+    return "image/jpg".equalsIgnoreCase(mimeType) ? JPEG_MIME_TYPE : mimeType.toLowerCase();
+  }
+
+  private static boolean exceedsMaxLongEdge(byte[] screenshot, int maxLongEdge) throws IOException {
+    try (ImageInputStream input = ImageIO.createImageInputStream(new ByteArrayInputStream(screenshot))) {
+      if (input == null) {
+        throw new IOException("Failed to open screenshot image stream");
+      }
+      Iterator<ImageReader> readers = ImageIO.getImageReaders(input);
+      if (!readers.hasNext()) {
+        throw new IOException("No image reader is available for screenshot bytes");
+      }
+      ImageReader reader = readers.next();
+      try {
+        reader.setInput(input, true, true);
+        return Math.max(reader.getWidth(0), reader.getHeight(0)) > maxLongEdge;
+      } finally {
+        reader.dispose();
+      }
+    }
   }
 
   private static BufferedImage resizeForQuality(BufferedImage source, ScreenshotQuality quality) {
@@ -152,19 +201,19 @@ public final class Screenshots {
   }
 
   /**
-   * Convert raw PNG bytes to a {@link BufferedImage}.
+   * Convert raw screenshot bytes to a {@link BufferedImage}.
    *
-   * @param png the PNG screenshot bytes
+   * @param screenshot screenshot bytes supported by ImageIO
    * @return a {@link BufferedImage}, never {@code null}
    * @throws IOException if the bytes cannot be decoded
    */
-  public static BufferedImage toBufferedImage(byte[] png) throws IOException {
-    if (png == null || png.length == 0) {
+  public static BufferedImage toBufferedImage(byte[] screenshot) throws IOException {
+    if (screenshot == null || screenshot.length == 0) {
       throw new IOException("Screenshot byte array is null or empty");
     }
-    BufferedImage image = ImageIO.read(new ByteArrayInputStream(png));
+    BufferedImage image = ImageIO.read(new ByteArrayInputStream(screenshot));
     if (image == null) {
-      throw new IOException("Failed to decode PNG bytes into a BufferedImage");
+      throw new IOException("Failed to decode screenshot bytes into a BufferedImage");
     }
     return image;
   }
@@ -172,11 +221,6 @@ public final class Screenshots {
   /**
    * Save raw PNG bytes to the given full path.
    * Parent directories are created automatically.
-   *
-   * @param png      the PNG screenshot bytes
-   * @param fullPath absolute or relative path including the file name (e.g. {@code "/tmp/shots/login.png"})
-   * @return the resolved {@link Path} that was written
-   * @throws IOException if the file cannot be written
    */
   public static Path save(byte[] png, String fullPath) throws IOException {
     return save(png, Path.of(fullPath));
@@ -185,11 +229,6 @@ public final class Screenshots {
   /**
    * Save raw PNG bytes to the given {@link Path}.
    * Parent directories are created automatically.
-   *
-   * @param png  the PNG screenshot bytes
-   * @param path target path including the file name
-   * @return the resolved {@link Path} that was written
-   * @throws IOException if the file cannot be written
    */
   public static Path save(byte[] png, Path path) throws IOException {
     if (png == null || png.length == 0) {
