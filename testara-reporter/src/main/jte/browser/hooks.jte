@@ -11,9 +11,6 @@
         <small>${hook.duration()}</small>
       </div>
       @if(hook.location() != null && !hook.location().isBlank())<div class="hook-location">${hook.location()}</div>@endif
-      @if(hook.arguments() != null && !hook.arguments().isEmpty())
-        <div class="hook-arguments">@for(var argument : hook.arguments())<span>${argument.value()}@if(argument.offset() != null) · offset ${argument.offset()}@endif</span>@endfor</div>
-      @endif
       @if(hook.outputs() != null && !hook.outputs().isEmpty())
         <div class="step-artifact"><div class="artifact-label">Output</div><div class="output-list">@for(var output : hook.outputs())<div>${output}</div>@endfor</div></div>
       @endif
