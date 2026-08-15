@@ -45,15 +45,10 @@
   function compareRows(a, b) {
     var statusOrder = {FAILED: 0, PENDING: 1, UNDEFINED: 2, SKIPPED: 3, PASSED: 4};
     var result;
-    if (sortColumn === 'duration') {
-      result = Number(a.dataset.duration) - Number(b.dataset.duration);
-    } else if (sortColumn === 'status') {
-      result = (statusOrder[a.dataset.status] ?? 9) - (statusOrder[b.dataset.status] ?? 9);
-    } else if (sortColumn === 'feature') {
-      result = (a.dataset.feature || '').localeCompare(b.dataset.feature || '');
-    } else {
-      result = (a.dataset.name || '').localeCompare(b.dataset.name || '');
-    }
+    if (sortColumn === 'duration') result = Number(a.dataset.duration) - Number(b.dataset.duration);
+    else if (sortColumn === 'status') result = (statusOrder[a.dataset.status] ?? 9) - (statusOrder[b.dataset.status] ?? 9);
+    else if (sortColumn === 'feature') result = (a.dataset.feature || '').localeCompare(b.dataset.feature || '');
+    else result = (a.dataset.name || '').localeCompare(b.dataset.name || '');
     return sortDirection === 'asc' ? result : -result;
   }
 
@@ -98,33 +93,27 @@
   function openScenario(row) {
     var panel = panelFor(row);
     if (!panel || !detailView.hidden) return;
-
     activeRow = row;
     activePanel = panel;
     detailPanels.forEach(function (candidate) { candidate.hidden = candidate !== panel; });
-
     listView.hidden = true;
     detailView.hidden = false;
-
     window.requestAnimationFrame(function () {
-      detailView.scrollIntoView({block: 'start', behavior: 'auto'});
       if (closeDetail) closeDetail.focus({preventScroll: true});
     });
   }
 
-  function closeScenario() {
+  function closeScenario(restoreFocus) {
     if (detailView.hidden) return;
-
     var rowToRestore = activeRow;
     detailView.hidden = true;
     if (activePanel) activePanel.hidden = true;
     listView.hidden = false;
     activePanel = null;
     activeRow = null;
-
-    window.requestAnimationFrame(function () {
-      if (rowToRestore) rowToRestore.focus();
-    });
+    if (restoreFocus) {
+      window.requestAnimationFrame(function () { if (rowToRestore) rowToRestore.focus(); });
+    }
   }
 
   [statusFilter, featureFilter, suiteFilter, tagFilter].forEach(function (control) { control.addEventListener('change', apply); });
@@ -165,8 +154,11 @@
     });
   });
 
-  if (closeDetail) closeDetail.addEventListener('click', closeScenario);
-  document.addEventListener('keydown', function (event) { if (event.key === 'Escape' && !detailView.hidden) closeScenario(); });
+  if (closeDetail) closeDetail.addEventListener('click', function () { closeScenario(true); });
+  document.addEventListener('keydown', function (event) { if (event.key === 'Escape' && !detailView.hidden) closeScenario(true); });
+  document.addEventListener('testara:routechange', function (event) {
+    if (event.detail && event.detail.from === 'scenarios' && event.detail.to !== 'scenarios' && !detailView.hidden) closeScenario(false);
+  });
 
   apply();
 })();
