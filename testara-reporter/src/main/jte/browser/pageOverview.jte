@@ -2,7 +2,7 @@
 @param ReportView view
 <section class="report-view" data-report-page="overview">
   @template.browser.hero(view)
-  <section class="bento-grid">
+  <section class="bento-grid" data-bento-grid>
     <article class="glass-card card-pad metric-card accent-teal span-4" data-glass-card>
       <div class="metric-top"><div><div class="metric-label">Pass rate</div><div class="metric-value teal">${view.status().passRate()}%</div></div><span class="icon-tile">✓</span></div>
       <p class="metric-note">Across ${view.metadata().totalScenarios()} scenarios and ${view.metadata().totalFeatures()} features.</p>
