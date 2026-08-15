@@ -12,6 +12,7 @@
   @template.browser.explorer()
   @template.browser.spa()
   @template.browser.theme()
+  @template.browser.accessibility()
 </head>
 <body>
   <main class="report-page">
