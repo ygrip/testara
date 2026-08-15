@@ -69,6 +69,7 @@ class InteractiveReportRichCucumberTest {
     assertTrue(html.contains("attachment-video"));
     assertTrue(html.contains("data:image/png;base64,aGVsbG8="));
     assertTrue(html.contains("data:video/mp4;base64,aGVsbG8="));
+    assertEquals(2, occurrences(html, "data:image/png;base64,aGVsbG8="));
 
     assertTrue(html.contains("Before scenario"));
     assertTrue(html.contains("After scenario"));
@@ -78,6 +79,7 @@ class InteractiveReportRichCucumberTest {
     assertTrue(html.contains("hooks.RichHooks.afterScenario()"));
     assertTrue(html.contains("after-step.png"));
     assertTrue(html.contains("data:image/png;base64,d29ybGQ="));
+    assertEquals(1, occurrences(html, "data:image/png;base64,d29ybGQ="));
     assertTrue(html.contains("before scenario output"));
     assertTrue(html.contains("step output"));
     assertTrue(html.contains("AfterStepException"));
@@ -85,5 +87,15 @@ class InteractiveReportRichCucumberTest {
     assertTrue(html.contains("data-error-container"));
     assertTrue(html.contains("data-error-content"));
     assertTrue(html.contains("<details"));
+  }
+
+  private static int occurrences(String value, String needle) {
+    int count = 0;
+    int index = 0;
+    while ((index = value.indexOf(needle, index)) >= 0) {
+      count++;
+      index += needle.length();
+    }
+    return count;
   }
 }
