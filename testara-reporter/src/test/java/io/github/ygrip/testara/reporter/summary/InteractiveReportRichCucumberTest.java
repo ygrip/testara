@@ -87,6 +87,11 @@ class InteractiveReportRichCucumberTest {
     assertTrue(html.contains("data-error-container"));
     assertTrue(html.contains("data-error-content"));
     assertTrue(html.contains("<details"));
+
+    assertFalse(html.contains("step-hook-info-button"));
+    assertTrue(html.contains("class=\"step-item rich-step-item\" data-open-step-hooks"));
+    assertTrue(html.contains("aria-label=\"View hooks for step Given a customer with data\""));
+    assertTrue(html.contains("event.key === 'Enter' || event.key === ' '"));
   }
 
   private static int occurrences(String value, String needle) {
