@@ -2,6 +2,7 @@ package io.github.ygrip.testara.reporter.support;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.awt.image.BufferedImage;
@@ -39,12 +40,14 @@ class ScreenshotReferenceResolverTest {
   }
 
   @Test
-  void embeddingHydratesStoredScreenshotForExistingReportRendering() throws Exception {
+  void embeddingHydratesForRenderingButSerializesTheLightweightReference() throws Exception {
     Path directory = Path.of("target", "testara-screenshots");
     Files.createDirectories(directory);
     String id = UUID.randomUUID().toString();
+    String encodedReference = Base64.getEncoder().encodeToString(id.getBytes(StandardCharsets.UTF_8));
     Path screenshot = directory.resolve(id + ".image");
     byte[] png = png();
+    String encodedImage = Base64.getEncoder().encodeToString(png);
     Files.write(screenshot, png);
 
     try {
@@ -52,6 +55,11 @@ class ScreenshotReferenceResolverTest {
 
       assertEquals("image/png", embedding.getMimeType());
       assertArrayEquals(png, Base64.getDecoder().decode(embedding.getData()));
+
+      String serialized = ObjectMapperHelper.mapper().writeValueAsString(embedding);
+      assertTrue(serialized.contains(ScreenshotReferenceResolver.MIME_TYPE));
+      assertTrue(serialized.contains(encodedReference));
+      assertFalse(serialized.contains(encodedImage));
     } finally {
       Files.deleteIfExists(screenshot);
     }
