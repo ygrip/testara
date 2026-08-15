@@ -114,10 +114,7 @@
     if (next) next.disabled = images.length < 2;
     resetImage(false);
   }
-  function prepareMediaDialog(trigger) {
-    mediaTrigger = trigger;
-    if (hookDialog && hookDialog.open) hookDialog.close();
-  }
+  function prepareMediaDialog(trigger) { mediaTrigger = trigger; }
   function openImage(trigger) {
     prepareMediaDialog(trigger);
     images = scenarioImages(trigger);
