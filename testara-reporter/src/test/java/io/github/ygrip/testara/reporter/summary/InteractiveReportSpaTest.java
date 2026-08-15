@@ -57,6 +57,13 @@ class InteractiveReportSpaTest {
     assertTrue(html.contains("prefers-color-scheme: dark"));
     assertTrue(html.contains("data-theme-icon-light"));
     assertTrue(html.contains("data-theme-icon-dark"));
+    assertTrue(html.contains("data-ui-refinement=\"navigation-accessibility-contrast\""));
+    assertTrue(html.contains("--nav-control-size:44px"));
+    assertTrue(html.contains("--chart-voice-text:#173F45"));
+    assertTrue(html.contains("--chart-voice-text:#D9ECEF"));
+    assertTrue(html.contains(".report-theme-toggle{min-height:var(--nav-control-size);border-radius:999px"));
+    assertTrue(html.contains(".report-nav-link{min-height:var(--nav-control-size)"));
+    assertTrue(html.contains(".report-nav-link span,.theme-toggle-label{display:inline!important}"));
 
     assertTrue(html.contains("data-additional-info-scroll"));
     assertTrue(html.contains("role=\"tablist\""));
