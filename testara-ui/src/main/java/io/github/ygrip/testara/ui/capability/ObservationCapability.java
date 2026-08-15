@@ -4,7 +4,10 @@ import java.time.Duration;
 import java.util.List;
 
 import io.github.ygrip.testara.ui.model.CapturedCookie;
+import io.github.ygrip.testara.ui.model.CapturedScreenshot;
+import io.github.ygrip.testara.ui.model.ScreenshotQuality;
 import io.github.ygrip.testara.ui.page.Element;
+import io.github.ygrip.testara.ui.support.Screenshots;
 
 /**
  * Fluent observation (get text, get value, etc).
@@ -67,8 +70,19 @@ public interface ObservationCapability<E> {
 
   /** Fluent step for page-level screenshot capture. */
   interface ScreenshotCapture {
-    /** Capture only the visible viewport. */
+    /** Capture only the visible viewport as raw PNG bytes. */
     byte[] visibleOnViewPort();
+
+    /**
+     * Capture the visible viewport using the requested quality preset.
+     * Engines can override this to use a native JPEG path; the default keeps
+     * every engine compatible through the lightweight common optimizer.
+     */
+    default CapturedScreenshot visibleOnViewPort(ScreenshotQuality quality) {
+      Screenshots.OptimizedScreenshot optimized = Screenshots.optimize(visibleOnViewPort(), quality);
+      return new CapturedScreenshot(optimized.bytes(), optimized.mimeType());
+    }
+
     /** Capture the full scrollable page. */
     byte[] fullPage();
   }
