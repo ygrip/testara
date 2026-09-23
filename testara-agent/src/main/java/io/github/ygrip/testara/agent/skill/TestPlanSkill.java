@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.ygrip.testara.agent.catalog.GenerationGuard;
 import io.github.ygrip.testara.agent.catalog.PropertyRuleEngine;
+import io.github.ygrip.testara.agent.safety.ProjectPathGuard;
 import io.github.ygrip.testara.agent.catalog.StepLinker;
 import io.github.ygrip.testara.agent.flavor.FlavorEntry;
 import io.github.ygrip.testara.agent.index.TestaraProjectProfile;
@@ -339,7 +340,7 @@ public class TestPlanSkill implements AgentSkill<TestPlanSkill.Input, String> {
 
   private String writeFeatureAtPath(Path root, String relative, String content) {
     try {
-      Path target = root.resolve(relative);
+      Path target = ProjectPathGuard.resolveInside(root, relative);
       Files.createDirectories(target.getParent());
       Files.writeString(target, content + "\n", StandardCharsets.UTF_8);
       return root.relativize(target).toString();
@@ -674,7 +675,7 @@ public class TestPlanSkill implements AgentSkill<TestPlanSkill.Input, String> {
 
   private void writeJsonIfAbsent(Path root, String relative, String content, List<String> generated) {
     try {
-      Path target = root.resolve(relative);
+      Path target = ProjectPathGuard.resolveInside(root, relative);
       if (Files.exists(target)) return;
       Files.createDirectories(target.getParent());
       Files.writeString(target, content, StandardCharsets.UTF_8);
@@ -686,9 +687,8 @@ public class TestPlanSkill implements AgentSkill<TestPlanSkill.Input, String> {
 
   private String writeFeatureFile(Path projectRoot, String placement, String fileName, String content) {
     try {
-      Path dir = projectRoot.resolve(placement);
-      Files.createDirectories(dir);
-      Path file = dir.resolve(fileName);
+      Path file = ProjectPathGuard.resolveInside(projectRoot, placement + fileName);
+      Files.createDirectories(file.getParent());
       Files.writeString(file, content, StandardCharsets.UTF_8);
       return projectRoot.relativize(file).toString();
     } catch (IOException e) {
