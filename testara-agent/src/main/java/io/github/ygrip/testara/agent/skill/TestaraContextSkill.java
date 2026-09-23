@@ -69,8 +69,11 @@ public class TestaraContextSkill implements AgentSkill<Void, String> {
     sb.append("feature-files: ").append(profile.features().size()).append(" | scenarios: ")
         .append(profile.totalScenarios()).append("\n");
     if (!profile.tags().isEmpty()) {
-      sb.append("top-tags: ").append(profile.tags().stream().limit(12)
-          .map(t -> t.tag() + "(" + t.scenarioCount() + ")")
+      sb.append("top-tags: ").append(profile.tags().stream()
+          .sorted(java.util.Comparator.comparingInt(io.github.ygrip.testara.agent.index.TagIndex::executableCaseCount).reversed()
+              .thenComparing(io.github.ygrip.testara.agent.index.TagIndex::tag))
+          .limit(12)
+          .map(t -> t.tag() + "(scenarios=" + t.scenarioCount() + ",cases=" + t.executableCaseCount() + ")")
           .collect(Collectors.joining(", "))).append("\n");
     }
     sb.append("flavor-steps: ").append(flavorSteps.size()).append(" | ");
