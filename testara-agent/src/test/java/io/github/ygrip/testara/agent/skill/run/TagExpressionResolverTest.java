@@ -138,4 +138,39 @@ class TagExpressionResolverTest {
     assertEquals("@api and @smoke", result);
     assertEquals("(@api or @ui)", orResult);
   }
+  @Test
+  void preservesExplicitExpressionPrecedence() {
+    String expression = "@api or @ui and not @slow";
+    assertEquals(expression, resolver.resolve(expression,
+        profileWithTags("@api", "@ui", "@slow")));
+  }
+
+  @Test
+  void doesNotTurnExplicitNegativeTagPositive() {
+    String result = resolver.resolve("run @api except @slow",
+        profileWithTags("@api", "@slow"));
+    assertEquals("@api and not @slow", result);
+  }
+
+  @Test
+  void evaluatesCucumberExpressionPrecedence() {
+    ScenarioIndex apiSlow = new ScenarioIndex("api slow", ScenarioType.SCENARIO,
+        List.of("@api", "@slow"), List.of(), List.of());
+    ScenarioIndex uiFast = new ScenarioIndex("ui fast", ScenarioType.SCENARIO,
+        List.of("@ui"), List.of(), List.of());
+    FeatureIndex feature = new FeatureIndex(Path.of("selection.feature"), "Selection",
+        List.of(), List.of(apiSlow, uiFast), List.of());
+    TestaraProjectProfile profile = new TestaraProjectProfile(
+        Path.of("."), BuildTool.MAVEN, "21", List.of(),
+        List.of(), List.of(), List.of(), List.of(feature),
+        List.of(), List.of(), List.of(), List.of(),
+        List.of(new TagIndex("@api", 1, 1, List.of(), List.of()),
+            new TagIndex("@ui", 1, 1, List.of(), List.of()),
+            new TagIndex("@slow", 1, 1, List.of(), List.of())),
+        Map.of(), Map.of(), List.of(), List.of());
+
+    assertEquals(2, resolver.countMatching("@api or @ui and not @slow", profile));
+    assertEquals(1, resolver.countMatching("(@api or @ui) and not @slow", profile));
+  }
+
 }
