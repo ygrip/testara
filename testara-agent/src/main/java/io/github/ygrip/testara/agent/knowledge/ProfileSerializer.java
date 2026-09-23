@@ -24,7 +24,7 @@ import java.util.logging.Logger;
 final class ProfileSerializer {
 
   private static final Logger LOG = Logger.getLogger(ProfileSerializer.class.getName());
-  static final int CACHE_VERSION = 4; // bump to invalidate all caches on schema change
+  static final int CACHE_VERSION = 5; // bump to invalidate all caches on schema change
 
   private static final ObjectMapper MAPPER = new ObjectMapper()
       .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
@@ -105,11 +105,12 @@ final class ProfileSerializer {
   record StepDto(String keyword, String text, List<List<String>> dataTable) {
     StepDto() { this(null, null, List.of()); }
   }
-  record ExamplesDto(List<String> headers, int rowCount) {
-    ExamplesDto() { this(List.of(), 0); }
+  record ExamplesDto(List<String> tags, List<String> headers, int rowCount) {
+    ExamplesDto() { this(List.of(), List.of(), 0); }
   }
-  record TagDto(String tag, int featureCount, int scenarioCount, List<String> featurePaths, List<String> scenarioNames) {
-    TagDto() { this(null, 0, 0, List.of(), List.of()); }
+  record TagDto(String tag, int featureCount, int scenarioCount, int executableCaseCount,
+      List<String> featurePaths, List<String> scenarioNames) {
+    TagDto() { this(null, 0, 0, 0, List.of(), List.of()); }
   }
   record DriverDto(String name, String engineClass, List<String> platforms, String browserName, String sourcePath, String className) {
     DriverDto() { this(null, null, List.of(), null, null, null); }
@@ -126,7 +127,7 @@ final class ProfileSerializer {
         p.drivers().stream().map(dr -> new DriverDto(dr.name(), dr.engineClass(), dr.platforms(),
             dr.browserName(), pathStr(dr.sourcePath()), dr.className())).toList(),
         p.tags().stream().map(t -> new TagDto(t.tag(), t.featureCount(), t.scenarioCount(),
-            pathStrings(t.featurePaths()), t.scenarioNames())).toList(),
+            t.executableCaseCount(), pathStrings(t.featurePaths()), t.scenarioNames())).toList(),
         p.commands().stream().map(c -> new CommandDto(c.command(), c.aliases(), c.returnType(), c.cacheable(),
             pathStr(c.sourcePath()), c.className())).toList(),
         p.validations().stream().map(v -> new ValidationDto(v.validation(), v.aliases(), v.actualType(), v.expectedType(),
@@ -150,7 +151,7 @@ final class ProfileSerializer {
   private static ScenarioDto toScenarioDto(ScenarioIndex s) {
     return new ScenarioDto(s.name(), s.type() != null ? s.type().name() : null, s.tags(),
         s.steps().stream().map(ProfileSerializer::toStepDto).toList(),
-        s.examples().stream().map(e -> new ExamplesDto(e.headers(), e.rowCount())).toList());
+        s.examples().stream().map(e -> new ExamplesDto(e.tags(), e.headers(), e.rowCount())).toList());
   }
 
   private static StepDto toStepDto(StepIndex st) {
@@ -182,7 +183,8 @@ final class ProfileSerializer {
         new DriverIndex(dr.name(), dr.engineClass(), dr.platforms(), dr.browserName(),
             toPath(dr.sourcePath()), dr.className())).toList();
     List<TagIndex> tags = d.tags().stream().map(t ->
-        new TagIndex(t.tag(), t.featureCount(), t.scenarioCount(), toPaths(t.featurePaths()), t.scenarioNames())).toList();
+        new TagIndex(t.tag(), t.featureCount(), t.scenarioCount(), t.executableCaseCount(),
+            toPaths(t.featurePaths()), t.scenarioNames())).toList();
 
     return new TestaraProjectProfile(
         projectRoot, bt, d.javaVersion(), d.modules(),
@@ -203,7 +205,7 @@ final class ProfileSerializer {
     try { if (s.type() != null) type = ScenarioType.valueOf(s.type()); } catch (Exception ignored) {}
     return new ScenarioIndex(s.name(), type, s.tags(),
         s.steps().stream().map(ProfileSerializer::fromStepDto).toList(),
-        s.examples().stream().map(e -> new ExamplesIndex(e.headers(), e.rowCount())).toList());
+        s.examples().stream().map(e -> new ExamplesIndex(e.tags(), e.headers(), e.rowCount())).toList());
   }
 
   private static StepIndex fromStepDto(StepDto st) {
