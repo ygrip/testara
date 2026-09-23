@@ -120,30 +120,35 @@ public final class CucumberReportParser {
     }
 
     int total = 0, failed = 0, skipped = 0;
-    NodeList testsuites = doc.getElementsByTagName("testsuite");
-    for (int i = 0; i < testsuites.getLength(); i++) {
-      Element suite = (Element) testsuites.item(i);
-      total += intAttr(suite, "tests");
-      failed += intAttr(suite, "failures");
-      skipped += intAttr(suite, "skipped");
-    }
-
-    int passed = total - failed - skipped;
     List<TestRunReport.FailedScenario> failedScenarios = new ArrayList<>();
 
     NodeList testcases = doc.getElementsByTagName("testcase");
     for (int i = 0; i < testcases.getLength(); i++) {
       Element testcase = (Element) testcases.item(i);
+      total++;
+
       NodeList failures = testcase.getElementsByTagName("failure");
-      if (failures.getLength() == 0) {
-        continue;
+      NodeList errors = testcase.getElementsByTagName("error");
+      NodeList skippedNodes = testcase.getElementsByTagName("skipped");
+
+      Element problem = failures.getLength() > 0
+          ? (Element) failures.item(0)
+          : errors.getLength() > 0 ? (Element) errors.item(0) : null;
+
+      if (problem != null) {
+        failed++;
+        String message = problem.hasAttribute("message")
+            ? problem.getAttribute("message")
+            : problem.getTextContent().strip();
+        if (message.isBlank()) message = "Unknown error";
+        failedScenarios.add(new TestRunReport.FailedScenario(
+            testcase.getAttribute("classname"), testcase.getAttribute("name"), message));
+      } else if (skippedNodes.getLength() > 0) {
+        skipped++;
       }
-      Element failure = (Element) failures.item(0);
-      String message = failure.hasAttribute("message") ? failure.getAttribute("message") : "Unknown error";
-      failedScenarios.add(new TestRunReport.FailedScenario(
-          testcase.getAttribute("classname"), testcase.getAttribute("name"), message));
     }
 
+    int passed = Math.max(0, total - failed - skipped);
     String status = failed > 0 ? "FAILED" : "PASSED";
     return new TestRunReport(status, durationMs, tagExpression,
         total, passed, failed, skipped,
