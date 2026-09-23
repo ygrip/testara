@@ -2,6 +2,7 @@ package io.github.ygrip.testara.agent.index;
 
 import io.github.ygrip.testara.agent.catalog.RuntimeCatalogEntry;
 import io.github.ygrip.testara.agent.catalog.RuntimeCatalogIndexer;
+import io.github.ygrip.testara.agent.config.AgentYamlConfig;
 import io.github.ygrip.testara.agent.flavor.FlavorEntry;
 import io.github.ygrip.testara.agent.flavor.TestaraFlavorIndexer;
 import io.github.ygrip.testara.agent.parser.FeatureParser;
@@ -71,9 +72,10 @@ public class ProjectIndexer {
     // Read configured scan packages from configuration.properties
     Set<String> scanPackages = readScanPackages(projectRoot);
 
-    List<Path> featureRoots = findFeatureRoots(projectRoot);
-    List<Path> requestSpecRoots = findResourceDirs(projectRoot, "files");
-    List<Path> validationRoots = findResourceDirs(projectRoot, "validations");
+    AgentYamlConfig.AgentConfig agentConfig = AgentYamlConfig.load(projectRoot);
+    List<Path> featureRoots = configuredRoots(projectRoot, agentConfig.featureRoots(), findFeatureRoots(projectRoot));
+    List<Path> requestSpecRoots = configuredRoots(projectRoot, agentConfig.requestSpecRoots(), findResourceDirs(projectRoot, "files"));
+    List<Path> validationRoots = configuredRoots(projectRoot, agentConfig.validationRoots(), findResourceDirs(projectRoot, "validations"));
 
     List<FeatureIndex> features = parseFeatures(featureRoots);
     List<StepDefinitionIndex> stepDefs = scanStepDefinitions(javaSourceRoots);
@@ -181,6 +183,19 @@ public class ProjectIndexer {
   }
 
   // ── Feature root detection ────────────────────────────────────────
+
+  private List<Path> configuredRoots(Path root, List<String> configured, List<Path> discovered) {
+    if (configured == null || configured.isEmpty()) return discovered;
+    Path normalizedRoot = root.toAbsolutePath().normalize();
+    List<Path> roots = configured.stream()
+        .map(normalizedRoot::resolve)
+        .map(Path::normalize)
+        .filter(path -> path.startsWith(normalizedRoot))
+        .filter(Files::isDirectory)
+        .distinct()
+        .toList();
+    return roots.isEmpty() ? discovered : roots;
+  }
 
   private List<Path> findFeatureRoots(Path root) {
     List<Path> roots = new ArrayList<>();
