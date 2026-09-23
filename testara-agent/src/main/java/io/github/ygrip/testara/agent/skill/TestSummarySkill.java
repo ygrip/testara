@@ -216,4 +216,5 @@ public class TestSummarySkill implements AgentSkill<TestSummarySkill.Input, Stri
     } catch (JsonProcessingException e) {
       throw new IllegalStateException("Cannot serialize test summary", e);
     }
-  }}
+  }
+}
