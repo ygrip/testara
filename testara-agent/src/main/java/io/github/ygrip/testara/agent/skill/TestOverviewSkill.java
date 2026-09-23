@@ -135,23 +135,4 @@ public class TestOverviewSkill implements AgentSkill<Path, String> {
     }
   }
 
-  @SuppressWarnings("unchecked")
-  private String toJson(Object obj, int indent) {
-    String pad = "  ".repeat(indent);
-    String inner = "  ".repeat(indent + 1);
-    if (obj instanceof Map<?, ?> map) {
-      if (map.isEmpty()) return "{}";
-      StringJoiner sj = new StringJoiner(",\n" + inner, "{\n" + inner, "\n" + pad + "}");
-      map.forEach((k, v) -> sj.add("\"" + k + "\": " + toJson(v, indent + 1)));
-      return sj.toString();
-    }
-    if (obj instanceof List<?> list) {
-      if (list.isEmpty()) return "[]";
-      StringJoiner sj = new StringJoiner(", ", "[", "]");
-      list.forEach(item -> sj.add(toJson(item, indent)));
-      return sj.toString();
-    }
-    if (obj instanceof String s) return "\"" + s.replace("\"", "\\\"") + "\"";
-    return String.valueOf(obj);
-  }
 }
