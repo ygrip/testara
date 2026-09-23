@@ -27,7 +27,7 @@ public class TestaraApiSkill implements AgentSkill<TestaraApiSkill.Input, String
   public String execute(Input input, AgentContext context) {
     String mode = input.mode() != null ? input.mode() : "explain";
     boolean concise = "concise".equals(context.options().get("format"));
-    boolean write = context.allowsWrite() && write;
+    boolean write = context.allowsWrite() && "true".equals(context.options().get("write"));
 
     return switch (mode) {
       case "config"        -> generateApiConfig(input.domain(), context.projectRoot(), write, concise);
