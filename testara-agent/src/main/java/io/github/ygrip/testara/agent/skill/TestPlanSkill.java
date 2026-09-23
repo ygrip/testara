@@ -53,7 +53,7 @@ public class TestPlanSkill implements AgentSkill<TestPlanSkill.Input, String> {
     String clarification = clarificationPrompt(input.intent(), slice, input.domain() != null, profile);
     if (clarification != null) return clarification;
     List<String> tags = buildTags(input.tags(), slice, domain);
-    boolean write = context.allowsWrite() && write;
+    boolean write = context.allowsWrite() && "true".equals(context.options().get("write"));
     boolean concise = "concise".equals(context.options().get("format"));
 
     // Use project-level catalog if available, otherwise fall back to bundled framework catalog
@@ -165,7 +165,7 @@ public class TestPlanSkill implements AgentSkill<TestPlanSkill.Input, String> {
     StringBuilder preview = new StringBuilder();
     Map<String, String> actionCatalog = actionCatalog(context.projectRoot());
     boolean write = context.allowsWrite()
-        && (input.createFiles() || write);
+        && (input.createFiles() || "true".equals(context.options().get("write")));
 
     for (FeatureBatchSpec feature : features) {
       String featureText = buildBatchFeature(feature, actionCatalog, usedActions, unresolvedActions, tagIndex);
