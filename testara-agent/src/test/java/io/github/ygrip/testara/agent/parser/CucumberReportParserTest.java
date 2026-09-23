@@ -131,4 +131,24 @@ class CucumberReportParserTest {
     assertEquals("failing one", report.failedScenarios().get(0).scenario());
     assertEquals("expected error banner", report.failedScenarios().get(0).error());
   }
+  @Test
+  void junitErrorsAreFailuresNotPasses(@TempDir Path dir) throws IOException {
+    Path reportFile = dir.resolve("junit-error.xml");
+    Files.writeString(reportFile, """
+        <testsuite name="suite" tests="1" failures="0" errors="1" skipped="0">
+          <testcase name="crashed scenario" classname="CheckoutTest">
+            <error message="driver crashed">stack trace</error>
+          </testcase>
+        </testsuite>
+        """, StandardCharsets.UTF_8);
+
+    TestRunReport report = CucumberReportParser.parseJunitXml(reportFile, "@ui", 100L);
+
+    assertEquals("FAILED", report.status());
+    assertEquals(1, report.total());
+    assertEquals(1, report.failed());
+    assertEquals(0, report.passed());
+    assertEquals("crashed scenario", report.failedScenarios().get(0).scenario());
+  }
+
 }
