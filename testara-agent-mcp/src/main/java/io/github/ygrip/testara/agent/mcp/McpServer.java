@@ -663,6 +663,7 @@ public class McpServer {
       opts.put("includeExamples", Boolean.toString(args.path("includeExamples").asBoolean(false)));
     }
     if (args.has("projectRoot")) opts.put("projectRootExplicit", "true");
+    if (!writeEnabled()) opts.put("write", "false");
 
     boolean dryRun = Boolean.parseBoolean(opts.getOrDefault("dryRun", "false"));
     boolean execute = Boolean.parseBoolean(opts.getOrDefault("execute", "false"));
