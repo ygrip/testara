@@ -1,5 +1,8 @@
 package io.github.ygrip.testara.agent.skill;
 
+import io.github.ygrip.testara.agent.safety.OutputValidator;
+import io.github.ygrip.testara.agent.safety.ProjectPathGuard;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -229,8 +232,10 @@ public class TestaraBootstrapSkill implements AgentSkill<TestaraBootstrapSkill.I
   private String renderArtifact(String artifact, String relativePath, String source, String scanHint,
       Path root, boolean write, boolean concise) {
     if (write) {
+      var validation = OutputValidator.validateJavaSource(source, "command".equals(artifact), "validation".equals(artifact));
+      if (!validation.valid()) return "Error: " + String.join("; ", validation.errors());
       try {
-        Path target = root.resolve(relativePath);
+        Path target = ProjectPathGuard.resolveInside(root, relativePath);
         Files.createDirectories(target.getParent());
         Files.writeString(target, source, StandardCharsets.UTF_8);
         String className = target.getFileName().toString().replace(".java", "");
@@ -401,8 +406,10 @@ public class TestaraBootstrapSkill implements AgentSkill<TestaraBootstrapSkill.I
         """.formatted(basePackage, basePackage, pageClass, pageClass, actionClass, methods);
     String relativePath = "src/main/java/" + basePackage.replace('.', '/') + "/action/" + actionClass + ".java";
     if (!write) return new ActionWrite("file_path: " + relativePath + "\n```java\n" + source.strip() + "\n```", catalog);
+    var validation = OutputValidator.validateJavaSource(source, false, false);
+    if (!validation.valid()) return new ActionWrite("Error: " + String.join("; ", validation.errors()), catalog);
     try {
-      Path target = root.resolve(relativePath);
+      Path target = ProjectPathGuard.resolveInside(root, relativePath);
       Files.createDirectories(target.getParent());
       Files.writeString(target, source, StandardCharsets.UTF_8);
       return new ActionWrite("written: " + relativePath + "\nactions: " + catalog.size(), catalog);
