@@ -61,7 +61,9 @@ public class ProjectIndexer {
     List<String> modules = detectModules(projectRoot);
     String javaVersion = detectJavaVersion(projectRoot);
     BuildTool buildTool = Files.exists(projectRoot.resolve("pom.xml"))
-        ? BuildTool.MAVEN : BuildTool.GRADLE;
+        ? BuildTool.MAVEN
+        : (Files.exists(projectRoot.resolve("build.gradle"))
+            || Files.exists(projectRoot.resolve("build.gradle.kts")) ? BuildTool.GRADLE : null);
 
     // Collect all Java source roots: project root + all Maven module source dirs
     List<Path> javaSourceRoots = collectJavaSourceRoots(projectRoot, modules);
@@ -183,12 +185,16 @@ public class ProjectIndexer {
   private List<Path> findFeatureRoots(Path root) {
     List<Path> roots = new ArrayList<>();
     try {
-      Files.walkFileTree(root, Set.of(), 6, new SimpleFileVisitor<>() {
+      Files.walkFileTree(root, new SimpleFileVisitor<>() {
         @Override
         public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
           String name = dir.getFileName() == null ? "" : dir.getFileName().toString();
-          if (name.equals("target")) return FileVisitResult.SKIP_SUBTREE;
-          if (name.equals("features")) roots.add(dir);
+          if (isExcludedDirectory(name)) return FileVisitResult.SKIP_SUBTREE;
+          if (name.equals("features")) {
+            roots.add(dir);
+            // parseFeatures walks this subtree; do not discover nested "features" roots again.
+            return FileVisitResult.SKIP_SUBTREE;
+          }
           return FileVisitResult.CONTINUE;
         }
         @Override
@@ -206,12 +212,15 @@ public class ProjectIndexer {
   private List<Path> findResourceDirs(Path root, String dirName) {
     List<Path> dirs = new ArrayList<>();
     try {
-      Files.walkFileTree(root, Set.of(), 6, new SimpleFileVisitor<>() {
+      Files.walkFileTree(root, new SimpleFileVisitor<>() {
         @Override
         public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
           String name = dir.getFileName() == null ? "" : dir.getFileName().toString();
-          if (name.equals("target")) return FileVisitResult.SKIP_SUBTREE;
-          if (name.equals(dirName)) dirs.add(dir);
+          if (isExcludedDirectory(name)) return FileVisitResult.SKIP_SUBTREE;
+          if (name.equals(dirName)) {
+            dirs.add(dir);
+            return FileVisitResult.SKIP_SUBTREE;
+          }
           return FileVisitResult.CONTINUE;
         }
         @Override
@@ -371,30 +380,55 @@ public class ProjectIndexer {
   // ── Tag index ─────────────────────────────────────────────────────
 
   private List<TagIndex> buildTagIndex(List<FeatureIndex> features) {
-    Map<String, List<Path>> tagFeatures = new TreeMap<>();
-    Map<String, Integer> tagScenarios = new TreeMap<>();
-    Map<String, List<String>> tagScenarioNames = new TreeMap<>();
+    Map<String, Set<Path>> tagFeatures = new TreeMap<>();
+    Map<String, Set<String>> tagScenarioKeys = new TreeMap<>();
+    Map<String, LinkedHashSet<String>> tagScenarioNames = new TreeMap<>();
+    Map<String, Integer> tagCases = new TreeMap<>();
 
     for (FeatureIndex feature : features) {
+      // Keep feature-only tags visible even when a feature currently has no scenarios.
       for (String tag : feature.tags()) {
-        tagFeatures.computeIfAbsent(tag, k -> new ArrayList<>()).add(feature.path());
+        tagFeatures.computeIfAbsent(tag, k -> new LinkedHashSet<>()).add(feature.path());
       }
+
       for (ScenarioIndex scenario : feature.scenarios()) {
-        for (String tag : scenario.tags()) {
-          tagFeatures.computeIfAbsent(tag, k -> new ArrayList<>()).add(feature.path());
-          tagScenarios.merge(tag, 1, Integer::sum);
-          tagScenarioNames.computeIfAbsent(tag, k -> new ArrayList<>()).add(scenario.name());
+        Set<String> baseTags = new LinkedHashSet<>(feature.tags());
+        baseTags.addAll(scenario.tags());
+
+        Set<String> definitionTags = new LinkedHashSet<>(baseTags);
+        scenario.examples().forEach(ex -> definitionTags.addAll(ex.tags()));
+
+        String scenarioKey = feature.path() + "\u0000" + scenario.name();
+        for (String tag : definitionTags) {
+          tagFeatures.computeIfAbsent(tag, k -> new LinkedHashSet<>()).add(feature.path());
+          tagScenarioKeys.computeIfAbsent(tag, k -> new LinkedHashSet<>()).add(scenarioKey);
+          tagScenarioNames.computeIfAbsent(tag, k -> new LinkedHashSet<>()).add(scenario.name());
+        }
+
+        if (scenario.type() == ScenarioType.SCENARIO_OUTLINE) {
+          for (ExamplesIndex examples : scenario.examples()) {
+            Set<String> caseTags = new LinkedHashSet<>(baseTags);
+            caseTags.addAll(examples.tags());
+            for (String tag : caseTags) {
+              tagCases.merge(tag, examples.rowCount(), Integer::sum);
+            }
+          }
+        } else {
+          for (String tag : baseTags) {
+            tagCases.merge(tag, 1, Integer::sum);
+          }
         }
       }
     }
 
     return tagFeatures.keySet().stream().map(tag -> new TagIndex(
         tag,
-        (int) tagFeatures.getOrDefault(tag, List.of()).stream().distinct().count(),
-        tagScenarios.getOrDefault(tag, 0),
-        tagFeatures.getOrDefault(tag, List.of()).stream().distinct().toList(),
-        tagScenarioNames.getOrDefault(tag, List.of())
-    )).collect(Collectors.toList());
+        tagFeatures.getOrDefault(tag, Set.of()).size(),
+        tagScenarioKeys.getOrDefault(tag, Set.of()).size(),
+        tagCases.getOrDefault(tag, 0),
+        List.copyOf(tagFeatures.getOrDefault(tag, Set.of())),
+        List.copyOf(tagScenarioNames.getOrDefault(tag, new LinkedHashSet<>()))
+    )).toList();
   }
 
   // ── Utilities ─────────────────────────────────────────────────────
@@ -406,7 +440,7 @@ public class ProjectIndexer {
         @Override
         public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
           String name = dir.getFileName() == null ? "" : dir.getFileName().toString();
-          return name.equals("target") ? FileVisitResult.SKIP_SUBTREE : FileVisitResult.CONTINUE;
+          return isExcludedDirectory(name) ? FileVisitResult.SKIP_SUBTREE : FileVisitResult.CONTINUE;
         }
         @Override
         public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
@@ -423,6 +457,11 @@ public class ProjectIndexer {
       LOG.warning("Error scanning Java files: " + e.getMessage());
     }
     return files;
+  }
+
+  private boolean isExcludedDirectory(String name) {
+    return Set.of("target", ".git", ".testara-agent", "node_modules", ".idea", ".gradle")
+        .contains(name);
   }
 
   private String extractClassName(String source) {
