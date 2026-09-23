@@ -1,5 +1,7 @@
 package io.github.ygrip.testara.agent.skill;
 
+import io.github.ygrip.testara.agent.safety.ProjectPathGuard;
+
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -229,7 +231,7 @@ public class TestaraApiSkill implements AgentSkill<TestaraApiSkill.Input, String
     String path = "src/test/resources/files/" + d + "/request/" + f + ".json";
     if (write) {
       try {
-        Path target = projectRoot.resolve(path);
+        Path target = ProjectPathGuard.resolveInside(projectRoot, path);
         Files.createDirectories(target.getParent());
         Files.writeString(target, spec, StandardCharsets.UTF_8);
         String featureStep = "When [api] process request to \"files/" + d + "/request/" + f + "\"";
