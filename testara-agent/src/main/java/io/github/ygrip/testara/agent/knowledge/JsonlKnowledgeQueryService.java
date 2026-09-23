@@ -26,8 +26,8 @@ public class JsonlKnowledgeQueryService implements KnowledgeQueryService {
     return profile.features().stream()
         .filter(f -> query.matchesText(f.featureName() + " " + f.path()))
         .filter(f -> query.tagExpression() == null || query.tagExpression().isBlank()
-            || f.tags().stream().anyMatch(query::matchesTag)
-            || f.scenarios().stream().anyMatch(s -> effectiveTags(f, s).stream().anyMatch(query::matchesTag)))
+            || query.matchesTags(f.tags())
+            || f.scenarios().stream().anyMatch(s -> query.matchesTags(effectiveTags(f, s))))
         .limit(query.maxResults())
         .toList();
   }
@@ -40,7 +40,7 @@ public class JsonlKnowledgeQueryService implements KnowledgeQueryService {
         .flatMap(f -> f.scenarios().stream().map(s -> Map.entry(f, s)))
         .filter(entry -> query.matchesText(entry.getValue().name()))
         .filter(entry -> query.tagExpression() == null || query.tagExpression().isBlank()
-            || effectiveTags(entry.getKey(), entry.getValue()).stream().anyMatch(query::matchesTag))
+            || query.matchesTags(effectiveTags(entry.getKey(), entry.getValue())))
         .limit(query.maxResults())
         .map(Map.Entry::getValue)
         .collect(Collectors.toList());
