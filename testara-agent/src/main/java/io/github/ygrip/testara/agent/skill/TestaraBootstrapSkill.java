@@ -40,7 +40,7 @@ public class TestaraBootstrapSkill implements AgentSkill<TestaraBootstrapSkill.I
   @Override
   public String execute(Input input, AgentContext context) {
     String artifact = normalize(input.artifact(), "ui");
-    boolean write = context.allowsWrite() && write;
+    boolean write = context.allowsWrite() && "true".equals(context.options().get("write"));
     boolean concise = "concise".equals(context.options().get("format"));
     String basePackage;
     if (input.basePackage() != null && !input.basePackage().isBlank()) {
