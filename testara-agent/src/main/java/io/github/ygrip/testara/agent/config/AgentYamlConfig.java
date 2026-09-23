@@ -25,7 +25,7 @@ public final class AgentYamlConfig {
   // Top-level sections
   private static final Pattern TOP_KEY = Pattern.compile("^(\\w+)\\s*:\\s*$");
   // Nested key: value
-  private static final Pattern NESTED_KV = Pattern.compile("^\\s{2,}(\\w[\\w-]*)\\s*:\\s*(.+)$");
+  private static final Pattern NESTED_KV = Pattern.compile("^\\s{2,}(\\w[\\w-]*)\\s*:\\s*(.*)$");
   // List item
   private static final Pattern LIST_ITEM = Pattern.compile("^\\s{4,}-\\s+\"([^\"]+)\"$|^\\s{4,}-\\s+([^-].*)$");
 
