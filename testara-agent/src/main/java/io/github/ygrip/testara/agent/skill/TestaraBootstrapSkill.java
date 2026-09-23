@@ -55,7 +55,7 @@ public class TestaraBootstrapSkill implements AgentSkill<TestaraBootstrapSkill.I
     }
 
     if ("batch".equals(artifact) || "ui-batch".equals(artifact) || "batch".equals(normalize(input.mode(), ""))) {
-      return uiBatch(input, context, basePackage);
+      return uiBatch(input, context, basePackage, write);
     }
 
     return switch (artifact) {
@@ -85,7 +85,7 @@ public class TestaraBootstrapSkill implements AgentSkill<TestaraBootstrapSkill.I
     return "artifact: ui-bundle\n\n" + page + "\n\n" + action;
   }
 
-  private String uiBatch(Input input, AgentContext context, String basePackage) {
+  private String uiBatch(Input input, AgentContext context, String basePackage, boolean write) {
     List<PageSpec> pages = parsePages(input);
     if (pages.isEmpty()) {
       String inferredPage = first(input.pageName(), inferPage(input.intent()));

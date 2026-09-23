@@ -63,7 +63,7 @@ public class FeatureParser {
       child.getBackground().ifPresent(bg -> backgroundSteps.addAll(toSteps(bg)));
       child.getScenario().ifPresent(scenario ->
           scenarios.add(toScenario(scenario, List.of())));
-      child.getRule().ifPresent(rule -> addRuleScenarios(rule, scenarios));
+      child.getRule().ifPresent(rule -> addRuleScenarios(rule, scenarios, backgroundSteps));
     }
 
     return new FeatureIndex(
@@ -74,9 +74,11 @@ public class FeatureParser {
         List.copyOf(backgroundSteps));
   }
 
-  private void addRuleScenarios(Rule rule, List<ScenarioIndex> scenarios) {
+  private void addRuleScenarios(Rule rule, List<ScenarioIndex> scenarios,
+      List<StepIndex> backgroundSteps) {
     List<String> ruleTags = tags(rule.getTags());
     for (RuleChild child : rule.getChildren()) {
+      child.getBackground().ifPresent(bg -> backgroundSteps.addAll(toSteps(bg)));
       child.getScenario().ifPresent(scenario ->
           scenarios.add(toScenario(scenario, ruleTags)));
     }
@@ -90,9 +92,9 @@ public class FeatureParser {
         .map(this::toExamples)
         .toList();
 
-    ScenarioType type = examples.isEmpty()
-        ? ScenarioType.SCENARIO
-        : ScenarioType.SCENARIO_OUTLINE;
+    ScenarioType type = scenario.getKeyword().startsWith("Scenario Outline")
+        || scenario.getKeyword().startsWith("Scenario Template")
+        ? ScenarioType.SCENARIO_OUTLINE : ScenarioType.SCENARIO;
 
     return new ScenarioIndex(
         scenario.getName(),

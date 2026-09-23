@@ -191,7 +191,7 @@ class TestaraUiSkillTest {
   }
 
   private AgentContext writeContext() {
-    return new AgentContext(projectRoot, null, AgentMode.READ_ONLY, null,
+    return new AgentContext(projectRoot, null, AgentMode.APPLY, null,
         Map.of("format", "concise", "write", "true"));
   }
 }

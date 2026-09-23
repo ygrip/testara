@@ -178,4 +178,25 @@ class FeatureParserTest {
     assertEquals(1, scenario.examples().get(1).rowCount());
   }
 
+  @Test
+  void preservesRuleBackgroundsAndOutlineTypeWithoutExamples(@TempDir Path tempDir) throws IOException {
+    Path file = tempDir.resolve("rule-background.feature");
+    Files.writeString(file, """
+        Feature: Checkout
+
+          Rule: Authenticated checkout
+            Background:
+              Given a signed-in shopper
+
+            Scenario Outline: Purchase by channel
+              When the shopper pays with "<channel>"
+        """);
+
+    FeatureIndex feature = parser.parse(file);
+
+    assertEquals(List.of("a signed-in shopper"),
+        feature.backgroundSteps().stream().map(StepIndex::text).toList());
+    assertEquals(ScenarioType.SCENARIO_OUTLINE, feature.scenarios().getFirst().type());
+  }
+
 }

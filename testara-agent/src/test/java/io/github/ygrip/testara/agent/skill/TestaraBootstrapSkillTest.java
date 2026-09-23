@@ -131,7 +131,7 @@ class TestaraBootstrapSkillTest {
   }
 
   private AgentContext writeContext() {
-    return new AgentContext(projectRoot, profile(), AgentMode.READ_ONLY, null,
+    return new AgentContext(projectRoot, profile(), AgentMode.APPLY, null,
         Map.of("format", "concise", "write", "true"));
   }
 

@@ -300,7 +300,7 @@ class TestInitSkillTest {
   @Test
   void initRefusesToWriteIntoImplicitHomeRoot() {
     Path home = Path.of(System.getProperty("user.home")).toAbsolutePath().normalize();
-    AgentContext unsafe = new AgentContext(home, null, AgentMode.PATCH, null,
+    AgentContext unsafe = new AgentContext(home, null, AgentMode.APPLY, null,
         Map.of("write", "true", "autoGenerateCoordinates", "true"));
 
     String output = new TestInitSkill().execute(
@@ -334,7 +334,7 @@ class TestInitSkillTest {
 
     String output = skill.execute(
         new TestInitSkill.Input("api", "io.github.ygrip.sample", "selenium", false, "io.github.ygrip", artifactId),
-        new AgentContext(projectRoot, null, AgentMode.READ_ONLY, null,
+        new AgentContext(projectRoot, null, AgentMode.APPLY, null,
             Map.of("write", "true", "compile", "false", "engineConfirmed", "true")));
 
     assertTrue(output.contains("status: SUCCESS"));
