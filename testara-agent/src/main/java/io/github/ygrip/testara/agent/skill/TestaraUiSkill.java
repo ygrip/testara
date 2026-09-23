@@ -1,5 +1,8 @@
 package io.github.ygrip.testara.agent.skill;
 
+import io.github.ygrip.testara.agent.safety.OutputValidator;
+import io.github.ygrip.testara.agent.safety.ProjectPathGuard;
+
 import io.github.ygrip.testara.agent.knowledge.FrameworkKnowledgeStore;
 
 import java.io.IOException;
@@ -208,8 +211,10 @@ public class TestaraUiSkill implements AgentSkill<TestaraUiSkill.Input, String> 
         : "";
 
     if (write) {
+      var validation = OutputValidator.validateJavaSource(source, false, false);
+      if (!validation.valid()) return "Error: " + String.join("; ", validation.errors());
       try {
-        Path target = root.resolve(relativePath);
+        Path target = ProjectPathGuard.resolveInside(root, relativePath);
         Files.createDirectories(target.getParent());
         Files.writeString(target, source, StandardCharsets.UTF_8);
         boolean anyWritten = false;
@@ -274,8 +279,10 @@ public class TestaraUiSkill implements AgentSkill<TestaraUiSkill.Input, String> 
         .formatted(normalizedAction, pageKey, template.featureTable(pageKey));
 
     if (write) {
+      var validation = OutputValidator.validateJavaSource(source, false, false);
+      if (!validation.valid()) return "Error: " + String.join("; ", validation.errors());
       try {
-        Path target = root.resolve(relativePath);
+        Path target = ProjectPathGuard.resolveInside(root, relativePath);
         Files.createDirectories(target.getParent());
         Files.writeString(target, source, StandardCharsets.UTF_8);
         return concise ? "written: " + relativePath + "\nstep: " + featureStep
@@ -301,7 +308,7 @@ public class TestaraUiSkill implements AgentSkill<TestaraUiSkill.Input, String> 
   }
 
   private boolean appendPropertyIfMissing(Path root, String relPath, String propertyLine) throws IOException {
-    Path target = root.resolve(relPath);
+    Path target = ProjectPathGuard.resolveInside(root, relPath);
     Files.createDirectories(target.getParent());
     String content = Files.exists(target)
         ? Files.readString(target, StandardCharsets.UTF_8)
