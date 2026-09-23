@@ -5,6 +5,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Set;
 import java.util.regex.Pattern;
+import io.cucumber.tagexpressions.TagExpressionParser;
 
 /**
  * Safety checks before executing Maven test commands.
@@ -18,9 +19,6 @@ public final class TestExecutionGuard {
   private static final Set<String> BLOCKED_PATTERNS = Set.of(
       "&&", "||", ";", "`", "$(", "${", ">", ">>", "<", "|", "&"
   );
-
-  private static final Pattern SAFE_TAG_EXPR = Pattern.compile(
-      "^[@\\w\\s()\\-]+$");
 
   private TestExecutionGuard() { /* utility */ }
 
@@ -94,8 +92,14 @@ public final class TestExecutionGuard {
 
   /** Validate a tag expression for safe characters. */
   public static boolean isValidTagExpression(String tagExpression) {
-    return tagExpression != null
-        && !tagExpression.isBlank()
-        && SAFE_TAG_EXPR.matcher(tagExpression).matches();
+    if (tagExpression == null || tagExpression.isBlank()) return false;
+    if (tagExpression.indexOf('\n') >= 0 || tagExpression.indexOf('\r') >= 0
+        || tagExpression.indexOf('\0') >= 0) return false;
+    try {
+      TagExpressionParser.parse(tagExpression);
+      return true;
+    } catch (RuntimeException e) {
+      return false;
+    }
   }
 }
