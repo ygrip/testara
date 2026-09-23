@@ -41,7 +41,7 @@ public final class IncrementalIndexer {
 
     // Non-structural content changed. Reindex fully until partial merging is implemented safely.
     LOG.info("Content change detected — full reindex");
-    return fullReindex(projectRoot, currentFingerprint)
+    return fullReindex(projectRoot, currentFingerprint);
   }
 
   private ProjectKnowledgeSnapshot fullReindex(Path projectRoot,
