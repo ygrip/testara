@@ -27,9 +27,11 @@ class FeatureParserTest {
     FeatureIndex feature = parser.parse(file);
 
     assertEquals("Login", feature.featureName());
+    assertEquals(List.of("@api", "@smoke"), feature.tags());
     assertEquals(1, feature.scenarios().size());
     ScenarioIndex scenario = feature.scenarios().get(0);
     assertEquals("Successful login", scenario.name());
+    assertEquals(List.of("@P1", "@positive"), scenario.tags());
     assertEquals(ScenarioType.SCENARIO, scenario.type());
     assertEquals(3, scenario.steps().size());
     assertEquals("Given", scenario.steps().get(0).keyword());
@@ -136,4 +138,44 @@ class FeatureParserTest {
     StepIndex firstStep = feature.scenarios().get(0).steps().get(0);
     assertTrue(firstStep.dataTable().isEmpty(), "Step without data table should have empty list");
   }
+  @Test
+  void preservesTagsAcrossMultipleExamplesBlocksAndRules(@TempDir Path tempDir) throws IOException {
+    String content = """
+        @api
+        Feature: Checkout
+
+          @checkout
+          Rule: Purchase flow
+
+            @regression
+            Scenario Outline: Purchase by channel
+              Given channel "<channel>"
+              Then purchase succeeds
+
+              @desktop
+              Examples:
+                | channel |
+                | web     |
+                | desktop |
+
+              @mobile
+              Examples:
+                | channel |
+                | app     |
+        """;
+    Path file = tempDir.resolve("checkout.feature");
+    Files.writeString(file, content);
+
+    FeatureIndex feature = parser.parse(file);
+    ScenarioIndex scenario = feature.scenarios().get(0);
+
+    assertEquals(List.of("@api"), feature.tags());
+    assertEquals(List.of("@checkout", "@regression"), scenario.tags());
+    assertEquals(2, scenario.examples().size());
+    assertEquals(List.of("@desktop"), scenario.examples().get(0).tags());
+    assertEquals(2, scenario.examples().get(0).rowCount());
+    assertEquals(List.of("@mobile"), scenario.examples().get(1).tags());
+    assertEquals(1, scenario.examples().get(1).rowCount());
+  }
+
 }
