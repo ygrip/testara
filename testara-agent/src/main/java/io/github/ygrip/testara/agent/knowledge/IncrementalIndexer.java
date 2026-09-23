@@ -8,14 +8,10 @@ import java.time.Instant;
 import java.util.logging.Logger;
 
 /**
- * Fingerprint-aware incremental indexer.
+ * Fingerprint-aware reindex helper.
  *
- * <p>Compares current file fingerprints against the previous snapshot to decide:
- * <ul>
- *   <li>Cache reuse — no files changed</li>
- *   <li>Partial reindex — only feature/step files changed</li>
- *   <li>Full reindex — build config, scan locations, or structural change</li>
- * </ul>
+ * <p>Unchanged snapshots are reused. Any content change currently triggers a full
+ * correctness-first reindex; partial merge logic is intentionally not claimed or exposed.
  */
 public final class IncrementalIndexer {
 
@@ -43,9 +39,9 @@ public final class IncrementalIndexer {
       return fullReindex(projectRoot, currentFingerprint);
     }
 
-    // Partial reindex (feature/step files changed only)
-    LOG.info("Incremental change detected — partial reindex");
-    return fullReindex(projectRoot, currentFingerprint); // simplified: full reindex
+    // Non-structural content changed. Reindex fully until partial merging is implemented safely.
+    LOG.info("Content change detected — full reindex");
+    return fullReindex(projectRoot, currentFingerprint)
   }
 
   private ProjectKnowledgeSnapshot fullReindex(Path projectRoot,
