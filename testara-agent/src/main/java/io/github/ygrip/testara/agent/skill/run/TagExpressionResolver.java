@@ -2,6 +2,8 @@ package io.github.ygrip.testara.agent.skill.run;
 
 import io.github.ygrip.testara.agent.index.TagIndex;
 import io.github.ygrip.testara.agent.index.TestaraProjectProfile;
+import io.cucumber.tagexpressions.Expression;
+import io.cucumber.tagexpressions.TagExpressionParser;
 
 import java.util.*;
 import java.util.regex.Matcher;
@@ -28,7 +30,7 @@ public class TagExpressionResolver {
   );
 
   private static final Pattern EXPLICIT_TAG = Pattern.compile("@(\\w[\\w-]*)");
-  private static final Pattern NOT_CLAUSE   = Pattern.compile("\\b(?:not|except|exclude)\\s+(\\w+)");
+  private static final Pattern NOT_CLAUSE   = Pattern.compile("\\b(?:not|except|exclude)\\s+@?(\\w[\\w-]*)");
 
   private final Map<String, String> aliases;
 
@@ -44,21 +46,36 @@ public class TagExpressionResolver {
 
   public String resolve(String input, TestaraProjectProfile profile) {
     if (input == null || input.isBlank()) return "";
-    String lower = input.toLowerCase(Locale.ROOT);
+    String trimmed = input.strip();
+    String lower = trimmed.toLowerCase(Locale.ROOT);
+
+    // Preserve an explicit Cucumber expression exactly; do not rebuild its precedence.
+    if (looksLikeExplicitExpression(trimmed)) {
+      try {
+        TagExpressionParser.parse(trimmed);
+        return trimmed;
+      } catch (RuntimeException ignored) {
+        // Natural-language fallback below will provide a safer resolution.
+      }
+    }
 
     // 1. Collect explicit @tags from input
     List<String> positiveTags = new ArrayList<>();
     List<String> negativeTags = new ArrayList<>();
 
-    Matcher explicit = EXPLICIT_TAG.matcher(input);
-    while (explicit.find()) positiveTags.add(explicit.group(0));
-
-    // 2. Collect NOT clauses
+    // 1. Collect NOT clauses first so explicit negative tags are not also treated as positive.
     Matcher not = NOT_CLAUSE.matcher(lower);
     while (not.find()) {
       String word = not.group(1);
       String resolved = aliases.getOrDefault(word, "@" + word);
       negativeTags.add(resolved);
+    }
+
+    // 2. Collect explicit @tags from input, excluding tags already identified as negative.
+    Matcher explicit = EXPLICIT_TAG.matcher(input);
+    while (explicit.find()) {
+      String tag = explicit.group(0);
+      if (!negativeTags.contains(tag)) positiveTags.add(tag);
     }
 
     // 3. Map natural language words to aliases / indexed tags
@@ -151,7 +168,7 @@ public class TagExpressionResolver {
         }
       }
     }
-    if (best == null || (tie && best.tags().isEmpty())) return "";
+    if (best == null || tie) return "";
     List<String> significant = best.tags().stream()
         .filter(t -> !negativeTags.contains(t))
         .filter(t -> !t.matches("@P\\d+") && !Set.of("@positive", "@negative", "@manual").contains(t))
@@ -267,26 +284,20 @@ public class TagExpressionResolver {
         .count();
   }
 
-  /** Very simple expression evaluator: handles `and`, `not`, single tags. */
   private boolean matchesExpression(String expr, Set<String> tags) {
-    String[] parts = expr.split("\\s+and\\s+");
-    for (String part : parts) {
-      part = part.strip();
-      if (part.startsWith("(") && part.endsWith(")") && part.contains(" or ")) {
-        String inside = part.substring(1, part.length() - 1);
-        boolean any = Arrays.stream(inside.split("\\s+or\\s+"))
-            .map(String::strip)
-            .anyMatch(tags::contains);
-        if (!any) return false;
-        continue;
-      }
-      if (part.startsWith("not ")) {
-        String negTag = part.substring(4).strip();
-        if (tags.contains(negTag)) return false;
-      } else if (!tags.contains(part)) {
-        return false;
-      }
+    try {
+      Expression expression = TagExpressionParser.parse(expr);
+      return expression.evaluate(List.copyOf(tags));
+    } catch (RuntimeException e) {
+      return false;
     }
-    return true;
+  }
+
+  private boolean looksLikeExplicitExpression(String input) {
+    String lower = input.toLowerCase(Locale.ROOT);
+    return input.startsWith("@")
+        || input.startsWith("(")
+        || lower.startsWith("not @")
+        || lower.startsWith("not (");
   }
 }
