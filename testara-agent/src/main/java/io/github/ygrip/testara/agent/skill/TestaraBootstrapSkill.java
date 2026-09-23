@@ -40,7 +40,7 @@ public class TestaraBootstrapSkill implements AgentSkill<TestaraBootstrapSkill.I
   @Override
   public String execute(Input input, AgentContext context) {
     String artifact = normalize(input.artifact(), "ui");
-    boolean write = "true".equals(context.options().get("write"));
+    boolean write = context.allowsWrite() && write;
     boolean concise = "concise".equals(context.options().get("format"));
     String basePackage;
     if (input.basePackage() != null && !input.basePackage().isBlank()) {
@@ -119,7 +119,7 @@ public class TestaraBootstrapSkill implements AgentSkill<TestaraBootstrapSkill.I
         String actionPath = "src/main/java/" + basePackage.replace('.', '/') + "/action/" + actionClass + ".java";
         createdFiles.add(actionPath);
         ActionWrite actionWrite = writeBatchActions(pageName, pageClass, actionClass, actionNames,
-            basePackage, context.projectRoot(), "true".equals(context.options().get("write")));
+            basePackage, context.projectRoot(), write);
         raw.append("\n--- actions ").append(pageKey).append(" ---\n").append(actionWrite.summary()).append("\n");
         actionCatalog.addAll(actionWrite.catalog());
         String actionSymbols = actionWrite.catalog().isEmpty() ? "" : "; actions:" + String.join(",", actionWrite.catalog());
@@ -152,7 +152,7 @@ public class TestaraBootstrapSkill implements AgentSkill<TestaraBootstrapSkill.I
       String featureFiles = first(input.featureFiles(), defaultFeatureFiles(pages));
       String planOutput = planSkill.execute(new TestPlanSkill.Input(first(input.intent(), "generated ui flow"),
           "ui", first(input.domain(), "ui"), List.of(), "batch", featureFiles,
-          input.createFiles() || "true".equals(context.options().get("write")), true), context);
+          input.createFiles() || write, true), context);
       sb.append("featureGeneration:\n").append(indent(planOutput)).append("\n");
     }
     if (!"summary".equals(context.options().get("format"))) {
