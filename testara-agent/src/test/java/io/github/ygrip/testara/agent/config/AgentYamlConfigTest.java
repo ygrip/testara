@@ -21,10 +21,14 @@ class AgentYamlConfigTest {
         project:
           featureRoots:
             - "src/test/resources/features"
+          requestSpecRoots:
+            - "src/test/resources/files"
         tagAliases:
           checkout:
             - "@checkout"
             - "@purchase"
+          smoke:
+            - "@smoke"
         """);
 
     assertEquals("false", config.run().get("dryRun"));
@@ -32,7 +36,9 @@ class AgentYamlConfigTest {
     assertEquals("true", config.write().get("enabled"));
     assertEquals("qwen3", config.llm().get("model"));
     assertEquals(1, config.featureRoots().size());
+    assertEquals(1, config.requestSpecRoots().size());
     assertEquals(2, config.tagAliases().get("checkout").size());
+    assertEquals(1, config.tagAliases().get("smoke").size());
 
     var options = new LinkedHashMap<String, String>();
     config.apply(options);
