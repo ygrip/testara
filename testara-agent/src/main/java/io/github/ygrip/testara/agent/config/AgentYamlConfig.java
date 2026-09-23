@@ -55,7 +55,8 @@ public final class AgentYamlConfig {
       llm.forEach((k, v) -> opts.putIfAbsent("llm." + k, v));
       tagAliases.forEach((alias, tags) -> {
         if (!tags.isEmpty()) {
-          opts.putIfAbsent("tag-alias." + alias, String.join(",", tags));
+          String expression = tags.size() == 1 ? tags.get(0) : "(" + String.join(" or ", tags) + ")";
+          opts.putIfAbsent("tag-alias." + alias, expression);
         }
       });
     }
