@@ -20,11 +20,13 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import io.github.ygrip.testara.agent.AgentMode;
+import io.github.ygrip.testara.agent.config.AgentYamlConfig;
 import io.github.ygrip.testara.agent.index.TestaraProjectProfile;
 import io.github.ygrip.testara.agent.knowledge.JsonlKnowledgeStore;
 import io.github.ygrip.testara.agent.llm.DisabledLlmClient;
 import io.github.ygrip.testara.agent.llm.LlmClient;
 import io.github.ygrip.testara.agent.llm.LlmConfig;
+import io.github.ygrip.testara.agent.llm.LocalLlmClient;
 import io.github.ygrip.testara.agent.llm.OpenAiLlmClient;
 import io.github.ygrip.testara.agent.skill.AgentContext;
 import io.github.ygrip.testara.agent.skill.ListCommandsSkill;
@@ -114,33 +116,15 @@ public class McpServer {
 
     // Index only when the root looks like a real project — skip when launched from home dir or
     // a non-project directory (e.g. VS Code global MCP config with "." as CWD)
-    if (Files.exists(projectRoot.resolve("pom.xml")) || Files.exists(projectRoot.resolve("build.gradle"))) {
+    if (isProjectRoot(projectRoot)) {
       LOG.info("Indexing project at " + projectRoot);
       profile = JsonlKnowledgeStore.loadProfile(projectRoot);
       LOG.info("Index complete: " + profile.features()
         .size() + " features, " + profile.totalScenarios() + " scenarios");
     } else {
-      LOG.warning("No pom.xml or build.gradle found at " + projectRoot
+      LOG.warning("No pom.xml, build.gradle, or build.gradle.kts found at " + projectRoot
         + " — starting without project index. Pass the project path as the mcp argument.");
-      profile = new TestaraProjectProfile(
-        projectRoot,
-        null,
-        "unknown",
-        List.of(),
-        List.of(),
-        List.of(),
-        List.of(),
-        List.of(),
-        List.of(),
-        List.of(),
-        List.of(),
-        List.of(),
-        List.of(),
-        Map.of(),
-        Map.of(),
-        List.of(),
-        List.of()
-      );
+      profile = emptyProfile(projectRoot);
     }
 
     String line;
@@ -447,8 +431,8 @@ public class McpServer {
   }
 
   private String dispatchTool(String name, JsonNode args) {
-    if (args.path("write")
-      .asBoolean(false) && !writeEnabled()) {
+    if ((args.path("write").asBoolean(false) || args.path("createFiles").asBoolean(false))
+        && !writeEnabled()) {
       return writeDisabledMessage(name);
     }
     AgentContext ctx = buildContext(name, args);
@@ -648,95 +632,56 @@ public class McpServer {
   }
 
   private AgentContext buildContext(String toolName, JsonNode args) {
-    Map<String, String> opts = new LinkedHashMap<>();
     Path effectiveRoot = resolveProjectRoot(args);
-    // testara_run executes by default; writes still require explicit write=true.
+    Map<String, String> opts = new LinkedHashMap<>();
+    AgentYamlConfig.load(effectiveRoot).apply(opts);
+
     boolean isRun = "testara_run".equals(toolName);
-    opts.put(
-      "dryRun",
-      Boolean.toString(args.path("dryRun")
-        .asBoolean(!isRun))
-    );
-    opts.put(
-      "execute",
-      Boolean.toString(args.path("execute")
-        .asBoolean(isRun))
-    );
-    // Default to concise for MCP — agents don't need decorative markdown
-    opts.put(
-      "format",
-      args.has("format") ?
-        args.path("format")
-        .asText() :
-        "concise"
-    );
-    if (args.has("mode"))
-      opts.put(
-        "mode",
-        args.path("mode")
-          .asText("auto")
-      );
-    if (args.has("package"))
-      opts.put(
-        "package",
-        args.path("package")
-          .asText()
-      );
-    if (args.has("returnType"))
-      opts.put(
-        "returnType",
-        args.path("returnType")
-          .asText("String")
-      );
-    if (args.has("module"))
-      opts.put(
-        "module",
-        args.path("module")
-          .asText()
-      );
-    if (args.has("detail"))
-      opts.put(
-        "detail",
-        args.path("detail")
-          .asText()
-      );
-    if (args.has("write"))
-      opts.put(
-        "write",
-        Boolean.toString(args.path("write")
-          .asBoolean(false))
-      );
-    if (args.has("compile"))
-      opts.put(
-        "compile",
-        Boolean.toString(args.path("compile")
-          .asBoolean(true))
-      );
+    boolean defaultDryRun = Boolean.parseBoolean(opts.getOrDefault("dryRun", Boolean.toString(!isRun)));
+    boolean defaultExecute = Boolean.parseBoolean(opts.getOrDefault("execute", Boolean.toString(isRun)));
+
+    opts.put("dryRun", Boolean.toString(args.has("dryRun")
+        ? args.path("dryRun").asBoolean(defaultDryRun) : defaultDryRun));
+    opts.put("execute", Boolean.toString(args.has("execute")
+        ? args.path("execute").asBoolean(defaultExecute) : defaultExecute));
+    opts.put("format", args.has("format")
+        ? args.path("format").asText()
+        : opts.getOrDefault("format", "concise"));
+
+    if (args.has("mode")) opts.put("mode", args.path("mode").asText("auto"));
+    if (args.has("package")) opts.put("package", args.path("package").asText());
+    if (args.has("returnType")) opts.put("returnType", args.path("returnType").asText("String"));
+    if (args.has("module")) opts.put("module", args.path("module").asText());
+    if (args.has("detail")) opts.put("detail", args.path("detail").asText());
+    if (args.has("write")) opts.put("write", Boolean.toString(args.path("write").asBoolean(false)));
+    if (args.has("compile")) opts.put("compile", Boolean.toString(args.path("compile").asBoolean(true)));
     if (args.has("autoGenerateCoordinates")) {
-      opts.put(
-        "autoGenerateCoordinates",
-        Boolean.toString(args.path("autoGenerateCoordinates")
-          .asBoolean(false))
-      );
+      opts.put("autoGenerateCoordinates",
+          Boolean.toString(args.path("autoGenerateCoordinates").asBoolean(false)));
     }
     if (args.has("includeExamples")) {
-      opts.put(
-        "includeExamples",
-        Boolean.toString(args.path("includeExamples")
-          .asBoolean(false))
-      );
+      opts.put("includeExamples", Boolean.toString(args.path("includeExamples").asBoolean(false)));
     }
-    if (args.has("projectRoot"))
-      opts.put("projectRootExplicit", "true");
-    // engine is provided → user confirmed the choice, no engine prompt needed
-    // engineConfirmed is kept for backward compat but no longer used — prompt only fires when engine=null
+    if (args.has("projectRoot")) opts.put("projectRootExplicit", "true");
 
-    AgentMode mode = toolName.equals("testara_run") ? AgentMode.PLAN : AgentMode.READ_ONLY;
+    boolean dryRun = Boolean.parseBoolean(opts.getOrDefault("dryRun", "false"));
+    boolean execute = Boolean.parseBoolean(opts.getOrDefault("execute", "false"));
+    boolean writeRequested = Boolean.parseBoolean(opts.getOrDefault("write", "false"))
+        || args.path("createFiles").asBoolean(false);
+    AgentMode mode = (writeRequested || (isRun && execute && !dryRun))
+        ? AgentMode.APPLY
+        : (isRun ? AgentMode.PLAN : AgentMode.READ_ONLY);
 
     LlmConfig cfg = LlmConfig.fromEnv();
-    var llm = cfg.hasApiKey() ?
-      new OpenAiLlmClient(cfg) :
-      (LlmClient) new DisabledLlmClient();
+    String provider = cfg.provider() == null ? "" : cfg.provider().toLowerCase(java.util.Locale.ROOT);
+    LlmClient llm;
+    if ("local".equals(provider) || "ollama".equals(provider)) {
+      llm = new LocalLlmClient(cfg);
+    } else if (cfg.hasApiKey()) {
+      llm = new OpenAiLlmClient(cfg);
+    } else {
+      llm = new DisabledLlmClient();
+    }
     return new AgentContext(effectiveRoot, refreshedProfile(effectiveRoot), mode, llm, opts);
   }
 
@@ -754,18 +699,30 @@ public class McpServer {
   }
 
   private TestaraProjectProfile refreshedProfile(Path root) {
-    if (!Files.exists(root.resolve("pom.xml")) && !Files.exists(root.resolve("build.gradle"))) {
-      return profile;
+    if (!isProjectRoot(root)) {
+      return root.equals(projectRoot) ? profile : emptyProfile(root);
     }
     try {
       TestaraProjectProfile refreshed = JsonlKnowledgeStore.loadProfile(root);
-      if (root.equals(projectRoot))
-        profile = refreshed;
+      if (root.equals(projectRoot)) profile = refreshed;
       return refreshed;
     } catch (Exception e) {
       LOG.fine("Cannot refresh project index: " + e.getMessage());
+      return root.equals(projectRoot) ? profile : emptyProfile(root);
     }
-    return profile;
+  }
+
+  private boolean isProjectRoot(Path root) {
+    return Files.exists(root.resolve("pom.xml"))
+        || Files.exists(root.resolve("build.gradle"))
+        || Files.exists(root.resolve("build.gradle.kts"));
+  }
+
+  private TestaraProjectProfile emptyProfile(Path root) {
+    return new TestaraProjectProfile(
+        root, null, "unknown", List.of(), List.of(), List.of(), List.of(),
+        List.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
+        Map.of(), Map.of(), List.of(), List.of());
   }
 
   // ── MCP helpers ───────────────────────────────────────────────────
