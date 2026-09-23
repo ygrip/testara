@@ -38,6 +38,7 @@ public record TestaraProjectProfile(
   public List<String> knownConfigPrefixes() {
     return runtimeCatalog.stream().map(RuntimeCatalogEntry::prefix).distinct().collect(Collectors.toList());
   }
+
   /** Returns all flavor steps for a given slice (api, ui, sql, mongo, kafka, elastic, core). */
   public List<FlavorEntry> flavorStepsForSlice(String slice) {
     return flavorSteps.stream()
@@ -53,8 +54,21 @@ public record TestaraProjectProfile(
         .filter(e -> e.matchesIntent(lower))
         .findFirst();
   }
+
+  /** Scenario definitions, where one Scenario Outline counts once. */
   public int totalScenarios() {
     return features().stream().mapToInt(f -> f.scenarios().size()).sum();
+  }
+
+  /** Executable Cucumber cases, where each Scenario Outline example row counts once. */
+  public long totalExecutableCases() {
+    return features().stream()
+        .flatMap(f -> f.scenarios().stream())
+        .mapToLong(s -> {
+          if (s.type() != ScenarioType.SCENARIO_OUTLINE) return 1;
+          return s.examples().stream().mapToLong(ExamplesIndex::rowCount).sum();
+        })
+        .sum();
   }
 
   public long totalExampleRows() {
@@ -71,5 +85,10 @@ public record TestaraProjectProfile(
   public Map<String, Long> tagDistribution() {
     return tags().stream().collect(
         java.util.stream.Collectors.toMap(TagIndex::tag, t -> (long) t.scenarioCount()));
+  }
+
+  public Map<String, Long> tagCaseDistribution() {
+    return tags().stream().collect(
+        java.util.stream.Collectors.toMap(TagIndex::tag, t -> (long) t.executableCaseCount()));
   }
 }
