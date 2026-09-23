@@ -398,7 +398,16 @@ public class TestReviewSkill implements AgentSkill<Path, String> {
         out.add(parser.parse(target));
       } else if (Files.isDirectory(target)) {
         try (Stream<Path> walk = Files.walk(target)) {
-          walk.filter(p -> p.toString().endsWith(".feature"))
+          walk.filter(Files::isRegularFile)
+              .filter(p -> p.toString().endsWith(".feature"))
+              .filter(p -> {
+                String normalized = p.toString().replace('\\', '/');
+                return !normalized.contains("/target/")
+                    && !normalized.contains("/.git/")
+                    && !normalized.contains("/.testara-agent/")
+                    && !normalized.contains("/node_modules/");
+              })
+              .sorted()
               .forEach(p -> { try { out.add(parser.parse(p)); } catch (IOException e) { /* skip */ } });
         }
       }
