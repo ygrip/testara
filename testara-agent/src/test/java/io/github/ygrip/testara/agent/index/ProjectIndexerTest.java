@@ -9,6 +9,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 /**
  * Regression coverage for testara-all.4: collectJavaSourceRoots added the project root AND every
@@ -52,4 +53,61 @@ class ProjectIndexerTest {
     assertEquals(1, profile.drivers().size(),
         "driver must be indexed once, not once per overlapping source root");
   }
+  @Test
+  void indexesEffectiveFeatureScenarioAndExamplesTags(@TempDir Path projectRoot) throws IOException {
+    Files.writeString(projectRoot.resolve("pom.xml"), "<project><properties><java.version>21</java.version></properties></project>");
+    Path featureDir = projectRoot.resolve("src/test/resources/features");
+    Files.createDirectories(featureDir);
+    Files.writeString(featureDir.resolve("checkout.feature"), """
+        @api
+        Feature: Checkout
+
+          @smoke
+          Scenario: Quick checkout
+            Given a cart
+            Then checkout succeeds
+
+          @regression
+          Scenario Outline: Checkout by channel
+            Given channel "<channel>"
+            Then checkout succeeds
+
+            @desktop
+            Examples:
+              | channel |
+              | web     |
+              | desktop |
+
+            @mobile
+            Examples:
+              | channel |
+              | app     |
+        """);
+
+    TestaraProjectProfile profile = new ProjectIndexer().index(projectRoot);
+
+    TagIndex api = tag(profile, "@api");
+    TagIndex smoke = tag(profile, "@smoke");
+    TagIndex regression = tag(profile, "@regression");
+    TagIndex desktop = tag(profile, "@desktop");
+    TagIndex mobile = tag(profile, "@mobile");
+
+    assertEquals(2, api.scenarioCount());
+    assertEquals(4, api.executableCaseCount());
+    assertEquals(1, smoke.scenarioCount());
+    assertEquals(1, smoke.executableCaseCount());
+    assertEquals(1, regression.scenarioCount());
+    assertEquals(3, regression.executableCaseCount());
+    assertEquals(1, desktop.scenarioCount());
+    assertEquals(2, desktop.executableCaseCount());
+    assertEquals(1, mobile.scenarioCount());
+    assertEquals(1, mobile.executableCaseCount());
+  }
+
+  private TagIndex tag(TestaraProjectProfile profile, String tag) {
+    TagIndex result = profile.tags().stream().filter(t -> t.tag().equals(tag)).findFirst().orElse(null);
+    assertNotNull(result, "expected indexed tag " + tag);
+    return result;
+  }
+
 }
