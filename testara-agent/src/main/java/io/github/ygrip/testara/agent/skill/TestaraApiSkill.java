@@ -1,6 +1,7 @@
 package io.github.ygrip.testara.agent.skill;
 
 import io.github.ygrip.testara.agent.safety.ProjectPathGuard;
+import io.github.ygrip.testara.agent.safety.OutputValidator;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -229,6 +230,10 @@ public class TestaraApiSkill implements AgentSkill<TestaraApiSkill.Input, String
         """.formatted(d, m, e, d, d);
 
     String path = "src/test/resources/files/" + d + "/request/" + f + ".json";
+    var validation = OutputValidator.validateJson(spec);
+    if (!validation.valid()) {
+      return "Generated request spec is invalid: " + String.join("; ", validation.errors());
+    }
     if (write) {
       try {
         Path target = ProjectPathGuard.resolveInside(projectRoot, path);
