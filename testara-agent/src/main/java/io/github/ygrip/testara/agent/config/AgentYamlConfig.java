@@ -117,6 +117,13 @@ public final class AgentYamlConfig {
       if (nested.matches()) {
         String key = nested.group(1);
         String value = nested.group(2).strip();
+        if (inList && listKey != null && !listKey.equals(key)) {
+          flushList(listKey, currentList, tagAliases, featureRoots,
+              requestSpecRoots, validationRoots);
+          currentList = new ArrayList<>();
+          inList = false;
+          listKey = null;
+        }
         if (value.length() >= 2 && value.startsWith("\"") && value.endsWith("\"")) {
           value = value.substring(1, value.length() - 1);
         }
