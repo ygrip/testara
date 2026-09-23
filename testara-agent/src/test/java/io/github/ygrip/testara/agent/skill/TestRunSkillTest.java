@@ -126,7 +126,7 @@ class TestRunSkillTest {
   }
 
   private AgentContext executeContext(TestaraProjectProfile profile) {
-    return new AgentContext(projectRoot, profile, AgentMode.READ_ONLY, null,
+    return new AgentContext(projectRoot, profile, AgentMode.APPLY, null,
         Map.of("dryRun", "false", "execute", "true"));
   }
 
