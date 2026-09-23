@@ -46,8 +46,12 @@ public final class AgentYamlConfig {
 
     /** Apply config overrides to a mutable options map. */
     public void apply(Map<String, String> opts) {
-      general.forEach((k, v) -> opts.putIfAbsent("agent." + k, v));
-      run.forEach((k, v) -> opts.putIfAbsent("run." + k, v));
+      general.forEach(opts::putIfAbsent);
+      run.forEach(opts::putIfAbsent);
+      write.forEach((k, v) -> {
+        String key = "enabled".equals(k) ? "write" : k;
+        opts.putIfAbsent(key, v);
+      });
       llm.forEach((k, v) -> opts.putIfAbsent("llm." + k, v));
       tagAliases.forEach((alias, tags) -> {
         if (!tags.isEmpty()) {
@@ -92,10 +96,11 @@ public final class AgentYamlConfig {
     for (String line : yaml.split("\n")) {
       String stripped = line.strip();
       if (stripped.isEmpty() || stripped.startsWith("#")) continue;
+      boolean topLevel = !line.isEmpty() && !Character.isWhitespace(line.charAt(0));
 
       // Top-level section
       Matcher topKey = TOP_KEY.matcher(stripped);
-      if (topKey.matches() && !stripped.startsWith(" ")) {
+      if (topKey.matches() && topLevel) {
         flushList(listKey, currentList, tagAliases, featureRoots,
             requestSpecRoots, validationRoots);
         section = topKey.group(1);
@@ -107,11 +112,13 @@ public final class AgentYamlConfig {
       }
 
       // Nested key: value
-      Matcher nested = NESTED_KV.matcher(stripped);
+      Matcher nested = NESTED_KV.matcher(line);
       if (nested.matches()) {
         String key = nested.group(1);
         String value = nested.group(2).strip();
-        if (value.endsWith("\"")) value = value.substring(1, value.length() - 1);
+        if (value.length() >= 2 && value.startsWith("\"") && value.endsWith("\"")) {
+          value = value.substring(1, value.length() - 1);
+        }
 
         if ("project".equals(section)) {
           if ("featureRoots".equals(key)) { inList = true; listKey = "featureRoots"; continue; }
