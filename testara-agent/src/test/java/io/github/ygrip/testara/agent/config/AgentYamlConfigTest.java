@@ -38,6 +38,6 @@ class AgentYamlConfigTest {
     config.apply(options);
     assertEquals("true", options.get("write"));
     assertEquals("qwen3", options.get("llm.model"));
-    assertEquals("@checkout,@purchase", options.get("tag-alias.checkout"));
+    assertEquals("(@checkout or @purchase)", options.get("tag-alias.checkout"));
   }
 }
