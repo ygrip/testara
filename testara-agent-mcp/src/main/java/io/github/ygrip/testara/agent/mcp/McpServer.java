@@ -673,7 +673,7 @@ public class McpServer {
         ? AgentMode.APPLY
         : (isRun ? AgentMode.PLAN : AgentMode.READ_ONLY);
 
-    LlmConfig cfg = LlmConfig.fromEnv();
+    LlmConfig cfg = LlmConfig.fromEnv(opts);
     String provider = cfg.provider() == null ? "" : cfg.provider().toLowerCase(java.util.Locale.ROOT);
     LlmClient llm;
     if ("local".equals(provider) || "ollama".equals(provider)) {
