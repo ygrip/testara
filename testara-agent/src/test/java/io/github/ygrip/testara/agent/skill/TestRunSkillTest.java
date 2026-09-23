@@ -125,6 +125,17 @@ class TestRunSkillTest {
     assertTrue(output.contains("target/rerun/rerun.txt"));
   }
 
+  @Test
+  void readOnlyModeCannotExecuteTests() {
+    AgentContext readOnly = new AgentContext(projectRoot, profileWithSaucedemo(),
+        AgentMode.READ_ONLY, null, Map.of("dryRun", "false", "execute", "true"));
+
+    String output = new TestRunSkill().execute("run @smoke", readOnly);
+
+    assertTrue(output.contains("Execution blocked"));
+    assertTrue(output.contains("Agent mode"));
+  }
+
   private AgentContext executeContext(TestaraProjectProfile profile) {
     return new AgentContext(projectRoot, profile, AgentMode.APPLY, null,
         Map.of("dryRun", "false", "execute", "true"));
