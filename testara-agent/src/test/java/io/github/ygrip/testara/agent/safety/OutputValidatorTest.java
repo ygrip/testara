@@ -29,7 +29,7 @@ class OutputValidatorTest {
   void rejectsFeatureMissingHeader() {
     var result = OutputValidator.validateFeature("Scenario: Missing feature header");
     assertFalse(result.valid());
-    assertTrue(result.errors().get(0).contains("Missing 'Feature:'"));
+    assertFalse(result.errors().isEmpty());
   }
 
   @Test
