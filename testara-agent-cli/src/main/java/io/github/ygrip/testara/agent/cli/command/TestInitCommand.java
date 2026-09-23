@@ -8,6 +8,7 @@ import java.util.Locale;
 import java.util.Map;
 
 import io.github.ygrip.testara.agent.AgentMode;
+import io.github.ygrip.testara.agent.config.AgentYamlConfig;
 import io.github.ygrip.testara.agent.knowledge.JsonlKnowledgeStore;
 import io.github.ygrip.testara.agent.llm.DisabledLlmClient;
 import io.github.ygrip.testara.agent.skill.AgentContext;
@@ -86,10 +87,11 @@ public class TestInitCommand implements Runnable {
     }
 
     Map<String, String> opts = new LinkedHashMap<>();
+    AgentYamlConfig.load(root).apply(opts);
     opts.put("write", Boolean.toString(!preview));
     opts.put("includeExamples", Boolean.toString(includeExamples));
     AgentContext ctx =
-      new AgentContext(root, JsonlKnowledgeStore.loadProfile(root), AgentMode.PATCH, new DisabledLlmClient(), opts);
+      new AgentContext(root, JsonlKnowledgeStore.loadProfile(root), preview ? AgentMode.PATCH : AgentMode.APPLY, new DisabledLlmClient(), opts);
     System.out.println(new TestInitSkill().execute(
       new TestInitSkill.Input(
         type,
