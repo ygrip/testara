@@ -15,11 +15,14 @@ public record LlmConfig(
   public static final double DEFAULT_TEMPERATURE = 0.2;
 
   public static LlmConfig fromEnv() {
+    String provider = env("TESTARA_AGENT_PROVIDER", DEFAULT_PROVIDER);
+    String defaultBaseUrl = ("local".equalsIgnoreCase(provider) || "ollama".equalsIgnoreCase(provider))
+        ? "http://localhost:11434" : "https://api.openai.com/v1";
     return new LlmConfig(
-        env("TESTARA_AGENT_PROVIDER", DEFAULT_PROVIDER),
+        provider,
         env("TESTARA_AGENT_MODEL", DEFAULT_MODEL),
         env("TESTARA_AGENT_API_KEY", null),
-        env("TESTARA_AGENT_BASE_URL", "https://api.openai.com/v1"),
+        env("TESTARA_AGENT_BASE_URL", defaultBaseUrl),
         Double.parseDouble(env("TESTARA_AGENT_TEMPERATURE", String.valueOf(DEFAULT_TEMPERATURE))),
         Integer.parseInt(env("TESTARA_AGENT_MAX_CONTEXT_FILES", "80")),
         Integer.parseInt(env("TESTARA_AGENT_MAX_OUTPUT_FILES", "20")),
