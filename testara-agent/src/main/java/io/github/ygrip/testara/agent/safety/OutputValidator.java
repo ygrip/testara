@@ -1,5 +1,7 @@
 package io.github.ygrip.testara.agent.safety;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 import java.util.List;
 
 /**
@@ -9,6 +11,8 @@ import java.util.List;
  * required structure, no secrets leaked, and no unknown references.
  */
 public final class OutputValidator {
+
+  private static final ObjectMapper MAPPER = new ObjectMapper();
 
   private OutputValidator() { /* utility */ }
 
@@ -54,10 +58,11 @@ public final class OutputValidator {
     if (content == null || content.isBlank()) {
       return ValidationResult.fail("Empty JSON content");
     }
-    String trimmed = content.strip();
-    if (!trimmed.startsWith("{") || !trimmed.endsWith("}")) {
-      return ValidationResult.fail("Content does not appear to be valid JSON (must start with { and end with })");
+    try {
+      MAPPER.readTree(content);
+      return ValidationResult.ok();
+    } catch (Exception e) {
+      return ValidationResult.fail("Invalid JSON: " + e.getMessage());
     }
-    return ValidationResult.ok();
   }
 }
