@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Map;
 
 import io.github.ygrip.testara.agent.AgentMode;
+import io.github.ygrip.testara.agent.config.AgentYamlConfig;
 import io.github.ygrip.testara.agent.knowledge.JsonlKnowledgeStore;
 import io.github.ygrip.testara.agent.llm.DisabledLlmClient;
 import io.github.ygrip.testara.agent.skill.AgentContext;
@@ -47,11 +48,12 @@ public class TestPlanCommand implements Runnable {
     Path root = projectRoot.toAbsolutePath()
       .normalize();
     Map<String, String> opts = new HashMap<>();
+    AgentYamlConfig.load(root).apply(opts);
     if (write)
       opts.put("write", "true");
 
     AgentContext ctx =
-      new AgentContext(root, JsonlKnowledgeStore.loadProfile(root), AgentMode.PATCH, new DisabledLlmClient(), opts);
+      new AgentContext(root, JsonlKnowledgeStore.loadProfile(root), write ? AgentMode.APPLY : AgentMode.PATCH, new DisabledLlmClient(), opts);
     System.out.println(new TestPlanSkill().execute(
       new TestPlanSkill.Input(
         intent,
