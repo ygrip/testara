@@ -1,6 +1,6 @@
 # Testara Reporter
 
-Testara 2.2.0 renders HTML reports with build-time generated JTE templates. The default `modern` report is designed as a readable, email-safe execution summary. An optional self-contained interactive companion can be generated for browser use.
+Testara 2.2.1 renders HTML reports with build-time generated JTE templates. The default `modern` report is designed as a readable, email-safe execution summary. An optional self-contained interactive companion can be generated for browser use.
 
 All report entry points, including `testara-junit5`, use the same reporter configuration.
 
