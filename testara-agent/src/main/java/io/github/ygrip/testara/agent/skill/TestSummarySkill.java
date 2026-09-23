@@ -28,8 +28,10 @@ public class TestSummarySkill implements AgentSkill<TestSummarySkill.Input, Stri
 
   @Override
   public String execute(Input input, AgentContext context) {
-    List<FeatureIndex> features = loadFeatures(input.target());
-    if (features.isEmpty()) return "No feature files found at: " + input.target();
+    Path target = input.target() == null ? context.projectRoot() : input.target();
+    if (!target.isAbsolute()) target = context.projectRoot().resolve(target).normalize();
+    List<FeatureIndex> features = loadFeatures(target);
+    if (features.isEmpty()) return "No feature files found at: " + target;
 
     List<FeatureIndex> filtered = input.scenarioFilter() != null && !input.scenarioFilter().isBlank()
         ? features.stream()
@@ -40,8 +42,8 @@ public class TestSummarySkill implements AgentSkill<TestSummarySkill.Input, Stri
 
     boolean concise = "true".equals(context.options().getOrDefault("concise", "false"));
     boolean asJson  = "json".equals(context.options().getOrDefault("format", ""));
-    if (asJson) return renderJson(filtered, input.target());
-    return concise ? renderConcise(filtered, input.target()) : renderMarkdown(filtered, input.target());
+    if (asJson) return renderJson(filtered, target);
+    return concise ? renderConcise(filtered, target) : renderMarkdown(filtered, target);
   }
 
   private List<FeatureIndex> loadFeatures(Path target) {
