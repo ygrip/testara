@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.ygrip.testara.agent.catalog.GenerationGuard;
 import io.github.ygrip.testara.agent.catalog.PropertyRuleEngine;
 import io.github.ygrip.testara.agent.safety.ProjectPathGuard;
+import io.github.ygrip.testara.agent.safety.OutputValidator;
 import io.github.ygrip.testara.agent.catalog.StepLinker;
 import io.github.ygrip.testara.agent.flavor.FlavorEntry;
 import io.github.ygrip.testara.agent.index.TestaraProjectProfile;
@@ -339,6 +340,11 @@ public class TestPlanSkill implements AgentSkill<TestPlanSkill.Input, String> {
   }
 
   private String writeFeatureAtPath(Path root, String relative, String content) {
+    var validation = OutputValidator.validateFeature(content);
+    if (!validation.valid()) {
+      LOG.warning("Refusing to write invalid feature: " + String.join("; ", validation.errors()));
+      return null;
+    }
     try {
       Path target = ProjectPathGuard.resolveInside(root, relative);
       Files.createDirectories(target.getParent());
@@ -674,6 +680,11 @@ public class TestPlanSkill implements AgentSkill<TestPlanSkill.Input, String> {
   }
 
   private void writeJsonIfAbsent(Path root, String relative, String content, List<String> generated) {
+    var validation = OutputValidator.validateJson(content);
+    if (!validation.valid()) {
+      LOG.warning("Refusing to write invalid JSON: " + relative + " - " + String.join("; ", validation.errors()));
+      return;
+    }
     try {
       Path target = ProjectPathGuard.resolveInside(root, relative);
       if (Files.exists(target)) return;
@@ -686,6 +697,11 @@ public class TestPlanSkill implements AgentSkill<TestPlanSkill.Input, String> {
   }
 
   private String writeFeatureFile(Path projectRoot, String placement, String fileName, String content) {
+    var validation = OutputValidator.validateFeature(content);
+    if (!validation.valid()) {
+      LOG.warning("Refusing to write invalid feature: " + String.join("; ", validation.errors()));
+      return null;
+    }
     try {
       Path file = ProjectPathGuard.resolveInside(projectRoot, placement + fileName);
       Files.createDirectories(file.getParent());
