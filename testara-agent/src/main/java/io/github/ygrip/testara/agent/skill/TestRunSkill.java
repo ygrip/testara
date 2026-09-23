@@ -89,7 +89,7 @@ public class TestRunSkill implements AgentSkill<String, String> {
 
     List<String> matchedNames = profile.features().stream()
         .flatMap(f -> f.scenarios().stream()
-            .filter(s -> resolver.countMatching(tagExpr,
+            .filter(s -> activeResolver.countMatching(tagExpr,
                 profileForScenario(profile, f, s)) > 0)
             .map(s -> s.name()))
         .limit(10)
