@@ -49,6 +49,7 @@ public class TestRunSkill implements AgentSkill<String, String> {
   public String execute(String input, AgentContext context) {
     TestaraProjectProfile profile = context.profile();
     Map<String, String> opts = context.options();
+    TagExpressionResolver activeResolver = resolverFor(opts);
     boolean dryRun    = "true".equals(opts.getOrDefault("dryRun", "false"));
     boolean execute   = !"false".equals(opts.getOrDefault("execute", "true"));
     boolean rerunFail = "true".equals(opts.getOrDefault("rerunFailed", "false"));
@@ -76,14 +77,14 @@ public class TestRunSkill implements AgentSkill<String, String> {
           + " exists from a previous test run.\n";
     }
 
-    String tagExpr = resolver.resolve(input, profile);
+    String tagExpr = activeResolver.resolve(input, profile);
     if (tagExpr.isBlank()) return unresolvedPrompt(input, context, profile);
 
-    int matched = resolver.countMatching(tagExpr, profile);
-    if (matched == 0) return preflightFailure(input, tagExpr, context, profile);
+    int matched = activeResolver.countMatching(tagExpr, profile);
+    if (matched == 0) return preflightFailure(input, tagExpr, context, profile, activeResolver);
     int matchedFeatures = (int) profile.features().stream()
         .filter(f -> f.scenarios().stream().anyMatch(s ->
-            resolver.countMatching(tagExpr, profileForScenario(profile, f, s)) > 0))
+            activeResolver.countMatching(tagExpr, profileForScenario(profile, f, s)) > 0))
         .count();
 
     List<String> matchedNames = profile.features().stream()
@@ -111,6 +112,16 @@ public class TestRunSkill implements AgentSkill<String, String> {
     return executeAndReport(argv, tagExpr, context.projectRoot(), module);
   }
 
+  private TagExpressionResolver resolverFor(Map<String, String> options) {
+    Map<String, String> aliases = new java.util.LinkedHashMap<>();
+    options.forEach((key, value) -> {
+      if (key.startsWith("tag-alias.") && value != null && !value.isBlank()) {
+        aliases.put(key.substring("tag-alias.".length()), value);
+      }
+    });
+    return aliases.isEmpty() ? resolver : new TagExpressionResolver(aliases);
+  }
+
   private String unresolvedPrompt(String input, AgentContext context, TestaraProjectProfile profile) {
     String availableTags = profile.tags().stream()
         .map(t -> t.tag())
@@ -131,8 +142,8 @@ public class TestRunSkill implements AgentSkill<String, String> {
   }
 
   private String preflightFailure(String input, String resolvedExpr,
-      AgentContext context, TestaraProjectProfile profile) {
-    List<String> suggestions = resolver.suggestAlternatives(resolvedExpr, profile, 8);
+      AgentContext context, TestaraProjectProfile profile, TagExpressionResolver activeResolver) {
+    List<String> suggestions = activeResolver.suggestAlternatives(resolvedExpr, profile, 8);
     String availableTags = profile.tags().stream()
         .map(t -> t.tag())
         .limit(15)
