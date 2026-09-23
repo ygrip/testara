@@ -1,0 +1,14 @@
+{
+  "specification": "sample-api",
+  "httpMethod": "GET",
+  "url": "properties(api.sample.path)",
+  "contentType": "application/json",
+  "queryParameters": {},
+  "formParameters": {},
+  "headers": {"Accept": "application/json"},
+  "pathParameters": {},
+  "multiPartData": {},
+  "payload": null,
+  "requestLog": ["METHOD", "PATH"],
+  "responseLog": ["STATUS", "BODY"]
+}

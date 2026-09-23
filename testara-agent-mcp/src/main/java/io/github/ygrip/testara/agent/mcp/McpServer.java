@@ -10,6 +10,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.LinkedHashMap;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.logging.Logger;
@@ -377,6 +378,8 @@ public class McpServer {
         "Target workspace root. Required for writes when MCP server was launched outside the workspace."
       ),
       optionalStr("type", "api | ui | all (full-stack). Also accepts: fullstack, database, streaming."),
+      optionalEnumArray("slices", "Automation capabilities to include; clients may render this as checkboxes. Overrides type when supplied.",
+          "api", "ui", "sql", "mongo", "kafka", "elastic"),
       optionalStr(
         "groupId",
         "Maven groupId. OMIT on first call — the skill will prompt the user to provide it. Pass only after the user has explicitly answered."
@@ -506,7 +509,8 @@ public class McpServer {
           args.path("groupId")
             .asText(null),
           args.path("artifactId")
-            .asText(null)
+            .asText(null),
+          stringList(args.path("slices"))
         ), ctx
       );
       case "testara_guide" -> guideSkill.execute(
@@ -775,6 +779,26 @@ public class McpServer {
     n.put("type", "boolean");
     n.put("description", desc);
     return n;
+  }
+
+  private ObjectNode optionalEnumArray(String name, String desc, String... values) {
+    ObjectNode n = mapper.createObjectNode();
+    n.put("_name", name);
+    n.put("_required", false);
+    n.put("type", "array");
+    n.put("description", desc);
+    ObjectNode items = n.putObject("items");
+    items.put("type", "string");
+    ArrayNode choices = items.putArray("enum");
+    for (String value : values) choices.add(value);
+    n.put("uniqueItems", true);
+    return n;
+  }
+
+  private List<String> stringList(JsonNode node) {
+    List<String> values = new ArrayList<>();
+    if (node.isArray()) node.forEach(value -> values.add(value.asText()));
+    return values;
   }
 
   private ObjectNode response(JsonNode id, JsonNode result) {

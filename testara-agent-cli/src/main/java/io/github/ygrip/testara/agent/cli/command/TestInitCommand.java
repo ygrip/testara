@@ -4,6 +4,7 @@ import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
@@ -25,6 +26,10 @@ public class TestInitCommand implements Runnable {
 
   @Option(names = "--type", description = "Project type: api, ui, sql, mongo, kafka, fullstack")
   private String type;
+
+  @Option(names = {"--slices", "--capabilities"}, split = ",",
+    description = "Comma-separated capabilities: api,ui,sql,mongo,kafka,elastic")
+  private List<String> slices;
 
   @Option(names = "--group-id", description = "Maven group ID (e.g. com.company)")
   private String groupId;
@@ -99,7 +104,8 @@ public class TestInitCommand implements Runnable {
         engine,
         integrateExisting,
         groupId,
-        artifactId
+        artifactId,
+        slices
       ), ctx
     ));
   }
@@ -148,6 +154,8 @@ public class TestInitCommand implements Runnable {
         defaultType,
         new String[] {"api", "ui", "sql", "mongo", "kafka", "fullstack"}
       );
+      String selected = ask(reader, "Additional capabilities (comma-separated: api,ui,sql,mongo,kafka,elastic; blank keeps type)", "");
+      if (!selected.isBlank()) slices = List.of(selected.split(","));
 
       String defaultPkg = groupId + "." + toPackage(artifactId);
       basePackage = ask(reader, "Base package", defaultPkg);
@@ -165,6 +173,7 @@ public class TestInitCommand implements Runnable {
       System.out.printf("  groupId:    %s%n", groupId);
       System.out.printf("  artifactId: %s%n", artifactId);
       System.out.printf("  type:       %s%n", type);
+      if (slices != null && !slices.isEmpty()) System.out.printf("  capabilities: %s%n", String.join(", ", slices));
       System.out.printf("  package:    %s%n", basePackage);
       System.out.println();
 

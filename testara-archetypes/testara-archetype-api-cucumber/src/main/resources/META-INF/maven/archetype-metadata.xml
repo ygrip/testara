@@ -29,13 +29,13 @@
         <include>**/*.java</include>
       </includes>
     </fileSet>
+    <fileSet filtered="true" packaged="false">
+      <directory>src/main/java</directory>
+      <includes><include>**/*.java</include></includes>
+    </fileSet>
     <fileSet filtered="false" packaged="false">
       <directory>src/test/resources</directory>
-      <includes>
-        <include>features/.gitkeep</include>
-        <include>files/.gitkeep</include>
-        <include>validations/.gitkeep</include>
-      </includes>
+      <includes><include>**/*</include></includes>
     </fileSet>
   </fileSets>
 </archetype-descriptor>

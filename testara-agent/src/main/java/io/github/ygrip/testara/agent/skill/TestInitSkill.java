@@ -10,6 +10,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.logging.Logger;
@@ -44,7 +45,11 @@ public class TestInitSkill implements AgentSkill<TestInitSkill.Input, String> {
   }
 
   public record Input(String type, String basePackage, String engine, boolean integrateExisting,
-      String groupId, String artifactId) {
+      String groupId, String artifactId, List<String> slices) {
+    public Input(String type, String basePackage, String engine, boolean integrateExisting,
+        String groupId, String artifactId) {
+      this(type, basePackage, engine, integrateExisting, groupId, artifactId, List.of());
+    }
     public Input(String type, String basePackage, String engine, boolean integrateExisting) {
       this(type, basePackage, engine, integrateExisting, null, null);
     }
@@ -55,7 +60,8 @@ public class TestInitSkill implements AgentSkill<TestInitSkill.Input, String> {
 
   @Override
   public String execute(Input input, AgentContext context) {
-    String type    = input.type() != null ? input.type().toLowerCase(Locale.ROOT) : "api";
+    List<String> capabilities = InitCapabilities.normalize(input.type(), input.slices());
+    String type = InitCapabilities.contentType(input.type(), input.slices());
     boolean isUiType = type.equals("ui") || type.equals("fullstack");
     boolean autoCoordinates = "true".equals(context.options().get("autoGenerateCoordinates"));
     // Engine prompt: fires only when engine is null (not yet chosen).
@@ -88,7 +94,7 @@ public class TestInitSkill implements AgentSkill<TestInitSkill.Input, String> {
     }
 
     return write
-        ? applyFiles(type, groupId, artifactId, basePkg, pkgPath, input.engine(), integrate, context.projectRoot(),
+        ? applyFiles(type, capabilities, groupId, artifactId, basePkg, pkgPath, input.engine(), integrate, context.projectRoot(),
             compile, includeExamples)
         : renderPreview(type, groupId, artifactId, basePkg, pkgPath, input.engine(), integrate, context.projectRoot(),
             includeExamples);
@@ -138,21 +144,21 @@ public class TestInitSkill implements AgentSkill<TestInitSkill.Input, String> {
 
   // ── Write mode ────────────────────────────────────────────────────────────
 
-  private String applyFiles(String type, String groupId, String artifactId, String basePkg, String pkgPath, String engine,
+  private String applyFiles(String type, List<String> capabilities, String groupId, String artifactId, String basePkg, String pkgPath, String engine,
       boolean integrate, Path root, boolean compile, boolean includeExamples) {
     ProjectState state = stateDetector.detect(root);
     return switch (state) {
-      case FRESH -> applyArchetype(type, groupId, artifactId, basePkg, pkgPath, engine, root, compile, includeExamples);
+      case FRESH -> applyArchetype(type, capabilities, groupId, artifactId, basePkg, pkgPath, engine, root, compile, includeExamples);
       case UNSUPPORTED_GRADLE -> "init_unsupported: Gradle projects are not supported by testara_init.\n";
       case AMBIGUOUS -> integrate
-          ? applyPatch(type, groupId, artifactId, basePkg, pkgPath, engine, true, root, compile, includeExamples)
+          ? applyPatch(type, capabilities, groupId, artifactId, basePkg, pkgPath, engine, true, root, compile, includeExamples)
           : "init_ambiguous: Directory is not empty and has no recognised build file.\n"
               + "action: Set integrateExisting=true to patch anyway, or clear the directory first.\n";
-      default -> applyPatch(type, groupId, artifactId, basePkg, pkgPath, engine, integrate, root, compile, includeExamples);
+      default -> applyPatch(type, capabilities, groupId, artifactId, basePkg, pkgPath, engine, integrate, root, compile, includeExamples);
     };
   }
 
-  private String applyArchetype(String type, String groupId, String artifactId, String basePkg, String pkgPath,
+  private String applyArchetype(String type, List<String> capabilities, String groupId, String artifactId, String basePkg, String pkgPath,
       String engine, Path root, boolean compile, boolean includeExamples) {
     String testaraVersion = versionResolver.resolve(root.getParent() != null ? root.getParent() : root);
     String effectiveArtifactId = artifactId != null ? artifactId
@@ -180,6 +186,7 @@ public class TestInitSkill implements AgentSkill<TestInitSkill.Input, String> {
 
     try {
       writeConfigFiles(type, basePkg, pkgPath, engine, generatedRoot, includeExamples, created, skipped);
+      appendCapabilityDependencies(generatedRoot.resolve("pom.xml"), capabilities);
     } catch (IOException e) {
       return "init_error: Failed to write config files: " + e.getMessage() + "\n";
     }
@@ -195,6 +202,7 @@ public class TestInitSkill implements AgentSkill<TestInitSkill.Input, String> {
         + "mode: ARCHETYPE_GENERATED\n"
         + "archetype: io.github.ygrip:" + result.archetypeArtifactId() + ":" + testaraVersion + "\n"
         + "flavor: " + type + (engine != null ? "/" + engine : "") + "\n"
+        + "capabilities: " + String.join(", ", capabilities) + "\n"
         + "project: " + groupId + ":" + effectiveArtifactId + " (" + basePkg + ")\n"
         + "generatedAt: " + generatedRoot + "\n"
         + "configFiles: " + configFilesLine + "\n"
@@ -237,7 +245,7 @@ public class TestInitSkill implements AgentSkill<TestInitSkill.Input, String> {
     }
   }
 
-  private String applyPatch(String type, String groupId, String artifactId, String basePkg, String pkgPath, String engine,
+  private String applyPatch(String type, List<String> capabilities, String groupId, String artifactId, String basePkg, String pkgPath, String engine,
       boolean integrate, Path root, boolean compile, boolean includeExamples) {
     List<String> created = new ArrayList<>();
     List<String> skipped = new ArrayList<>();
@@ -254,6 +262,7 @@ public class TestInitSkill implements AgentSkill<TestInitSkill.Input, String> {
       }
 
       writeConfigFiles(type, basePkg, pkgPath, engine, root, includeExamples, created, skipped);
+      appendCapabilityDependencies(root.resolve("pom.xml"), capabilities);
 
       boolean isUi  = type.equals("ui") || type.equals("fullstack");
       boolean isApi = type.equals("api") || type.equals("fullstack");
@@ -340,6 +349,34 @@ public class TestInitSkill implements AgentSkill<TestInitSkill.Input, String> {
       case "fullstack", "all" -> "all";
       default -> "api";
     };
+  }
+
+  private void appendCapabilityDependencies(Path pom, List<String> capabilities) throws IOException {
+    if (!Files.exists(pom)) return;
+    String content = Files.readString(pom, StandardCharsets.UTF_8);
+    LinkedHashSet<String> artifacts = new LinkedHashSet<>();
+    if (capabilities.contains("sql") || capabilities.contains("mongo")) {
+      artifacts.add("testara-database"); artifacts.add("testara-database-cucumber");
+    }
+    if (capabilities.contains("kafka")) {
+      artifacts.add("testara-streaming"); artifacts.add("testara-streaming-cucumber");
+    }
+    if (capabilities.contains("elastic")) {
+      artifacts.add("testara-elastic"); artifacts.add("testara-elastic-cucumber");
+    }
+    StringBuilder additions = new StringBuilder();
+    for (String artifact : artifacts) {
+      if (content.contains("<artifactId>" + artifact + "</artifactId>")) continue;
+      additions.append("    <dependency>\n      <groupId>io.github.ygrip</groupId>\n      <artifactId>")
+          .append(artifact).append("</artifactId>\n      <version>${testara.version}</version>\n")
+          .append(artifact.endsWith("-cucumber") ? "      <scope>test</scope>\n" : "")
+          .append("    </dependency>\n");
+    }
+    if (!additions.isEmpty()) {
+      int end = content.indexOf("  </dependencies>");
+      if (end < 0) throw new IOException("Cannot add capabilities: pom.xml has no dependencies block");
+      Files.writeString(pom, content.substring(0, end) + additions + content.substring(end), StandardCharsets.UTF_8);
+    }
   }
 
   private void writeIfAbsent(Path root, String rel, String content,
