@@ -5,6 +5,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 import io.github.ygrip.testara.agent.AgentMode;
+import io.github.ygrip.testara.agent.config.AgentYamlConfig;
 import io.github.ygrip.testara.agent.knowledge.JsonlKnowledgeStore;
 import io.github.ygrip.testara.agent.llm.DisabledLlmClient;
 import io.github.ygrip.testara.agent.skill.AgentContext;
@@ -46,6 +47,7 @@ public class TestRunCommand implements Runnable {
     Path root = projectRoot.toAbsolutePath()
       .normalize();
     Map<String, String> opts = new HashMap<>();
+    AgentYamlConfig.load(root).apply(opts);
     opts.put("dryRun", String.valueOf(dryRun && !execute));
     opts.put("execute", String.valueOf(execute));
     opts.put("rerunFailed", String.valueOf(rerunFailed));
@@ -54,7 +56,7 @@ public class TestRunCommand implements Runnable {
       opts.put("module", module);
 
     AgentContext ctx =
-      new AgentContext(root, JsonlKnowledgeStore.loadProfile(root), AgentMode.PLAN, new DisabledLlmClient(), opts);
+      new AgentContext(root, JsonlKnowledgeStore.loadProfile(root), execute ? AgentMode.APPLY : AgentMode.PLAN, new DisabledLlmClient(), opts);
     System.out.println(new TestRunSkill().execute(intent, ctx));
   }
 }
