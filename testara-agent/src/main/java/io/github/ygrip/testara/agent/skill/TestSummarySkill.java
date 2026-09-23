@@ -110,7 +110,10 @@ public class TestSummarySkill implements AgentSkill<TestSummarySkill.Input, Stri
     Set<String> allTags = new TreeSet<>();
     features.forEach(f -> {
       allTags.addAll(f.tags());
-      f.scenarios().forEach(s -> allTags.addAll(s.tags()));
+      f.scenarios().forEach(s -> {
+        allTags.addAll(s.tags());
+        s.examples().forEach(ex -> allTags.addAll(ex.tags()));
+      });
     });
     if (!allTags.isEmpty()) {
       sb.append("**Tags:** ").append(String.join(", ", allTags)).append("  \n");
@@ -152,9 +155,12 @@ public class TestSummarySkill implements AgentSkill<TestSummarySkill.Input, Stri
               }
             }
           });
-        s.examples().forEach(ex ->
-            sb.append("  - Examples: ").append(ex.rowCount()).append(" rows (")
-                .append(String.join(", ", ex.headers())).append(")\n"));
+        s.examples().forEach(ex -> {
+          sb.append("  - Examples: ").append(ex.rowCount()).append(" rows (")
+              .append(String.join(", ", ex.headers())).append(")");
+          if (!ex.tags().isEmpty()) sb.append(" tags=").append(String.join(" ", ex.tags()));
+          sb.append("\n");
+        });
         sb.append("\n");
       }
     }
