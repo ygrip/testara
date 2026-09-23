@@ -38,7 +38,7 @@ public class TestaraUiSkill implements AgentSkill<TestaraUiSkill.Input, String> 
         ? input.basePackage()
         : PackageInference.inferBasePackage(context.projectRoot()).orElse("io.github.ygrip.automation");
     boolean concise = "concise".equals(context.options().get("format"));
-    boolean write = context.allowsWrite() && write;
+    boolean write = context.allowsWrite() && "true".equals(context.options().get("write"));
 
     return switch (mode) {
       case "page"         -> generatePage(input.pageName(), input.engine(), basePkg, context.projectRoot(), write, concise);
