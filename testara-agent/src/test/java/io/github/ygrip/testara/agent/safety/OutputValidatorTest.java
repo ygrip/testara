@@ -97,4 +97,10 @@ class OutputValidatorTest {
     var result = OutputValidator.validateJson("");
     assertFalse(result.valid());
   }
+  @Test
+  void rejectsBraceWrappedGarbageAsJson() {
+    var result = OutputValidator.validateJson("{not-json}");
+    assertFalse(result.valid());
+  }
+
 }
