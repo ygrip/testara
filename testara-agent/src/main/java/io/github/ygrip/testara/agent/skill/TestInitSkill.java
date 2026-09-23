@@ -74,7 +74,7 @@ public class TestInitSkill implements AgentSkill<TestInitSkill.Input, String> {
         : groupId + "." + artifactId.replaceAll("[^a-zA-Z0-9]+", "").toLowerCase(Locale.ROOT);
     String pkgPath = basePkg.replace('.', '/');
     boolean integrate = input.integrateExisting();
-    boolean write  = "true".equals(context.options().get("write"));
+    boolean write  = context.allowsWrite() && write;
     boolean compile = !"false".equals(context.options().getOrDefault("compile", "true"));
     boolean includeExamples = "true".equals(context.options().get("includeExamples"));
     if (write && isUnsafeImplicitRoot(context)) {
