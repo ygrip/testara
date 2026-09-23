@@ -92,6 +92,10 @@
       <version>28.0.0</version>
     </dependency>
     <dependency>
+      <groupId>io.cucumber</groupId>
+      <artifactId>tag-expressions</artifactId>
+    </dependency>
+    <dependency>
       <groupId>org.junit.jupiter</groupId>
       <artifactId>junit-jupiter</artifactId>
       <scope>test</scope>
