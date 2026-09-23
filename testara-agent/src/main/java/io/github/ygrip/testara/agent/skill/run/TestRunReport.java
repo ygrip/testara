@@ -1,5 +1,8 @@
 package io.github.ygrip.testara.agent.skill.run;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 import java.util.List;
 
 public record TestRunReport(
@@ -12,6 +15,8 @@ public record TestRunReport(
     int skipped,
     List<FailedScenario> failedScenarios
 ) {
+  private static final ObjectMapper MAPPER = new ObjectMapper();
+
   public record FailedScenario(String feature, String scenario, String error) {}
 
   public String toMarkdown() {
@@ -57,24 +62,10 @@ public record TestRunReport(
   }
 
   public String toJson() {
-    StringBuilder sb = new StringBuilder("{\n");
-    sb.append("  \"status\": \"").append(status).append("\",\n");
-    sb.append("  \"durationMs\": ").append(durationMs).append(",\n");
-    sb.append("  \"tagExpression\": \"").append(tagExpression.replace("\"", "\\\"")).append("\",\n");
-    sb.append("  \"total\": ").append(total).append(",\n");
-    sb.append("  \"passed\": ").append(passed).append(",\n");
-    sb.append("  \"failed\": ").append(failed).append(",\n");
-    sb.append("  \"skipped\": ").append(skipped).append(",\n");
-    sb.append("  \"failedScenarios\": [");
-    for (int i = 0; i < failedScenarios.size(); i++) {
-      FailedScenario s = failedScenarios.get(i);
-      if (i > 0) sb.append(",");
-      sb.append("\n    {\"feature\": \"").append(s.feature().replace("\"", "\\\""))
-          .append("\", \"scenario\": \"").append(s.scenario().replace("\"", "\\\""))
-          .append("\", \"error\": \"").append(s.error().replace("\"", "\\\"")).append("\"}");
+    try {
+      return MAPPER.writeValueAsString(this);
+    } catch (JsonProcessingException e) {
+      throw new IllegalStateException("Cannot serialize test run report", e);
     }
-    sb.append(failedScenarios.isEmpty() ? "]\n}" : "\n  ]\n}");
-    return sb.toString();
   }
-
 }
