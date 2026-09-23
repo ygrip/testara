@@ -4,6 +4,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Pattern;
+import io.cucumber.tagexpressions.TagExpressionParser;
 
 /**
  * Builds safe, template-based Maven commands for Cucumber test execution.
@@ -11,9 +12,7 @@ import java.util.regex.Pattern;
  */
 public class MavenCommandBuilder {
 
-  private static final Pattern SAFE_TAG_EXPR = Pattern.compile(
-      "^[@\\w\\s()\\-and not]*$");
-  private static final Pattern SAFE_MODULE   = Pattern.compile("^[\\w-]+$");
+  private static final Pattern SAFE_MODULE = Pattern.compile("^[\\w-]+$");
 
   /** Build `mvn verify -Dcucumber.filter.tags="expr"` for Failsafe-based Testara runners. */
   public String build(String tagExpression) {
@@ -67,8 +66,15 @@ public class MavenCommandBuilder {
   private void validate(String tagExpression, String module) {
     if (tagExpression == null || tagExpression.isBlank())
       throw new IllegalArgumentException("Tag expression must not be blank");
-    if (!SAFE_TAG_EXPR.matcher(tagExpression).matches())
-      throw new IllegalArgumentException("Tag expression contains unsafe characters: " + tagExpression);
+    if (tagExpression.indexOf('\n') >= 0 || tagExpression.indexOf('\r') >= 0
+        || tagExpression.indexOf('\0') >= 0) {
+      throw new IllegalArgumentException("Tag expression contains control characters");
+    }
+    try {
+      TagExpressionParser.parse(tagExpression);
+    } catch (RuntimeException e) {
+      throw new IllegalArgumentException("Invalid Cucumber tag expression: " + tagExpression, e);
+    }
     validateModule(module);
   }
 
