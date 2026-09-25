@@ -10,10 +10,18 @@ class InitCapabilitiesTest {
 
   @Test
   void resolvesCombinedBaseAndDeduplicatesCapabilities() {
-    List<String> capabilities = InitCapabilities.normalize("api", List.of("ui", "sql", "mongo", "ui"));
+    List<String> capabilities = InitCapabilities.normalize(null, List.of("ui", "sql", "mongo", "ui"));
 
     assertEquals(List.of("ui", "sql", "mongo"), capabilities);
     assertEquals("ui", InitCapabilities.baseType(capabilities));
+  }
+
+  @Test
+  void keepsExplicitApiTypeAlongsideSlices() {
+    List<String> capabilities = InitCapabilities.normalize("api", List.of("sql"));
+
+    assertEquals(List.of("api", "sql"), capabilities);
+    assertEquals("api", InitCapabilities.baseType(capabilities));
   }
 
   @Test

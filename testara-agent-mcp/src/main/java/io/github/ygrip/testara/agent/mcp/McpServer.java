@@ -14,6 +14,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
@@ -753,7 +754,8 @@ public class McpServer {
     }
 
     LlmConfig cfg = LlmConfig.fromEnv(opts);
-    String provider = cfg.provider() == null ? "" : cfg.provider().toLowerCase(java.util.Locale.ROOT);
+    String provider = "";
+    if (cfg.provider() != null) provider = cfg.provider().toLowerCase(Locale.ROOT);
     LlmClient llm;
     if ("local".equals(provider) || "ollama".equals(provider)) {
       llm = new LocalLlmClient(cfg);

@@ -187,7 +187,8 @@ public class TestInitCommand implements Callable<Integer> {
       System.out.println();
 
     } catch (Exception e) {
-      // Fall back to defaults on any I/O issue
+      // Fall back to defaults on any I/O issue, but tell the user their answers were not used.
+      System.err.println("Interactive prompt failed (" + e.getMessage() + "); using defaults.");
       applyDefaults(root);
     }
   }

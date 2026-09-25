@@ -66,6 +66,19 @@ class AgentYamlConfigTest {
   }
 
   @Test
+  void checkedInFileCannotGrantWritesThroughAnySection() {
+    AgentYamlConfig.AgentConfig config = AgentYamlConfig.parse(
+        "write: true\noverwrite: true\nrun:\n  write: true\n  dryRun: false\n");
+
+    var options = new LinkedHashMap<String, String>();
+    config.apply(options);
+
+    assertNull(options.get("write"));
+    assertNull(options.get("overwrite"));
+    assertEquals("false", options.get("dryRun"));
+  }
+
+  @Test
   void handlesInlineCommentsInlineListsQuotesAndSameIndentLists() {
     AgentYamlConfig.AgentConfig config = AgentYamlConfig.parse("""
         # leading comment

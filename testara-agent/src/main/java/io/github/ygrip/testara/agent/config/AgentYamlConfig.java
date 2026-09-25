@@ -26,6 +26,8 @@ public final class AgentYamlConfig {
 
   private static final Logger LOG = Logger.getLogger(AgentYamlConfig.class.getName());
   private static final String CONFIG_FILE = "testara-agent.yaml";
+  /** Options that grant writes; a checked-in file must never turn them on (per-call args only). */
+  private static final Set<String> CALL_ONLY_KEYS = Set.of("write", "overwrite", "createFiles");
   private static final ObjectMapper YAML = new ObjectMapper(new YAMLFactory());
 
   public record AgentConfig(
@@ -45,11 +47,11 @@ public final class AgentYamlConfig {
 
     /** Apply config overrides to a mutable options map. */
     public void apply(Map<String, String> opts) {
-      general.forEach(opts::putIfAbsent);
-      run.forEach(opts::putIfAbsent);
+      putSafely(general, opts);
+      putSafely(run, opts);
       write.forEach((k, v) -> {
         if (!"enabled".equals(k)) {
-          opts.putIfAbsent(k, v);
+          putSafely(Map.of(k, v), opts);
         } else if ("false".equalsIgnoreCase(v.strip())) {
           // A checked-in file may switch writes off, never on (no silent APPLY mode).
           opts.put("write", "false");
@@ -61,6 +63,17 @@ public final class AgentYamlConfig {
           String expression = tags.size() == 1 ? tags.get(0) : "(" + String.join(" or ", tags) + ")";
           opts.putIfAbsent("tag-alias." + alias, expression);
         }
+      });
+    }
+
+    /** Copies settings except the ones only an explicit call may set (see {@link #CALL_ONLY_KEYS}). */
+    private static void putSafely(Map<String, String> source, Map<String, String> opts) {
+      source.forEach((k, v) -> {
+        if (CALL_ONLY_KEYS.contains(k)) {
+          LOG.warning("Ignoring '" + k + "' in " + CONFIG_FILE + ": it can only be set per call");
+          return;
+        }
+        opts.putIfAbsent(k, v);
       });
     }
   }

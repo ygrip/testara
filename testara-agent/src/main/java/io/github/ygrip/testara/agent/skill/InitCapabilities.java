@@ -18,7 +18,8 @@ final class InitCapabilities {
    */
   static List<String> normalize(String legacyType, List<String> requested) {
     LinkedHashSet<String> values = new LinkedHashSet<>();
-    if (legacyType != null && !legacyType.isBlank() && !"api".equals(canonical(legacyType))) {
+    // MCP/CLI pass null when no type was given, so an explicit type (including api) is always kept.
+    if (legacyType != null && !legacyType.isBlank()) {
       values.add(canonical(legacyType));
     }
     if (requested != null) {
