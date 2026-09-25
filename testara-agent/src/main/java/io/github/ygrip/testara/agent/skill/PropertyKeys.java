@@ -8,7 +8,17 @@ import java.util.Locale;
  */
 final class PropertyKeys {
 
+  /** Folder {@code process request to "<path>"} resolves request specs from (relative to user.dir). */
+  static final String SCRIPT_FOLDER_KEY = "automation.config.script-folder";
+  /** Request specs are generated under {@code src/test/resources/files/...}, so specs resolve from here. */
+  static final String SCRIPT_FOLDER = "/src/test/resources/";
+
   private PropertyKeys() {}
+
+  /** Config line that makes {@code process request to "files/..."} resolve generated request specs. */
+  static String scriptFolderEntry() {
+    return SCRIPT_FOLDER_KEY + "=" + SCRIPT_FOLDER;
+  }
 
   /** Service alias used by {@code using service with alias} and {@code api.service.<alias>.*}. */
   static String apiAlias(String domain) {

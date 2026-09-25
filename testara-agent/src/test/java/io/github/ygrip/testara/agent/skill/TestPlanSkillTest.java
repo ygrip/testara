@@ -79,6 +79,8 @@ class TestPlanSkillTest {
     Properties config = load("src/test/resources/configuration.properties");
     assertEquals("${ORDER_API_HOST:http://localhost:8080}", config.getProperty("api.service.order-api.host"));
     assertEquals("order-api", config.getProperty("api.service.order-api.default_specification"));
+    // RequestBuilderImpl resolves "process request to" paths under automation.config.script-folder.
+    assertEquals("/src/test/resources/", config.getProperty("automation.config.script-folder"));
     Properties values = load("src/test/resources/application.properties");
     assertEquals("/order", values.getProperty("order.api.endpoint"));
     assertEquals("sample-value", values.getProperty("test.order.field"));
@@ -154,13 +156,29 @@ class TestPlanSkillTest {
     String elastic = featureOf(new TestPlanSkill().execute(
         new TestPlanSkill.Input("search order index by id", "elastic", "order", List.of()), context()));
 
-    for (String feature : List.of(sql, mongo, elastic)) assertFalse(feature.contains("# MISSING"), feature);
+    for (String feature : List.of(sql, mongo, elastic)) {
+      assertFalse(feature.contains("# MISSING"), feature);
+      assertAllStepsLink(feature);
+    }
     assertTrue(sql.contains("Given [sql] connect to database with name orderDb"), sql);
     assertTrue(sql.contains("Then [sql] assign previous database response to orderRows"), sql);
     assertTrue(mongo.contains("Given [mongo] select collection with name order"), mongo);
     assertTrue(elastic.contains("Given [elastic-search] connect to elastic search with name order"), elastic);
     assertTrue(elastic.contains("When [elastic-search] assign data orderResults from index order with query :\n"
         + "      | key         | value |"), elastic);
+  }
+
+  @Test
+  void apiPlanWarnsWhenProjectUsesAnotherScriptFolder() throws IOException {
+    Path config = projectRoot.resolve("src/test/resources/configuration.properties");
+    Files.createDirectories(config.getParent());
+    Files.writeString(config, "automation.config.script-folder=/src/test/resources/templates/script/\n");
+
+    String output = new TestPlanSkill().execute(
+        new TestPlanSkill.Input("create order returns success", "api", "order", List.of()), writeContext());
+
+    assertTrue(output.contains("warning: src/test/resources/configuration.properties sets "
+        + "automation.config.script-folder=/src/test/resources/templates/script/"), output);
   }
 
   @Test

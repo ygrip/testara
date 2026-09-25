@@ -779,7 +779,8 @@ public class TestInitSkill implements AgentSkill<TestInitSkill.Input, String> {
         # Shared resources
         automation.config.template-folder=/src/test/resources/templates/
         automation.config.schema-folder=/src/test/resources/schemas/
-        """.formatted(basePkg, basePkg, basePkg, basePkg, basePkg);
+        %s
+        """.formatted(basePkg, basePkg, basePkg, basePkg, basePkg, PropertyKeys.scriptFolderEntry());
 
     String uiEngine = engine == null ? "selenium" : engine.toLowerCase(Locale.ROOT);
     String pageConfig = includeExamples ? """

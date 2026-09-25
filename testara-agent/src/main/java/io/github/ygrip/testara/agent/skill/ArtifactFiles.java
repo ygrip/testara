@@ -148,6 +148,25 @@ final class ArtifactFiles {
     return new PropertyMerge(relative, List.copyOf(addedKeys));
   }
 
+  /**
+   * Returns a warning when a configuration file already sets {@code automation.config.script-folder}
+   * to a folder other than the one generated request specs are written for; otherwise null.
+   */
+  static String scriptFolderWarning(Path root, List<String> candidates) throws IOException {
+    for (String candidate : candidates) {
+      Path file = resolve(root, candidate);
+      if (!Files.exists(file)) continue;
+      Properties defined = new Properties();
+      defined.load(new StringReader(Files.readString(file, StandardCharsets.UTF_8)));
+      String folder = defined.getProperty(PropertyKeys.SCRIPT_FOLDER_KEY);
+      if (folder == null || folder.strip().equals(PropertyKeys.SCRIPT_FOLDER)) return null;
+      return "warning: " + candidate + " sets " + PropertyKeys.SCRIPT_FOLDER_KEY + "=" + folder.strip()
+          + "; generated request specs under src/test/resources/files/ resolve only with "
+          + PropertyKeys.scriptFolderEntry();
+    }
+    return null;
+  }
+
   /** Result of {@link #mergeProperties}: the file touched and the keys that were missing and added. */
   record PropertyMerge(String path, List<String> addedKeys) {
     String line() {

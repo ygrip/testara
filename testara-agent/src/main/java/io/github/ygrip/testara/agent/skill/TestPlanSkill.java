@@ -235,6 +235,10 @@ public class TestPlanSkill implements AgentSkill<TestPlanSkill.Input, String> {
     if (serviceConfig != null) {
       artifacts.add(ArtifactFiles.mergeProperties(root, CONFIGURATION_FILES, serviceConfig).line());
     }
+    if ("api".equals(slice)) {
+      String scriptFolderWarning = ArtifactFiles.scriptFolderWarning(root, CONFIGURATION_FILES);
+      if (scriptFolderWarning != null) artifacts.add(scriptFolderWarning);
+    }
     String applicationValues = applicationValuesBlock(slice, domain, intent, apiFlow, references.toString());
     if (!applicationValues.isBlank()) {
       artifacts.add(ArtifactFiles.mergeProperties(root, APPLICATION_FILES, applicationValues).line());

@@ -162,7 +162,9 @@ public class TestaraApiSkill implements AgentSkill<TestaraApiSkill.Input, String
         spec.api.%s.header.Accept=application/json
         api.enable-request-log=true
         api.enable-response-log=true
-        """.formatted(domain, alias, env, alias, env, alias, alias, alias, alias);
+        # Request specs live under src/test/resources/files/...
+        %s
+        """.formatted(domain, alias, env, alias, env, alias, alias, alias, alias, PropertyKeys.scriptFolderEntry());
   }
 
   private String generateApiConfig(String domain, Path projectRoot, boolean write, boolean concise) {
@@ -183,8 +185,11 @@ public class TestaraApiSkill implements AgentSkill<TestaraApiSkill.Input, String
       try {
         ArtifactFiles.PropertyMerge config = ArtifactFiles.mergeProperties(projectRoot, CONFIGURATION_FILES, configBlock);
         ArtifactFiles.PropertyMerge values = ArtifactFiles.mergeProperties(projectRoot, APPLICATION_FILES, applicationBlock);
-        return concise ? "api config for '" + d + "':\n" + config.line() + "\n" + values.line()
-            : "## API Config Written\n\n- " + config.line() + "\n- " + values.line()
+        String changes = config.line() + "\n" + values.line();
+        String scriptFolderWarning = ArtifactFiles.scriptFolderWarning(projectRoot, CONFIGURATION_FILES);
+        if (scriptFolderWarning != null) changes += "\n" + scriptFolderWarning;
+        return concise ? "api config for '" + d + "':\n" + changes
+            : "## API Config Written\n\n- " + changes.replace("\n", "\n- ")
                 + "\n\nRuntime config (`" + config.path() + "`):\n```properties\n" + configBlock
                 + "```\n\nEnvironment values (`" + values.path() + "`):\n```properties\n" + applicationBlock + "```\n";
       } catch (IOException e) {
@@ -250,12 +255,15 @@ public class TestaraApiSkill implements AgentSkill<TestaraApiSkill.Input, String
     if (write) {
       try {
         ArtifactFiles.Written written = ArtifactFiles.writeJson(projectRoot, path, spec, overwrite);
+        String scriptFolderWarning = ArtifactFiles.scriptFolderWarning(projectRoot, CONFIGURATION_FILES);
+        String warningLine = "";
+        if (scriptFolderWarning != null) warningLine = "\n" + scriptFolderWarning;
         if (!written.changed()) {
-          return "exists: " + path + " (pass overwrite=true to replace)\nstep: " + featureStep;
+          return "exists: " + path + " (pass overwrite=true to replace)\nstep: " + featureStep + warningLine;
         }
         return concise
-            ? "written: " + path + "\nstep: " + featureStep
-            : "## Request Spec Written\n\n`" + path + "`\n\n```json\n" + spec + "```\n\n**Feature step:**\n```gherkin\n" + featureStep + "\n```\n";
+            ? "written: " + path + "\nstep: " + featureStep + warningLine
+            : "## Request Spec Written\n\n`" + path + "`\n\n```json\n" + spec + "```\n\n**Feature step:**\n```gherkin\n" + featureStep + "\n```\n" + warningLine;
       } catch (IOException ex) {
         return "Error writing " + path + ": " + ex.getMessage();
       }
