@@ -23,6 +23,7 @@ import java.util.stream.Stream;
 public final class PackageInference {
 
   private static final Logger LOG = Logger.getLogger(PackageInference.class.getName());
+  private static final String FRAMEWORK_PACKAGE = "io.github.ygrip.testara";
   private static final Pattern PACKAGE_DECLARATION = Pattern.compile("^\\s*package\\s+([\\w.]+)\\s*;", Pattern.MULTILINE);
   private static final Set<String> ARTIFACT_SEGMENTS =
       Set.of("page", "pages", "action", "actions", "command", "commands", "validation", "validations",
@@ -48,6 +49,26 @@ public final class PackageInference {
       if (!packages.isEmpty()) return Optional.of(commonBase(packages));
     }
     return Optional.empty();
+  }
+
+  /**
+   * Package for a generated command/validation class: the explicit {@code package} option, else the
+   * first project (non-framework) package from the profile's scan packages ({@code scanPackagesKey}),
+   * else the inferred base package plus {@code suffix} — the {@code src/main/java/<base>/<suffix>}
+   * layout the scaffold creates.
+   */
+  static String artifactPackage(AgentContext context, String scanPackagesKey, String suffix) {
+    String explicit = context.options().get("package");
+    if (explicit != null && !explicit.isBlank()) return explicit;
+    if (context.profile() != null) {
+      String scan = context.profile().properties().getOrDefault(scanPackagesKey, "");
+      Optional<String> project = Arrays.stream(scan.split(","))
+          .map(String::strip)
+          .filter(pkg -> !pkg.isEmpty() && !pkg.startsWith(FRAMEWORK_PACKAGE))
+          .findFirst();
+      if (project.isPresent()) return project.get();
+    }
+    return inferBasePackage(context.projectRoot()).orElse("io.github.ygrip.automation") + "." + suffix;
   }
 
   private static String commonBase(List<String> packages) {

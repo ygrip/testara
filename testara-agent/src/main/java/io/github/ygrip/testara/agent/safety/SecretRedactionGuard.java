@@ -1,5 +1,6 @@
 package io.github.ygrip.testara.agent.safety;
 
+import java.util.Locale;
 import java.util.Set;
 import java.util.regex.Pattern;
 
@@ -93,6 +94,25 @@ public final class SecretRedactionGuard {
         || AWS_KEY_PATTERN.matcher(content).find()
         || JSON_KEY_PATTERN.matcher(content).find()
         || KEY_VALUE_PATTERN.matcher(content).find();
+  }
+
+  // Property-key fragments that mark a secret value (normalized: lowercase, no '-', '_' or '.')
+  private static final Set<String> SECRET_KEY_FRAGMENTS = Set.of(
+      "password", "passwd", "secret", "token", "authorization", "apikey",
+      "privatekey", "accesskey", "credential", "cookie");
+
+  /** True when a property key (e.g. {@code sql.service.orderDb.password}) names a secret. */
+  public static boolean isSecretKey(String key) {
+    if (key == null || key.isBlank()) return false;
+    String lastSegment = key.substring(key.lastIndexOf('.') + 1)
+        .toLowerCase(Locale.ROOT).replace("-", "").replace("_", "");
+    return SECRET_KEY_FRAGMENTS.stream().anyMatch(lastSegment::contains);
+  }
+
+  /** Returns {@code [REDACTED]} for a secret key's value, the value otherwise. */
+  public static String redactValue(String key, String value) {
+    if (isSecretKey(key) && value != null && !value.isBlank()) return REDACTED;
+    return value;
   }
 
   /** Safe to send to LLM: redact and confirm no remaining secrets. */

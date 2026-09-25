@@ -41,6 +41,14 @@ class TestInitSkillTest {
   }
 
   @Test
+  void bundledAgentPropertiesProvideTheBuildVersion() {
+    var version = new TestaraVersionResolver().bundledPropertiesVersion();
+
+    assertTrue(version.isPresent());
+    assertFalse(version.get().contains("@"), version.get());
+  }
+
+  @Test
   void explicitAgentVersionTakesPrecedence() {
     System.setProperty("testara.agent.version", "9.8.7");
 
