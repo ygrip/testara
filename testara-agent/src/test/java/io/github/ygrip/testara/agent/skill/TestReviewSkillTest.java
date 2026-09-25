@@ -91,6 +91,36 @@ class TestReviewSkillTest {
     assertTrue(output.contains("| Migratable (generic where built-in exists) | 1 |"));
   }
 
+  @Test
+  void flavorScoreCountsRuleBackgroundStepsOnce() throws Exception {
+    Path feature = projectRoot.resolve("src/test/resources/features/rules.feature");
+    Files.createDirectories(feature.getParent());
+    Files.writeString(feature, """
+        @ui
+        Feature: Rules
+
+          Rule: Logged in
+            Background:
+              Given user using chrome in desktop
+
+            @P1
+            Scenario: One
+              When user open "login" page
+              Then user is in "login" page
+
+            @P1
+            Scenario: Two
+              When user open "cart" page
+              Then user is in "cart" page
+        """);
+
+    String output = new TestReviewSkill().execute(
+        Path.of("src/test/resources/features/rules.feature"), context());
+
+    assertTrue(output.contains("| Total steps | 5 |"), output);
+    assertTrue(output.contains("| Built-in Testara steps | 5 |"), output);
+  }
+
   private AgentContext context() {
     TestaraProjectProfile profile = new TestaraProjectProfile(projectRoot, BuildTool.MAVEN, "21", List.of(),
         List.of(), List.of(), List.of(),

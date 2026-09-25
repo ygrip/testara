@@ -103,13 +103,27 @@ public class TestReviewSkill implements AgentSkill<Path, String> {
     return new FlavorScore(total, builtIn, migratable, custom, List.copyOf(findings));
   }
 
+  /** Scenarios plus the feature Background and each Rule Background, every background counted once. */
   private List<ScenarioIndex> scenariosWithBackground(FeatureIndex feature) {
-    if (feature.backgroundSteps().isEmpty()) return feature.scenarios();
     List<ScenarioIndex> scenarios = new ArrayList<>();
-    scenarios.add(new ScenarioIndex("Background", ScenarioType.BACKGROUND, List.of(),
-        feature.backgroundSteps(), List.of()));
+    if (!feature.backgroundSteps().isEmpty()) {
+      scenarios.add(new ScenarioIndex("Background", ScenarioType.BACKGROUND, List.of(),
+          feature.backgroundSteps(), List.of()));
+    }
+    Set<List<StepIndex>> ruleBackgrounds = new LinkedHashSet<>();
+    feature.scenarios().stream()
+        .map(ScenarioIndex::ruleBackgroundSteps)
+        .filter(steps -> !steps.isEmpty())
+        .forEach(ruleBackgrounds::add);
+    ruleBackgrounds.forEach(steps -> scenarios.add(
+        new ScenarioIndex("Rule Background", ScenarioType.BACKGROUND, List.of(), steps, List.of())));
     scenarios.addAll(feature.scenarios());
     return scenarios;
+  }
+
+  private boolean hasBackground(FeatureIndex feature) {
+    return !feature.backgroundSteps().isEmpty()
+        || feature.scenarios().stream().anyMatch(s -> !s.ruleBackgroundSteps().isEmpty());
   }
 
   private String detectGenericPattern(String stepText) {
@@ -220,7 +234,7 @@ public class TestReviewSkill implements AgentSkill<Path, String> {
     List<ReviewFinding> out = new ArrayList<>();
     for (FeatureIndex f : features) {
       if (f.scenarios().size() < 2) continue;
-      if (!f.backgroundSteps().isEmpty()) continue;
+      if (hasBackground(f)) continue;
       List<StepIndex> firstSteps = f.scenarios().get(0).steps();
       if (firstSteps.isEmpty()) continue;
       long sharesFirst = f.scenarios().stream()

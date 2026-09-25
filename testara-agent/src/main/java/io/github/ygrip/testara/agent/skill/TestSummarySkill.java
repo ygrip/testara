@@ -129,32 +129,26 @@ public class TestSummarySkill implements AgentSkill<TestSummarySkill.Input, Stri
 
       if (!f.backgroundSteps().isEmpty()) {
         sb.append("**Background steps:**\n");
-        f.backgroundSteps().forEach(s -> {
-            sb.append("- ").append(s.keyword()).append(" ").append(s.text()).append("\n");
-            if (!s.dataTable().isEmpty()) {
-              for (List<String> row : s.dataTable()) {
-                sb.append("    | ").append(String.join(" | ", row)).append(" |\n");
-              }
-            }
-          });
+        appendSteps(sb, f.backgroundSteps());
         sb.append("\n");
       }
 
+      List<StepIndex> printedRuleBackground = List.of();
       for (ScenarioIndex s : f.scenarios()) {
+        // A Rule's Background runs before each of its scenarios; print it once per rule
+        if (!s.ruleBackgroundSteps().isEmpty() && !s.ruleBackgroundSteps().equals(printedRuleBackground)) {
+          sb.append("**Rule background steps:**\n");
+          appendSteps(sb, s.ruleBackgroundSteps());
+          sb.append("\n");
+          printedRuleBackground = s.ruleBackgroundSteps();
+        }
         sb.append("### ").append(s.name());
         if (s.type() == ScenarioType.SCENARIO_OUTLINE) sb.append(" *(Outline)*");
         sb.append("\n");
         if (!s.tags().isEmpty()) {
           sb.append("Tags: ").append(String.join(" ", s.tags())).append("\n");
         }
-        s.steps().forEach(step -> {
-            sb.append("- ").append(step.keyword()).append(" ").append(step.text()).append("\n");
-            if (!step.dataTable().isEmpty()) {
-              for (List<String> row : step.dataTable()) {
-                sb.append("    | ").append(String.join(" | ", row)).append(" |\n");
-              }
-            }
-          });
+        appendSteps(sb, s.steps());
         s.examples().forEach(ex -> {
           sb.append("  - Examples: ").append(ex.rowCount()).append(" rows (")
               .append(String.join(", ", ex.headers())).append(")");
@@ -165,6 +159,15 @@ public class TestSummarySkill implements AgentSkill<TestSummarySkill.Input, Stri
       }
     }
     return sb.toString();
+  }
+
+  private void appendSteps(StringBuilder sb, List<StepIndex> steps) {
+    steps.forEach(step -> {
+      sb.append("- ").append(step.keyword()).append(" ").append(step.text()).append("\n");
+      for (List<String> row : step.dataTable()) {
+        sb.append("    | ").append(String.join(" | ", row)).append(" |\n");
+      }
+    });
   }
 
   /** Minimal token-efficient output. */
