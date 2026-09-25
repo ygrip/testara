@@ -34,6 +34,13 @@ public final class ProjectPathGuard {
     if (!Files.exists(root)) return;
     try {
       Path realRoot = root.toRealPath();
+      if (Files.isSymbolicLink(resolved) && !Files.exists(resolved)) {
+        // Writing through a dangling link would create its (unchecked) target
+        throw new IllegalArgumentException("Artifact path is a dangling symbolic link: " + resolved);
+      }
+      if (Files.exists(resolved) && !resolved.toRealPath().startsWith(realRoot)) {
+        throw new IllegalArgumentException("Artifact path escapes project root through a symbolic link");
+      }
       Path ancestor = Files.isDirectory(resolved) ? resolved : resolved.getParent();
       while (ancestor != null && ancestor.startsWith(root) && !Files.exists(ancestor)) {
         ancestor = ancestor.getParent();

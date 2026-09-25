@@ -40,4 +40,18 @@ class PackageInferenceTest {
 
     assertTrue(result.isEmpty());
   }
+
+  @Test
+  void inferBasePackageStripsArtifactSubPackages() throws IOException {
+    write("src/main/java/com/acme/auto/page/LoginPage.java", "package com.acme.auto.page;\n\nclass LoginPage {}\n");
+    write("src/main/java/com/acme/auto/action/LoginActions.java", "package com.acme.auto.action;\n\nclass LoginActions {}\n");
+
+    assertEquals(Optional.of("com.acme.auto"), PackageInference.inferBasePackage(projectRoot));
+  }
+
+  private void write(String relative, String content) throws IOException {
+    Path file = projectRoot.resolve(relative);
+    Files.createDirectories(file.getParent());
+    Files.writeString(file, content, StandardCharsets.UTF_8);
+  }
 }
