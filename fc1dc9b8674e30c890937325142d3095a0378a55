@@ -1,0 +1,29 @@
+CHANGELOG.md
+  94ea26109a2333cd 5-62,91
+docs/agentic-skills.md
+  94ea26109a2333cd 101-102,131-134,176,292-297,299-301,303,309-310,313-319,322-325,327-331,340-346,348-349,548,554,601,623-626,629-638,641-645,651-667
+docs/GETTING-STARTED.md
+  94ea26109a2333cd 182-183
+README.md
+  94ea26109a2333cd 76-77,120
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.23",
+  "base_commit_sha": "fc1dc9b8674e30c890937325142d3095a0378a55",
+  "prompts": {
+    "94ea26109a2333cd": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2249c54b-fa50-4172-85ce-e832fc778248",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "ygrip <yunaz.gilang@gmail.com>",
+      "messages": [],
+      "total_additions": 151,
+      "total_deletions": 33,
+      "accepted_lines": 151,
+      "overriden_lines": 0
+    }
+  }
+}
