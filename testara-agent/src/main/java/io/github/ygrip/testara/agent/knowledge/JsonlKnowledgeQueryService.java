@@ -23,11 +23,11 @@ public class JsonlKnowledgeQueryService implements KnowledgeQueryService {
   @Override
   public List<FeatureIndex> findFeatures(KnowledgeQuery query) {
     if (profile == null) return List.of();
+    // A feature matches a tag expression only through a scenario (or Examples block) it would run.
     return profile.features().stream()
         .filter(f -> query.matchesText(f.featureName() + " " + f.path()))
-        .filter(f -> query.tagExpression() == null || query.tagExpression().isBlank()
-            || query.matchesTags(f.tags())
-            || f.scenarios().stream().anyMatch(s -> query.matchesTags(effectiveTags(f, s))))
+        .filter(f -> !query.hasTagExpression()
+            || f.scenarios().stream().anyMatch(s -> matchesScenarioTags(query, f, s)))
         .limit(query.maxResults())
         .toList();
   }
@@ -39,8 +39,8 @@ public class JsonlKnowledgeQueryService implements KnowledgeQueryService {
     return features.stream()
         .flatMap(f -> f.scenarios().stream().map(s -> Map.entry(f, s)))
         .filter(entry -> query.matchesText(entry.getValue().name()))
-        .filter(entry -> query.tagExpression() == null || query.tagExpression().isBlank()
-            || query.matchesTags(effectiveTags(entry.getKey(), entry.getValue())))
+        .filter(entry -> !query.hasTagExpression()
+            || matchesScenarioTags(query, entry.getKey(), entry.getValue()))
         .limit(query.maxResults())
         .map(Map.Entry::getValue)
         .collect(Collectors.toList());
@@ -103,10 +103,19 @@ public class JsonlKnowledgeQueryService implements KnowledgeQueryService {
         p.validations().size(), p.tags().size(), avg);
   }
 
-  private Set<String> effectiveTags(FeatureIndex feature, ScenarioIndex scenario) {
-    Set<String> tags = new LinkedHashSet<>(feature.tags());
-    tags.addAll(scenario.tags());
-    scenario.examples().forEach(ex -> tags.addAll(ex.tags()));
-    return tags;
+  /**
+   * Evaluates like Cucumber does per pickle: feature + scenario (incl. inherited Rule) tags, plus the
+   * tags of one Examples block at a time — tags of different Examples blocks are never merged.
+   */
+  private boolean matchesScenarioTags(KnowledgeQuery query, FeatureIndex feature, ScenarioIndex scenario) {
+    Set<String> baseTags = new LinkedHashSet<>(feature.tags());
+    baseTags.addAll(scenario.tags());
+    if (scenario.examples().isEmpty()) return query.matchesTags(baseTags);
+    for (ExamplesIndex examples : scenario.examples()) {
+      Set<String> caseTags = new LinkedHashSet<>(baseTags);
+      caseTags.addAll(examples.tags());
+      if (query.matchesTags(caseTags)) return true;
+    }
+    return false;
   }
 }

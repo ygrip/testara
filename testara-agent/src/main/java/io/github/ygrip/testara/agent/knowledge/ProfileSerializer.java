@@ -24,22 +24,28 @@ import java.util.logging.Logger;
 final class ProfileSerializer {
 
   private static final Logger LOG = Logger.getLogger(ProfileSerializer.class.getName());
-  static final int CACHE_VERSION = 5; // bump to invalidate all caches on schema change
+  static final int CACHE_VERSION = 6; // bump to invalidate all caches on schema change
 
   private static final ObjectMapper MAPPER = new ObjectMapper()
       .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
       .configure(SerializationFeature.FAIL_ON_EMPTY_BEANS, false)
       .setVisibility(PropertyAccessor.FIELD, JsonAutoDetect.Visibility.ANY);
 
-  /** Write profile to cache file. Silently skips on error. */
-  static void save(Path cacheFile, TestaraProjectProfile profile) {
+  /** Atomically write profile to cache file; the caller decides how to report a failure. */
+  static void save(Path cacheFile, TestaraProjectProfile profile) throws IOException {
+    CacheEnvelope envelope = new CacheEnvelope(CACHE_VERSION, toDto(profile));
+    JsonlKnowledgeStore.writeAtomically(cacheFile, MAPPER.writeValueAsString(envelope));
+    LOG.fine("Profile cached to " + cacheFile);
+  }
+
+  /** True when the cache file exists and was written with the current {@link #CACHE_VERSION}. */
+  static boolean hasCurrentVersion(Path cacheFile) {
+    if (!Files.exists(cacheFile)) return false;
     try {
-      Files.createDirectories(cacheFile.getParent());
-      CacheEnvelope envelope = new CacheEnvelope(CACHE_VERSION, toDto(profile));
-      Files.writeString(cacheFile, MAPPER.writeValueAsString(envelope), StandardCharsets.UTF_8);
-      LOG.fine("Profile cached to " + cacheFile);
-    } catch (Exception e) {
-      LOG.fine("Cannot save profile cache: " + e.getMessage());
+      return MAPPER.readTree(cacheFile.toFile()).path("version").asInt(-1) == CACHE_VERSION;
+    } catch (IOException e) {
+      LOG.fine("Cannot read profile cache version: " + e.getMessage());
+      return false;
     }
   }
 
@@ -73,11 +79,11 @@ final class ProfileSerializer {
       List<FeatureDto> features, List<DriverDto> drivers, List<TagDto> tags,
       List<CommandDto> commands, List<ValidationDto> validations,
       List<StepDefDto> stepDefs, List<FlavorDto> flavorSteps,
-      List<CatalogDto> runtimeCatalog, Map<String, String> properties
+      List<CatalogDto> runtimeCatalog, Map<String, String> properties, List<String> parseErrors
   ) {
     ProfileDto() {
       this(null, null, List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
-          List.of(), List.of(), List.of(), List.of(), List.of(), Map.of());
+          List.of(), List.of(), List.of(), List.of(), List.of(), Map.of(), List.of());
     }
   }
 
@@ -90,8 +96,9 @@ final class ProfileSerializer {
   record StepDefDto(String keyword, String expression, String sourcePath, String className) {
     StepDefDto() { this(null, null, null, null); }
   }
-  record FlavorDto(String slice, String keyword, String expression, String example, String capability, String module, String className) {
-    FlavorDto() { this(null, null, null, null, null, null, null); }
+  record FlavorDto(String slice, String keyword, String expression, String example, String capability, String module, String className,
+      List<String> parameterTypes) {
+    FlavorDto() { this(null, null, null, null, null, null, null, List.of()); }
   }
   record CatalogDto(String slice, String prefix, String module, String className, List<String> exampleKeys) {
     CatalogDto() { this(null, null, null, null, List.of()); }
@@ -99,8 +106,9 @@ final class ProfileSerializer {
   record FeatureDto(String path, String featureName, List<String> tags, List<ScenarioDto> scenarios, List<StepDto> backgroundSteps) {
     FeatureDto() { this(null, null, List.of(), List.of(), List.of()); }
   }
-  record ScenarioDto(String name, String type, List<String> tags, List<StepDto> steps, List<ExamplesDto> examples) {
-    ScenarioDto() { this(null, null, List.of(), List.of(), List.of()); }
+  record ScenarioDto(String name, String type, List<String> tags, List<StepDto> steps, List<ExamplesDto> examples,
+      List<StepDto> ruleBackgroundSteps) {
+    ScenarioDto() { this(null, null, List.of(), List.of(), List.of(), List.of()); }
   }
   record StepDto(String keyword, String text, List<List<String>> dataTable) {
     StepDto() { this(null, null, List.of()); }
@@ -135,10 +143,11 @@ final class ProfileSerializer {
         p.stepDefinitions().stream().map(s -> new StepDefDto(s.annotation(), s.expression(),
             pathStr(s.sourcePath()), s.className())).toList(),
         p.flavorSteps().stream().map(f -> new FlavorDto(f.slice(), f.keyword(), f.expression(),
-            f.example(), f.capability(), f.module(), f.className())).toList(),
+            f.example(), f.capability(), f.module(), f.className(), f.parameterTypes())).toList(),
         p.runtimeCatalog().stream().map(r -> new CatalogDto(r.slice(), r.prefix(), r.module(),
             r.className(), r.exampleKeys())).toList(),
-        p.properties()
+        p.properties(),
+        p.parseErrors()
     );
   }
 
@@ -151,7 +160,8 @@ final class ProfileSerializer {
   private static ScenarioDto toScenarioDto(ScenarioIndex s) {
     return new ScenarioDto(s.name(), s.type() != null ? s.type().name() : null, s.tags(),
         s.steps().stream().map(ProfileSerializer::toStepDto).toList(),
-        s.examples().stream().map(e -> new ExamplesDto(e.tags(), e.headers(), e.rowCount())).toList());
+        s.examples().stream().map(e -> new ExamplesDto(e.tags(), e.headers(), e.rowCount())).toList(),
+        s.ruleBackgroundSteps().stream().map(ProfileSerializer::toStepDto).toList());
   }
 
   private static StepDto toStepDto(StepIndex st) {
@@ -174,7 +184,8 @@ final class ProfileSerializer {
             toPath(s.sourcePath()), s.className(), "")).toList();
     // Note: 'keyword' field in StepDefDto stores the annotation value (Given/When/Then)
     List<FlavorEntry> flavorSteps = d.flavorSteps().stream().map(f ->
-        new FlavorEntry(f.slice(), f.keyword(), f.expression(), f.example(), f.capability(), f.module(), f.className())).toList();
+        new FlavorEntry(f.slice(), f.keyword(), f.expression(), f.example(), f.capability(), f.module(), f.className(),
+            nonNull(f.parameterTypes()))).toList();
     List<RuntimeCatalogEntry> catalog = d.runtimeCatalog().stream().map(r ->
         new RuntimeCatalogEntry(r.slice(), r.prefix(), r.module(), r.className(), r.exampleKeys())).toList();
 
@@ -191,7 +202,7 @@ final class ProfileSerializer {
         toPaths(d.featureRoots()), toPaths(d.requestSpecRoots()), toPaths(d.validationRoots()),
         features, stepDefs, commands, validations, drivers, tags,
         d.properties() != null ? d.properties() : Map.of(), Map.of(),
-        flavorSteps, catalog);
+        flavorSteps, catalog, nonNull(d.parseErrors()));
   }
 
   private static FeatureIndex fromFeatureDto(FeatureDto f) {
@@ -205,7 +216,13 @@ final class ProfileSerializer {
     try { if (s.type() != null) type = ScenarioType.valueOf(s.type()); } catch (Exception ignored) {}
     return new ScenarioIndex(s.name(), type, s.tags(),
         s.steps().stream().map(ProfileSerializer::fromStepDto).toList(),
-        s.examples().stream().map(e -> new ExamplesIndex(e.tags(), e.headers(), e.rowCount())).toList());
+        s.examples().stream().map(e -> new ExamplesIndex(e.tags(), e.headers(), e.rowCount())).toList(),
+        nonNull(s.ruleBackgroundSteps()).stream().map(ProfileSerializer::fromStepDto).toList());
+  }
+
+  private static <T> List<T> nonNull(List<T> values) {
+    if (values == null) return List.of();
+    return values;
   }
 
   private static StepIndex fromStepDto(StepDto st) {

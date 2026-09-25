@@ -194,9 +194,68 @@ class FeatureParserTest {
 
     FeatureIndex feature = parser.parse(file);
 
+    assertTrue(feature.backgroundSteps().isEmpty(), "a Rule background must not leak into the feature background");
     assertEquals(List.of("a signed-in shopper"),
-        feature.backgroundSteps().stream().map(StepIndex::text).toList());
+        feature.scenarios().getFirst().ruleBackgroundSteps().stream().map(StepIndex::text).toList());
     assertEquals(ScenarioType.SCENARIO_OUTLINE, feature.scenarios().getFirst().type());
+  }
+
+  @Test
+  void keepsEachRuleBackgroundOnItsOwnScenarios(@TempDir Path tempDir) throws IOException {
+    Path file = tempDir.resolve("rules.feature");
+    Files.writeString(file, """
+        Feature: Checkout
+          Background:
+            Given a catalog
+
+          Scenario: Browse
+            Then products are listed
+
+          Rule: Guests
+            Background:
+              Given a guest session
+            Scenario: Guest checkout
+              Then guest pays
+
+          Rule: Members
+            Scenario: Member checkout
+              Then member pays
+        """);
+
+    FeatureIndex feature = parser.parse(file);
+
+    assertEquals(List.of("a catalog"), feature.backgroundSteps().stream().map(StepIndex::text).toList());
+    assertTrue(feature.scenarios().get(0).ruleBackgroundSteps().isEmpty());
+    assertEquals(List.of("a guest session"),
+        feature.scenarios().get(1).ruleBackgroundSteps().stream().map(StepIndex::text).toList());
+    assertTrue(feature.scenarios().get(2).ruleBackgroundSteps().isEmpty());
+  }
+
+  @Test
+  void detectsOutlinesByExamplesAndDialectKeyword(@TempDir Path tempDir) throws IOException {
+    Path plain = tempDir.resolve("plain.feature");
+    Files.writeString(plain, """
+        Feature: Plain keyword with examples
+          Scenario: Search "<query>"
+            When the user searches for "<query>"
+            Examples:
+              | query |
+              | apple |
+              | car   |
+        """);
+    Path german = tempDir.resolve("german.feature");
+    Files.writeString(german, """
+        # language: de
+        Funktionalität: Suche
+          Szenariogrundriss: Suche nach "<begriff>"
+            Wenn der Nutzer nach "<begriff>" sucht
+            Beispiele:
+              | begriff |
+              | apfel   |
+        """);
+
+    assertEquals(ScenarioType.SCENARIO_OUTLINE, parser.parse(plain).scenarios().getFirst().type());
+    assertEquals(ScenarioType.SCENARIO_OUTLINE, parser.parse(german).scenarios().getFirst().type());
   }
 
 }

@@ -12,6 +12,21 @@ public record KnowledgeQuery(
     String tagExpression,
     int maxResults
 ) {
+  /** Rejects an invalid tag expression up front instead of silently matching nothing. */
+  public KnowledgeQuery {
+    if (tagExpression != null && !tagExpression.isBlank()) {
+      try {
+        TagExpressionParser.parse(tagExpression);
+      } catch (RuntimeException e) {
+        throw new IllegalArgumentException("Invalid tag expression '" + tagExpression + "': " + e.getMessage(), e);
+      }
+    }
+  }
+
+  public boolean hasTagExpression() {
+    return tagExpression != null && !tagExpression.isBlank();
+  }
+
   public static KnowledgeQuery fromText(String text) {
     return new KnowledgeQuery(text, null, 200);
   }
@@ -25,12 +40,8 @@ public record KnowledgeQuery(
   }
 
   public boolean matchesTags(Collection<String> tags) {
-    if (tagExpression == null || tagExpression.isBlank()) return true;
-    try {
-      return TagExpressionParser.parse(tagExpression).evaluate(List.copyOf(tags));
-    } catch (RuntimeException e) {
-      return false;
-    }
+    if (!hasTagExpression()) return true;
+    return TagExpressionParser.parse(tagExpression).evaluate(List.copyOf(tags));
   }
 
   public boolean matchesText(String input) {

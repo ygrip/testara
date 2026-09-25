@@ -5,18 +5,22 @@ import io.github.ygrip.testara.agent.index.TestaraProjectProfile;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import java.io.IOException;
-import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.AtomicMoveNotSupportedException;
+import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.SimpleFileVisitor;
+import java.nio.file.StandardCopyOption;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
 import java.util.*;
 import java.util.logging.Logger;
-import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 /**
@@ -56,48 +60,58 @@ public final class JsonlKnowledgeStore implements ProjectKnowledgeService {
   @Override
   public ProjectKnowledgeSnapshot loadOrIndex(Path projectRoot) {
     final var knowledgeDir = projectRoot.resolve(KNOWLEDGE_DIR);
+    // Scan before indexing: a file edited while indexing makes the next load stale, never falsely fresh.
+    ProjectFingerprint currentFp = scanFingerprints(projectRoot);
 
     // Fast path: compare fingerprints, restore serialized profile if fresh
     try {
       var savedFpMap = loadFingerprints(knowledgeDir);
-      if (!savedFpMap.isEmpty()) {
-        var currentFp = scanFingerprints(projectRoot);
-        var savedFp   = ProjectFingerprint.of(savedFpMap, computeHash(savedFpMap));
-        if (currentFp.projectHash().equals(savedFp.projectHash())) {
-          TestaraProjectProfile cached = ProfileSerializer.load(knowledgeDir.resolve(PROFILE_CACHE));
-          if (cached != null) {
-            LOG.fine("Knowledge cache hit — skipping indexing");
-            var stats = KnowledgeStats.from(cached.features().size(), cached.totalScenarios(),
-                cached.stepDefinitions().size(), cached.commands().size(), cached.validations().size(),
-                cached.tags().size(), savedFpMap.size(), KnowledgeStatus.FRESH);
-            return new ProjectKnowledgeSnapshot(SCHEMA_VERSION, Instant.now(), Instant.now(),
-                currentFp, cached, stats);
-          }
+      if (!savedFpMap.isEmpty() && hasCurrentSchema(knowledgeDir)
+          && currentFp.projectHash().equals(computeHash(savedFpMap))) {
+        TestaraProjectProfile cached = ProfileSerializer.load(knowledgeDir.resolve(PROFILE_CACHE));
+        if (cached != null) {
+          LOG.fine("Knowledge cache hit — skipping indexing");
+          var stats = KnowledgeStats.from(cached.features().size(), cached.totalScenarios(),
+              cached.stepDefinitions().size(), cached.commands().size(), cached.validations().size(),
+              cached.tags().size(), savedFpMap.size(), KnowledgeStatus.FRESH);
+          return new ProjectKnowledgeSnapshot(SCHEMA_VERSION, Instant.now(), Instant.now(),
+              currentFp, cached, stats);
         }
       }
-    } catch (Exception e) {
-      LOG.fine("Cache check failed, re-indexing: " + e.getMessage());
+    } catch (RuntimeException e) {
+      LOG.warning("Cache check failed, re-indexing: " + e.getMessage());
     }
 
     // Full reindex
     LOG.info("Indexing project at " + projectRoot);
     TestaraProjectProfile profile = indexer.index(projectRoot);
-    var fp = scanFingerprints(projectRoot);
     Instant now = Instant.now();
 
     var stats = KnowledgeStats.from(
         profile.features().size(), profile.totalScenarios(),
         profile.stepDefinitions().size(), profile.commands().size(),
         profile.validations().size(), profile.tags().size(),
-        fp.fingerprints().size(), KnowledgeStatus.FRESH);
+        currentFp.fingerprints().size(), KnowledgeStatus.FRESH);
 
-    var snapshot = new ProjectKnowledgeSnapshot(SCHEMA_VERSION, now, now, fp, profile, stats);
-
-    // Persist to disk for next run
-    saveManifest(knowledgeDir, snapshot);
-    saveFingerprints(knowledgeDir, fp);
-    ProfileSerializer.save(knowledgeDir.resolve(PROFILE_CACHE), profile);
+    var snapshot = new ProjectKnowledgeSnapshot(SCHEMA_VERSION, now, now, currentFp, profile, stats);
+    persist(knowledgeDir, snapshot);
     return snapshot;
+  }
+
+  /**
+   * Writes the profile first and the fingerprints last: the fingerprints file is what marks the cache
+   * valid, so a failed profile write can never leave an old profile looking fresh.
+   */
+  private void persist(Path knowledgeDir, ProjectKnowledgeSnapshot snapshot) {
+    try {
+      Files.deleteIfExists(knowledgeDir.resolve(FINGERPRINTS));
+      ProfileSerializer.save(knowledgeDir.resolve(PROFILE_CACHE), snapshot.profile());
+      writeAtomically(knowledgeDir.resolve(MANIFEST), manifestJson(snapshot));
+      writeAtomically(knowledgeDir.resolve(FINGERPRINTS), fingerprintLines(snapshot.fingerprint()));
+    } catch (IOException e) {
+      LOG.warning("Cannot persist knowledge cache under " + knowledgeDir
+          + " (the next load re-indexes): " + e.getMessage());
+    }
   }
 
   @Override
@@ -117,6 +131,10 @@ public final class JsonlKnowledgeStore implements ProjectKnowledgeService {
     try {
       Map<Path, FileFingerprint> savedFpMap = loadFingerprints(knowledgeDir);
       if (savedFpMap.isEmpty()) return KnowledgeStatus.MISSING;
+      if (!hasCurrentSchema(knowledgeDir)
+          || !ProfileSerializer.hasCurrentVersion(knowledgeDir.resolve(PROFILE_CACHE))) {
+        return KnowledgeStatus.STALE;
+      }
       ProjectFingerprint current = scanFingerprints(projectRoot);
       String savedHash = computeHash(savedFpMap);
       return current.projectHash().equals(savedHash)
@@ -147,36 +165,46 @@ public final class JsonlKnowledgeStore implements ProjectKnowledgeService {
 
   // ── Fingerprint scanning ──────────────────────────────────────────
 
+  /**
+   * Fingerprints every file the indexer reads: the project tree plus modules declared outside it
+   * (e.g. {@code ../sibling}). Exclusions apply to directories below each root only, so a project
+   * that itself lives under a {@code build/} or {@code target/} directory is still fingerprinted.
+   */
   static ProjectFingerprint scanFingerprints(Path projectRoot) {
+    Path base = projectRoot.toAbsolutePath().normalize();
     Map<Path, FileFingerprint> fps = new LinkedHashMap<>();
-    try (Stream<Path> walk = Files.walk(projectRoot)) {
-      walk.filter(Files::isRegularFile)
-          .filter(p -> !isExcluded(p))
-          .forEach(p -> {
+    for (Path root : ProjectIndexer.collectJavaSourceRoots(base, ProjectIndexer.detectModules(base))) {
+      if (!Files.isDirectory(root)) continue;
+      try {
+        Files.walkFileTree(root, new SimpleFileVisitor<>() {
+          @Override
+          public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
+            if (!dir.equals(root) && ProjectIndexer.isExcludedDirectory(dir)) return FileVisitResult.SKIP_SUBTREE;
+            return FileVisitResult.CONTINUE;
+          }
+          @Override
+          public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
+            if (!attrs.isRegularFile()) return FileVisitResult.CONTINUE;
+            Path rel = base.relativize(file);
             try {
-              long size = Files.size(p);
-              long mod = Files.getLastModifiedTime(p).toMillis();
-              Path rel = projectRoot.relativize(p);
-              FileType type = classify(rel);
-              fps.put(rel, new FileFingerprint(rel, type, size, mod, hashContent(p)));
-            } catch (IOException ignored) { /* skip unreadable */ }
-          });
-    } catch (IOException e) {
-      LOG.warning("Fingerprint scan failed: " + e.getMessage());
+              fps.put(rel, new FileFingerprint(rel, classify(rel), attrs.size(),
+                  attrs.lastModifiedTime().toMillis(), hashContent(file)));
+            } catch (IOException e) {
+              LOG.fine("Skipping unreadable file " + file + ": " + e.getMessage());
+            }
+            return FileVisitResult.CONTINUE;
+          }
+          @Override
+          public FileVisitResult visitFileFailed(Path file, IOException exc) {
+            LOG.fine("Skipping inaccessible path " + file + ": " + exc.getMessage());
+            return FileVisitResult.CONTINUE;
+          }
+        });
+      } catch (IOException e) {
+        LOG.warning("Fingerprint scan failed under " + root + ": " + e.getMessage());
+      }
     }
     return ProjectFingerprint.of(fps, computeHash(fps));
-  }
-
-  /** Normalizes to '/'-separated form first so exclusion still matches on Windows. */
-  private static boolean isExcluded(Path p) {
-    String normalized = p.toString().replace('\\', '/');
-    return normalized.contains("/target/")
-        || normalized.contains("/build/")
-        || normalized.contains("/.testara-agent/")
-        || normalized.contains("/.git/")
-        || normalized.contains("/.gradle/")
-        || normalized.contains("/.idea/")
-        || normalized.contains("/node_modules/");
   }
 
   /**
@@ -184,24 +212,33 @@ public final class JsonlKnowledgeStore implements ProjectKnowledgeService {
    * checkout that doesn't touch mtimes, or two edits landing within the same filesystem
    * timestamp granularity) - actual content is the only reliable freshness signal.
    */
-  private static String hashContent(Path p) {
-    try {
-      MessageDigest md = MessageDigest.getInstance("SHA-256");
-      try (var in = Files.newInputStream(p)) {
-        byte[] buffer = new byte[8192];
-        int read;
-        while ((read = in.read(buffer)) != -1) {
-          md.update(buffer, 0, read);
-        }
+  private static String hashContent(Path p) throws IOException {
+    MessageDigest md = sha256();
+    try (var in = Files.newInputStream(p)) {
+      byte[] buffer = new byte[8192];
+      int read;
+      while ((read = in.read(buffer)) != -1) {
+        md.update(buffer, 0, read);
       }
-      return bytesToHex(md.digest());
-    } catch (IOException | NoSuchAlgorithmException e) {
-      return "";
+    }
+    return bytesToHex(md.digest());
+  }
+
+  private static MessageDigest sha256() {
+    try {
+      return MessageDigest.getInstance("SHA-256");
+    } catch (NoSuchAlgorithmException e) {
+      throw new IllegalStateException("SHA-256 is required by every Java platform", e);
     }
   }
 
+  /** '/'-separated form so cache files are identical (and valid JSON) on every OS. */
+  private static String portablePath(Path p) {
+    return p.toString().replace('\\', '/');
+  }
+
   private static FileType classify(Path rel) {
-    String s = rel.toString().replace('\\', '/');
+    String s = portablePath(rel);
     if (s.equals("pom.xml") || s.equals("build.gradle")) return FileType.BUILD;
     if (s.endsWith(".feature")) return FileType.FEATURE;
     if (s.endsWith(".java") && s.contains("Command")) return FileType.COMMAND;
@@ -215,16 +252,12 @@ public final class JsonlKnowledgeStore implements ProjectKnowledgeService {
   }
 
   private static String computeHash(Map<Path, FileFingerprint> fps) {
-    try {
-      MessageDigest md = MessageDigest.getInstance("SHA-256");
-      fps.values().stream()
-          .sorted(Comparator.comparing(f -> f.path().toString()))
-          .forEach(f -> md.update((f.path() + ":" + f.size() + ":" + f.lastModifiedMillis() + ":" + f.sha256())
-              .getBytes(StandardCharsets.UTF_8)));
-      return bytesToHex(md.digest());
-    } catch (NoSuchAlgorithmException e) {
-      return String.valueOf(fps.hashCode());
-    }
+    MessageDigest md = sha256();
+    fps.values().stream()
+        .sorted(Comparator.comparing(f -> portablePath(f.path())))
+        .forEach(f -> md.update((portablePath(f.path()) + ":" + f.size() + ":" + f.lastModifiedMillis()
+            + ":" + f.sha256()).getBytes(StandardCharsets.UTF_8)));
+    return bytesToHex(md.digest());
   }
 
   // ── Persistence ───────────────────────────────────────────────────
@@ -271,31 +304,58 @@ public final class JsonlKnowledgeStore implements ProjectKnowledgeService {
     }
   }
 
-  private void saveManifest(Path dir, ProjectKnowledgeSnapshot snapshot) {
+  private boolean hasCurrentSchema(Path dir) {
+    Path manifest = dir.resolve(MANIFEST);
+    if (!Files.exists(manifest)) return false;
     try {
-      Files.createDirectories(dir);
-      String json = String.format("""
-          {"schemaVersion":%d,"createdAt":"%s","updatedAt":"%s","projectHash":"%s"}
-          """, snapshot.schemaVersion(), snapshot.createdAt(),
-          snapshot.updatedAt(), snapshot.fingerprint().projectHash());
-      Files.writeString(dir.resolve(MANIFEST), json, StandardCharsets.UTF_8);
+      return MAPPER.readTree(manifest.toFile()).path("schemaVersion").asInt(-1) == SCHEMA_VERSION;
     } catch (IOException e) {
-      LOG.warning("Cannot save manifest: " + e.getMessage());
+      LOG.fine("Cannot read manifest: " + e.getMessage());
+      return false;
     }
   }
 
-  private void saveFingerprints(Path dir, ProjectFingerprint fp) {
+  private static String manifestJson(ProjectKnowledgeSnapshot snapshot) throws IOException {
+    ObjectNode manifest = MAPPER.createObjectNode();
+    manifest.put("schemaVersion", snapshot.schemaVersion());
+    manifest.put("createdAt", snapshot.createdAt().toString());
+    manifest.put("updatedAt", snapshot.updatedAt().toString());
+    manifest.put("projectHash", snapshot.fingerprint().projectHash());
+    return MAPPER.writeValueAsString(manifest) + "\n";
+  }
+
+  private static String fingerprintLines(ProjectFingerprint fp) throws IOException {
+    StringBuilder lines = new StringBuilder();
+    List<FileFingerprint> sorted = fp.fingerprints().values().stream()
+        .sorted(Comparator.comparing(f -> portablePath(f.path())))
+        .toList();
+    for (FileFingerprint f : sorted) {
+      ObjectNode line = MAPPER.createObjectNode();
+      line.put("path", portablePath(f.path()));
+      line.put("type", f.type().name());
+      line.put("size", f.size());
+      line.put("lastModifiedMillis", f.lastModifiedMillis());
+      line.put("sha256", f.sha256());
+      lines.append(MAPPER.writeValueAsString(line)).append('\n');
+    }
+    return lines.toString();
+  }
+
+  /** Writes via a sibling temp file and an atomic rename so readers never see a partial file. */
+  static void writeAtomically(Path target, String content) throws IOException {
+    Path dir = target.toAbsolutePath().getParent();
+    Files.createDirectories(dir);
+    Path temp = Files.createTempFile(dir, target.getFileName().toString(), ".tmp");
     try {
-      Files.createDirectories(dir);
-      List<String> lines = fp.fingerprints().values().stream()
-          .sorted(Comparator.comparing(f -> f.path().toString()))
-          .map(f -> String.format(
-              "{\"path\":\"%s\",\"type\":\"%s\",\"size\":%d,\"lastModifiedMillis\":%d,\"sha256\":\"%s\"}",
-              f.path(), f.type(), f.size(), f.lastModifiedMillis(), f.sha256()))
-          .collect(Collectors.toList());
-      Files.write(dir.resolve(FINGERPRINTS), lines, StandardCharsets.UTF_8);
-    } catch (IOException e) {
-      LOG.warning("Cannot save fingerprints: " + e.getMessage());
+      Files.writeString(temp, content, StandardCharsets.UTF_8);
+      try {
+        Files.move(temp, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+      } catch (AtomicMoveNotSupportedException e) {
+        LOG.fine("Atomic move unsupported for " + target + ", replacing non-atomically");
+        Files.move(temp, target, StandardCopyOption.REPLACE_EXISTING);
+      }
+    } finally {
+      Files.deleteIfExists(temp);
     }
   }
 

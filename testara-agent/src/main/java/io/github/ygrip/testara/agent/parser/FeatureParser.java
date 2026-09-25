@@ -1,5 +1,6 @@
 package io.github.ygrip.testara.agent.parser;
 
+import io.cucumber.gherkin.GherkinDialectProvider;
 import io.cucumber.gherkin.GherkinParser;
 import io.cucumber.messages.types.Background;
 import io.cucumber.messages.types.DataTable;
@@ -32,6 +33,8 @@ import java.util.Set;
  */
 public class FeatureParser {
 
+  private static final GherkinDialectProvider DIALECTS = new GherkinDialectProvider();
+
   private final GherkinParser parser = GherkinParser.builder()
       .includeSource(false)
       .includePickles(false)
@@ -58,12 +61,13 @@ public class FeatureParser {
 
     List<ScenarioIndex> scenarios = new ArrayList<>();
     List<StepIndex> backgroundSteps = new ArrayList<>();
+    List<String> outlineKeywords = outlineKeywords(feature.getLanguage());
 
     for (FeatureChild child : feature.getChildren()) {
       child.getBackground().ifPresent(bg -> backgroundSteps.addAll(toSteps(bg)));
       child.getScenario().ifPresent(scenario ->
-          scenarios.add(toScenario(scenario, List.of())));
-      child.getRule().ifPresent(rule -> addRuleScenarios(rule, scenarios, backgroundSteps));
+          scenarios.add(toScenario(scenario, List.of(), List.of(), outlineKeywords)));
+      child.getRule().ifPresent(rule -> addRuleScenarios(rule, scenarios, outlineKeywords));
     }
 
     return new FeatureIndex(
@@ -74,17 +78,19 @@ public class FeatureParser {
         List.copyOf(backgroundSteps));
   }
 
-  private void addRuleScenarios(Rule rule, List<ScenarioIndex> scenarios,
-      List<StepIndex> backgroundSteps) {
+  /** A Rule's Background applies only to that Rule's scenarios, so it stays on each of them. */
+  private void addRuleScenarios(Rule rule, List<ScenarioIndex> scenarios, List<String> outlineKeywords) {
     List<String> ruleTags = tags(rule.getTags());
+    List<StepIndex> ruleBackground = new ArrayList<>();
     for (RuleChild child : rule.getChildren()) {
-      child.getBackground().ifPresent(bg -> backgroundSteps.addAll(toSteps(bg)));
+      child.getBackground().ifPresent(bg -> ruleBackground.addAll(toSteps(bg)));
       child.getScenario().ifPresent(scenario ->
-          scenarios.add(toScenario(scenario, ruleTags)));
+          scenarios.add(toScenario(scenario, ruleTags, List.copyOf(ruleBackground), outlineKeywords)));
     }
   }
 
-  private ScenarioIndex toScenario(Scenario scenario, List<String> inheritedRuleTags) {
+  private ScenarioIndex toScenario(Scenario scenario, List<String> inheritedRuleTags,
+      List<StepIndex> ruleBackgroundSteps, List<String> outlineKeywords) {
     Set<String> scenarioTags = new LinkedHashSet<>(inheritedRuleTags);
     scenarioTags.addAll(tags(scenario.getTags()));
 
@@ -92,16 +98,25 @@ public class FeatureParser {
         .map(this::toExamples)
         .toList();
 
-    ScenarioType type = scenario.getKeyword().startsWith("Scenario Outline")
-        || scenario.getKeyword().startsWith("Scenario Template")
-        ? ScenarioType.SCENARIO_OUTLINE : ScenarioType.SCENARIO;
+    // Examples make any scenario an outline; the dialect keyword covers outlines without Examples.
+    ScenarioType type = ScenarioType.SCENARIO;
+    if (!examples.isEmpty() || outlineKeywords.contains(scenario.getKeyword())) {
+      type = ScenarioType.SCENARIO_OUTLINE;
+    }
 
     return new ScenarioIndex(
         scenario.getName(),
         type,
         List.copyOf(scenarioTags),
         scenario.getSteps().stream().map(this::toStep).toList(),
-        examples);
+        examples,
+        ruleBackgroundSteps);
+  }
+
+  private List<String> outlineKeywords(String language) {
+    return DIALECTS.getDialect(language)
+        .orElseGet(DIALECTS::getDefaultDialect)
+        .getScenarioOutlineKeywords();
   }
 
   private ExamplesIndex toExamples(Examples examples) {

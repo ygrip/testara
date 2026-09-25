@@ -8,6 +8,8 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class JsonlKnowledgeQueryServiceTest {
 
@@ -37,5 +39,34 @@ class JsonlKnowledgeQueryServiceTest {
     assertEquals(1, service.findTags(KnowledgeQuery.fromTag("@api")).size());
     assertEquals(1, service.findCommands(KnowledgeQuery.fromText("token")).size());
     assertEquals(1, service.findValidations(KnowledgeQuery.fromText("success")).size());
+  }
+
+  @Test
+  void evaluatesTagsPerExamplesBlockAndNeverByFeatureTagsAlone() {
+    ScenarioIndex outline = new ScenarioIndex("By channel", ScenarioType.SCENARIO_OUTLINE, List.of(),
+        List.of(), List.of(new ExamplesIndex(List.of("@desktop"), List.of("channel"), 1),
+            new ExamplesIndex(List.of("@mobile"), List.of("channel"), 1)));
+    ScenarioIndex smoke = new ScenarioIndex("Smoke", ScenarioType.SCENARIO, List.of("@smoke"),
+        List.of(), List.of());
+    FeatureIndex feature = new FeatureIndex(Path.of("a.feature"), "A", List.of("@api"),
+        List.of(outline), List.of());
+    FeatureIndex smokeOnly = new FeatureIndex(Path.of("b.feature"), "B", List.of("@api"),
+        List.of(smoke), List.of());
+    TestaraProjectProfile profile = new TestaraProjectProfile(
+        Path.of("."), BuildTool.MAVEN, "21", List.of(), List.of(), List.of(), List.of(),
+        List.of(feature, smokeOnly), List.of(), List.of(), List.of(), List.of(), List.of(),
+        Map.of(), Map.of(), List.of(), List.of());
+    JsonlKnowledgeQueryService service = new JsonlKnowledgeQueryService(profile);
+
+    assertTrue(service.findScenarios(KnowledgeQuery.fromTag("@desktop and @mobile"), profile.features()).isEmpty(),
+        "tags of different Examples blocks must not be merged");
+    assertEquals(1, service.findScenarios(KnowledgeQuery.fromTag("@desktop"), profile.features()).size());
+    assertEquals(List.of(feature), service.findFeatures(KnowledgeQuery.fromTag("@api and not @smoke")),
+        "a feature matches only through a scenario it would run");
+  }
+
+  @Test
+  void rejectsInvalidTagExpressions() {
+    assertThrows(IllegalArgumentException.class, () -> KnowledgeQuery.fromTag("@a and ("));
   }
 }

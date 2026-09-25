@@ -56,7 +56,7 @@ public class TestOverviewSkill implements AgentSkill<Path, String> {
                 .thenComparing(TagIndex::tag))
             .limit(15)
             .map(t -> t.tag() + ":scenarios=" + t.scenarioCount() + ",cases=" + t.executableCaseCount())
-            .collect(Collectors.joining(" ")));
+            .collect(Collectors.joining(" "))) + parseErrorsConcise(p);
   }
 
   private String renderMarkdown(TestaraProjectProfile p) {
@@ -93,7 +93,17 @@ public class TestOverviewSkill implements AgentSkill<Path, String> {
           .collect(Collectors.joining(" ")));
       sb.append("\n");
     }
+    if (!p.parseErrors().isEmpty()) {
+      sb.append("\n**Parse errors (").append(p.parseErrors().size()).append(" files not indexed):**\n");
+      p.parseErrors().forEach(error -> sb.append("- ").append(error).append("\n"));
+    }
     return sb.toString();
+  }
+
+  /** Feature files that could not be parsed are missing from every count above — say so. */
+  private String parseErrorsConcise(TestaraProjectProfile p) {
+    if (p.parseErrors().isEmpty()) return "";
+    return "ParseErrors: " + p.parseErrors().size() + " | " + String.join(" | ", p.parseErrors()) + "\n";
   }
 
   private String renderJson(TestaraProjectProfile p) {
@@ -128,6 +138,7 @@ public class TestOverviewSkill implements AgentSkill<Path, String> {
             "cases", t.executableCaseCount(),
             "features", t.featureCount()))
         .toList());
+    out.put("parseErrors", p.parseErrors());
     try {
       return MAPPER.writeValueAsString(out);
     } catch (JsonProcessingException e) {
