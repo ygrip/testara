@@ -40,7 +40,7 @@ public class TestInitCommand implements Callable<Integer> {
 
   @Option(names = "--engine",
     defaultValue = "selenium",
-    description = "UI engine (ui type only): selenium, playwright, appium"
+    description = "UI engine (ui type only): selenium, playwright, appium, vibium"
   )
   private String engine;
 
