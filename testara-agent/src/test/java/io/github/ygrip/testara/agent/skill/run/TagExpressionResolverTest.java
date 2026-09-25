@@ -153,6 +153,51 @@ class TagExpressionResolverTest {
   }
 
   @Test
+  void exceptNegatesTheWholeTrailingExpression() {
+    TestaraProjectProfile profile = profileWithTags("@smoke", "@slow", "@flaky");
+
+    assertEquals("@smoke and not (@slow or @flaky)", resolver.resolve("@smoke except @slow or @flaky", profile));
+    assertEquals("@smoke and not (@slow or @flaky)", resolver.resolve("run smoke except slow and flaky", profile));
+    assertEquals("not @slow", resolver.resolve("run everything except slow", profile));
+  }
+
+  @Test
+  void keepsNegativeTagCaseAsTyped() {
+    assertEquals("@api and not @WIP", resolver.resolve("run @api except @WIP",
+        profileWithTags("@api", "@WIP")));
+  }
+
+  @Test
+  void parenthesizesMultiTokenAliases() {
+    TagExpressionResolver custom = new TagExpressionResolver(Map.of(
+        "checkout", "@cart or @payment",
+        "legacy", "(@old or @deprecated)"));
+    TestaraProjectProfile profile = profileWithTags("@cart", "@payment", "@smoke", "@old", "@deprecated");
+
+    assertEquals("@smoke and not (@cart or @payment)", custom.resolve("run smoke except checkout", profile));
+    assertEquals("(@cart or @payment) and @smoke", custom.resolve("run checkout smoke", profile));
+    assertEquals("@smoke and not (@old or @deprecated)", custom.resolve("run smoke except legacy", profile));
+  }
+
+  @Test
+  void countsOutlinesByExamplesTagsWithCucumberSemantics() {
+    ScenarioIndex outline = new ScenarioIndex("login outline", ScenarioType.SCENARIO_OUTLINE, List.of("@login"),
+        List.of(), List.of(new ExamplesIndex(List.of("@smoke"), List.of("user"), 2),
+            new ExamplesIndex(List.of("@slow"), List.of("user"), 3)));
+    FeatureIndex feature = new FeatureIndex(Path.of("login.feature"), "Login", List.of(), List.of(outline), List.of());
+    TestaraProjectProfile profile = new TestaraProjectProfile(
+        Path.of("."), BuildTool.MAVEN, "21", List.of(),
+        List.of(), List.of(), List.of(), List.of(feature),
+        List.of(), List.of(), List.of(), List.of(), List.of(),
+        Map.of(), Map.of(), List.of(), List.of());
+
+    assertEquals(1, resolver.countMatching("@smoke", profile), "tag only on an Examples block must match");
+    assertEquals(1, resolver.countMatching("@login and not @slow", profile), "the @smoke Examples block still runs");
+    assertEquals(0, resolver.countMatching("@smoke and @slow", profile), "no single Examples block has both");
+    assertTrue(resolver.matches("@slow", feature, outline));
+  }
+
+  @Test
   void evaluatesCucumberExpressionPrecedence() {
     ScenarioIndex apiSlow = new ScenarioIndex("api slow", ScenarioType.SCENARIO,
         List.of("@api", "@slow"), List.of(), List.of());
