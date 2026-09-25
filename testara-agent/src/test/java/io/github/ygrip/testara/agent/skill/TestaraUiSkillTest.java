@@ -126,6 +126,7 @@ class TestaraUiSkillTest {
 
     assertTrue(output.contains("written: src/main/java/io/github/ygrip/automation/page/LoginPage.java"));
     assertTrue(output.contains("updated application.properties"));
+    assertTrue(secondOutput.contains("exists: src/main/java/io/github/ygrip/automation/page/LoginPage.java"), secondOutput);
     assertTrue(secondOutput.contains("application.properties unchanged"));
     assertTrue(Files.exists(pageFile));
     assertTrue(Files.readString(pageFile).contains("public class LoginPage extends SeleniumPage"));
@@ -184,6 +185,70 @@ class TestaraUiSkillTest {
 
     assertTrue(output.contains("status: needs_html_snapshot"));
     assertTrue(output.contains("unchecked USERNAME_FIELD id=user-name"));
+  }
+
+  @Test
+  void appiumPageAndConfigUseAppiumRuntimeTypesAndKeys() {
+    String page = new TestaraUiSkill().execute(
+        new TestaraUiSkill.Input("page", "login", null, "appium", "io.github.ygrip.automation"), context());
+    String config = new TestaraUiSkill().execute(
+        new TestaraUiSkill.Input("config", null, null, "appium", "io.github.ygrip.automation"), context());
+
+    assertTrue(page.contains("import io.github.ygrip.testara.ui.appium.page.AppiumPage;"), page);
+    assertTrue(page.contains("public class LoginPage extends AppiumPage"), page);
+    assertFalse(config.contains("appium.driver.platformName"), config);
+    assertFalse(config.contains("appium.driver.deviceName"), config);
+    assertTrue(config.contains("appium.driver.capabilities.android.android.platformName=Android"), config);
+    assertTrue(config.contains("appium.driver.page-scan-locations=io.github.ygrip.testara,io.github.ygrip.automation"), config);
+  }
+
+  @Test
+  void playwrightConfigHasNoInventedBrowserTypeKey() {
+    String config = new TestaraUiSkill().execute(
+        new TestaraUiSkill.Input("config", null, null, "playwright", "io.github.ygrip.automation"), context());
+
+    assertFalse(config.contains("browserType"), config);
+  }
+
+  @Test
+  void defaultActionClicksTheButtonThePageDeclares() {
+    String action = new TestaraUiSkill().execute(
+        new TestaraUiSkill.Input("action", "profile", "save profile", "selenium", "io.github.ygrip.automation"),
+        context());
+    String page = new TestaraUiSkill().execute(
+        new TestaraUiSkill.Input("page", "profile", null, "selenium", "io.github.ygrip.automation"), context());
+
+    assertFalse(action.contains("primary action"), action);
+    assertTrue(action.contains("Click.on(\"submit button\")"), action);
+    assertTrue(page.contains("SUBMIT_BUTTON"), page);
+  }
+
+  @Test
+  void explainUsesRealVisibilityValidation() {
+    String guide = new TestaraUiSkill().execute(
+        new TestaraUiSkill.Input("explain", null, null, null, "io.github.ygrip.automation"), context());
+
+    assertFalse(guide.contains("DISPLAYED "), guide);
+    assertTrue(guide.contains("IS_VISIBLE"), guide);
+  }
+
+  @Test
+  void overwriteOptionReplacesAnExistingPage() throws IOException {
+    TestaraUiSkill skill = new TestaraUiSkill();
+    skill.execute(new TestaraUiSkill.Input("page", "login", null, "selenium", "io.github.ygrip.automation"),
+        writeContext());
+    Path pageFile = projectRoot.resolve("src/main/java/io/github/ygrip/automation/page/LoginPage.java");
+    Files.writeString(pageFile, "package io.github.ygrip.automation.page;\nclass Edited {}\n");
+
+    String kept = skill.execute(new TestaraUiSkill.Input("page", "login", null, "selenium", "io.github.ygrip.automation"),
+        writeContext());
+    assertTrue(kept.startsWith("exists: "), kept);
+    assertTrue(Files.readString(pageFile).contains("class Edited"));
+
+    skill.execute(new TestaraUiSkill.Input("page", "login", null, "selenium", "io.github.ygrip.automation"),
+        new AgentContext(projectRoot, null, AgentMode.APPLY, null,
+            Map.of("format", "concise", "write", "true", "overwrite", "true")));
+    assertTrue(Files.readString(pageFile).contains("public class LoginPage"));
   }
 
   private AgentContext context() {

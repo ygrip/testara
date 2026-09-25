@@ -1,11 +1,8 @@
 package io.github.ygrip.testara.agent.skill;
 
-import io.github.ygrip.testara.agent.safety.ProjectPathGuard;
 import io.github.ygrip.testara.agent.safety.OutputValidator;
 
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Locale;
@@ -21,6 +18,11 @@ import java.util.Locale;
  */
 public class TestaraApiSkill implements AgentSkill<TestaraApiSkill.Input, String> {
 
+  private static final List<String> CONFIGURATION_FILES =
+      List.of("src/test/resources/configuration.properties", "configuration.properties");
+  private static final List<String> APPLICATION_FILES =
+      List.of("src/test/resources/application.properties", "application.properties");
+
   public record Input(String mode, String domain, String flow, String method, String endpoint) {}
 
   @Override
@@ -34,7 +36,8 @@ public class TestaraApiSkill implements AgentSkill<TestaraApiSkill.Input, String
 
     return switch (mode) {
       case "config"        -> generateApiConfig(input.domain(), context.projectRoot(), write, concise);
-      case "request-spec"  -> generateRequestSpec(input.domain(), input.flow(), input.method(), input.endpoint(), context.projectRoot(), write, concise);
+      case "request-spec"  -> generateRequestSpec(input.domain(), input.flow(), input.method(), input.endpoint(),
+          context.projectRoot(), write, ArtifactFiles.overwrite(context), concise);
       case "explain"       -> explainApi(concise);
       default              -> explainApi(concise);
     };
@@ -72,7 +75,7 @@ public class TestaraApiSkill implements AgentSkill<TestaraApiSkill.Input, String
 
         ## When to use request spec vs direct step
         - **Direct step** — simple GET without payload/params:
-          `When [api] try GET request to "properties({name}.health-endpoint)"`
+          `When [api] try GET request to "properties({name}.api.health-endpoint)"`
         - **Request spec** — any request with payload, path params, headers, or reuse:
           `When [api] process request to "files/{domain}/request/{flow}"`
 
@@ -81,7 +84,7 @@ public class TestaraApiSkill implements AgentSkill<TestaraApiSkill.Input, String
         {
           "specification": "{name}",
           "httpMethod": "POST",
-          "url": "properties({name}.endpoint)",
+          "url": "properties({name}.api.endpoint)",
           "contentType": "application/json",
           "headers": { "X-Request-Id": "uuid()" },
           "queryParameters": { "include": "details" },
@@ -97,20 +100,22 @@ public class TestaraApiSkill implements AgentSkill<TestaraApiSkill.Input, String
         all use TransformerService.toMap() — they REQUIRE the |key|value| header format.
         Each row after the header becomes one map entry.
         ```gherkin
-        And [api] prepare header with value
+        And [api] prepare headers with data
           | key           | value            |
           | Content-Type  | application/json |
           | X-Request-Id  | uuid()           |
 
-        And [api] prepare query parameter with value
+        And [api] prepare queryParams with data
           | key     | value                       |
           | include | details                     |
           | page    | 1                           |
 
-        And [api] prepare form param with value
+        And [api] prepare formParams with data
           | key    | value                          |
           | userId | properties(test.{domain}.id)   |
         ```
+        Single values: `[api] prepare header "X-Request-Id" with value "uuid()"`,
+        `[api] prepare queryParam "page" with value "1"`, `[api] prepare pathParam for id with value "properties(test.{domain}.id)"`.
 
         Template binding (DataManipulationSteps) uses horizontal multi-column — column names are JSONPath keys:
         ```gherkin
@@ -144,40 +149,47 @@ public class TestaraApiSkill implements AgentSkill<TestaraApiSkill.Input, String
         """;
   }
 
+  /** Runtime service config for {@code using service with alias <domain>-api} (configuration.properties). */
+  static String serviceConfigBlock(String domain) {
+    String alias = PropertyKeys.apiAlias(domain);
+    String env = PropertyKeys.toEnvKey(alias);
+    return """
+        # API service — %s
+        api.service.%s.host=${%s_HOST:http://localhost:8080}
+        api.service.%s.basePath=${%s_BASE_PATH:/api/v1}
+        api.service.%s.default_specification=%s
+        spec.api.%s.header.Content-Type=application/json
+        spec.api.%s.header.Accept=application/json
+        api.enable-request-log=true
+        api.enable-response-log=true
+        """.formatted(domain, alias, env, alias, env, alias, alias, alias, alias);
+  }
+
   private String generateApiConfig(String domain, Path projectRoot, boolean write, boolean concise) {
     if (domain == null) domain = "sample";
     String d = domain;
-    String envPrefix = d.replaceAll("[^a-zA-Z0-9]+", "_").toUpperCase(Locale.ROOT);
-    String configBlock = """
-        # API service — %s
-        api.service.%s-api.host=${%s_API_HOST:http://localhost:8080}
-        api.service.%s-api.basePath=${%s_API_BASE_PATH:/api/v1}
-        api.service.%s-api.default_specification=%s-api
-        spec.api.%s-api.header.Content-Type=application/json
-        spec.api.%s-api.header.Accept=application/json
-        api.enable-request-log=true
-        api.enable-response-log=true
-        """.formatted(d, d, envPrefix, d, envPrefix, d, d, d, d);
+    String configBlock = serviceConfigBlock(d);
 
     String applicationBlock = """
         # Application values referenced by features/request specs
-        %s.api.endpoint=/sample/{id}
-        test.%s.id=00000000-0000-0000-0000-000000000001
-        test.%s.field=sample-value
-        test.%s.include=details
-        """.formatted(d, d, d, d);
-
-    String block = configBlock + "\n" + applicationBlock;
+        %s=/%s/{id}
+        %s=00000000-0000-0000-0000-000000000001
+        %s=sample-value
+        %s=details
+        """.formatted(PropertyKeys.apiEndpoint(d), d, PropertyKeys.testData(d, "id"),
+        PropertyKeys.testData(d, "field"), PropertyKeys.testData(d, "include"));
 
     if (write) {
-      appendToProperties(projectRoot, configBlock,
-          List.of("src/test/resources/configuration.properties", "configuration.properties"));
-      appendToProperties(projectRoot, applicationBlock,
-          List.of("src/test/resources/application.properties", "application.properties"));
-      return concise ? "appended api config for '" + d + "' to src/test/resources/configuration.properties and src/test/resources/application.properties"
-          : "## API Config Written\n\nAppended runtime config to `src/test/resources/configuration.properties`:\n```properties\n"
-              + configBlock + "```\n\nAppended environment values to `src/test/resources/application.properties`:\n```properties\n"
-              + applicationBlock + "```\n";
+      try {
+        ArtifactFiles.PropertyMerge config = ArtifactFiles.mergeProperties(projectRoot, CONFIGURATION_FILES, configBlock);
+        ArtifactFiles.PropertyMerge values = ArtifactFiles.mergeProperties(projectRoot, APPLICATION_FILES, applicationBlock);
+        return concise ? "api config for '" + d + "':\n" + config.line() + "\n" + values.line()
+            : "## API Config Written\n\n- " + config.line() + "\n- " + values.line()
+                + "\n\nRuntime config (`" + config.path() + "`):\n```properties\n" + configBlock
+                + "```\n\nEnvironment values (`" + values.path() + "`):\n```properties\n" + applicationBlock + "```\n";
+      } catch (IOException e) {
+        return "Error writing api config for '" + d + "': " + e.getMessage();
+      }
     }
     return concise
         ? "add_to_src/test/resources/configuration.properties:\n" + configBlock
@@ -188,17 +200,17 @@ public class TestaraApiSkill implements AgentSkill<TestaraApiSkill.Input, String
   }
 
   private String generateRequestSpec(String domain, String flow, String method, String endpoint,
-      Path projectRoot, boolean write, boolean concise) {
+      Path projectRoot, boolean write, boolean overwrite, boolean concise) {
     if (domain == null) domain = "sample";
     if (flow == null) flow = "sample-request";
     if (method == null) method = "POST";
-    if (endpoint == null) endpoint = "properties(" + domain + ".api.endpoint)";
+    if (endpoint == null) endpoint = "properties(" + PropertyKeys.apiEndpoint(domain) + ")";
     String d = domain, f = flow, m = method.toUpperCase(Locale.ROOT), e = endpoint;
 
     boolean payloadMethod = List.of("POST", "PUT", "PATCH").contains(m);
     String spec = payloadMethod ? """
         {
-          "specification": "%s-api",
+          "specification": "%s",
           "httpMethod": "%s",
           "url": "%s",
           "contentType": "application/json",
@@ -213,9 +225,9 @@ public class TestaraApiSkill implements AgentSkill<TestaraApiSkill.Input, String
           },
           "autoCloseConnection": true
         }
-        """.formatted(d, m, e, d, d) : """
+        """.formatted(PropertyKeys.apiAlias(d), m, e, d, d) : """
         {
-          "specification": "%s-api",
+          "specification": "%s",
           "httpMethod": "%s",
           "url": "%s",
           "contentType": "application/json",
@@ -227,19 +239,20 @@ public class TestaraApiSkill implements AgentSkill<TestaraApiSkill.Input, String
           },
           "autoCloseConnection": true
         }
-        """.formatted(d, m, e, d, d);
+        """.formatted(PropertyKeys.apiAlias(d), m, e, d, d);
 
     String path = "src/test/resources/files/" + d + "/request/" + f + ".json";
     var validation = OutputValidator.validateJson(spec);
     if (!validation.valid()) {
       return "Generated request spec is invalid: " + String.join("; ", validation.errors());
     }
+    String featureStep = "When [api] process request to \"files/" + d + "/request/" + f + "\"";
     if (write) {
       try {
-        Path target = ProjectPathGuard.resolveInside(projectRoot, path);
-        Files.createDirectories(target.getParent());
-        Files.writeString(target, spec, StandardCharsets.UTF_8);
-        String featureStep = "When [api] process request to \"files/" + d + "/request/" + f + "\"";
+        ArtifactFiles.Written written = ArtifactFiles.writeJson(projectRoot, path, spec, overwrite);
+        if (!written.changed()) {
+          return "exists: " + path + " (pass overwrite=true to replace)\nstep: " + featureStep;
+        }
         return concise
             ? "written: " + path + "\nstep: " + featureStep
             : "## Request Spec Written\n\n`" + path + "`\n\n```json\n" + spec + "```\n\n**Feature step:**\n```gherkin\n" + featureStep + "\n```\n";
@@ -247,27 +260,7 @@ public class TestaraApiSkill implements AgentSkill<TestaraApiSkill.Input, String
         return "Error writing " + path + ": " + ex.getMessage();
       }
     }
-    String featureStep = "When [api] process request to \"files/" + d + "/request/" + f + "\"";
     if (concise) return "path: " + path + "\nstep: " + featureStep + "\n" + spec;
     return "## Request Spec — " + f + "\n\n**Path:** `" + path + "`\n\n```json\n" + spec + "```\n\n**Feature step:**\n```gherkin\n" + featureStep + "\n```\n";
-  }
-
-  private void appendToProperties(Path root, String block, List<String> candidates) {
-    for (String c : candidates) {
-      Path p = root.resolve(c);
-      if (Files.exists(p)) {
-        try { Files.writeString(p, Files.readString(p, StandardCharsets.UTF_8) + "\n" + block, StandardCharsets.UTF_8); }
-        catch (IOException ignored) {}
-        return;
-      }
-    }
-    // File doesn't exist yet — create at the canonical test-scope location (first candidate)
-    if (!candidates.isEmpty()) {
-      Path target = root.resolve(candidates.get(0));
-      try {
-        Files.createDirectories(target.getParent());
-        Files.writeString(target, block, StandardCharsets.UTF_8);
-      } catch (IOException ignored) {}
-    }
   }
 }
