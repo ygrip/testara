@@ -2,6 +2,7 @@ package io.github.ygrip.testara.agent.mcp;
 
 import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
@@ -10,11 +11,16 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Properties;
+import java.util.Set;
+import java.util.logging.Level;
 import java.util.logging.Logger;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -59,18 +65,34 @@ import io.github.ygrip.testara.agent.skill.run.TagExpressionResolver;
  * Start: java -jar testara-agent-mcp.jar [project-root]
  * <p>
  * Defaults:
- * - File writes enabled by default (set TESTARA_AGENT_WRITE_ENABLED=false to disable)
+ * - File writes enabled by default; TESTARA_AGENT_WRITE_ENABLED=false or write.enabled: false in the
+ *   project's testara-agent.yaml turns them off for every call (see {@link WriteGate})
  * - Test execution enabled by default (set TESTARA_AGENT_RUN_ENABLED=false to disable)
  * - test_run defaults to execute=true and dryRun=false
+ * <p>
+ * Protocol: messages without an {@code id} are notifications and never get a response. A tool that
+ * fails returns a result with {@code isError: true}; an unknown tool is a {@code -32602} error.
  */
 public class McpServer {
 
   private static final Logger LOG = Logger.getLogger(McpServer.class.getName());
 
   private static final String SERVER_NAME = "testara";
+  private static final String VERSION_RESOURCE = "/testara-agent-mcp-version.properties";
   private static final String SERVER_VERSION = readVersion();
+  private static final int PARSE_ERROR = -32700;
+  private static final int INVALID_REQUEST = -32600;
+  private static final int METHOD_NOT_FOUND = -32601;
+  private static final int INVALID_PARAMS = -32602;
+  private static final int INTERNAL_ERROR = -32603;
+  private static final String OVERWRITE_DESCRIPTION =
+      "Replace files that already exist. Default false: existing files are reported as exists and left untouched.";
+  private static final String COMPILE_DESCRIPTION =
+      "Run the test-compile gate after writing files. Default false.";
   private final Path projectRoot;
   private final ObjectMapper mapper = new ObjectMapper();
+  private final ArrayNode tools = toolDefinitions();
+  private final Set<String> toolNames = toolNames(tools);
   // Skills
   private final TestSummarySkill summarySkill = new TestSummarySkill();
   private final TestOverviewSkill overviewSkill = new TestOverviewSkill();
@@ -98,16 +120,20 @@ public class McpServer {
       .normalize();
   }
 
-  private static String readVersion() {
-    try (java.io.InputStream is = McpServer.class.getResourceAsStream(
-      "/META-INF/maven/io.github.ygrip/testara-agent-cli/pom.properties")) {
+  /** This module's build version, then the jar manifest's Implementation-Version, else "unknown". */
+  static String readVersion() {
+    try (InputStream is = McpServer.class.getResourceAsStream(VERSION_RESOURCE)) {
       if (is != null) {
-        java.util.Properties p = new java.util.Properties();
+        Properties p = new Properties();
         p.load(is);
-        return p.getProperty("version", "unknown");
+        String version = p.getProperty("version");
+        if (version != null && !version.isBlank()) return version;
       }
-    } catch (Exception ignored) {
+    } catch (IOException e) {
+      LOG.warning("Cannot read " + VERSION_RESOURCE + ": " + e.getMessage());
     }
+    String implementationVersion = McpServer.class.getPackage().getImplementationVersion();
+    if (implementationVersion != null) return implementationVersion;
     return "unknown";
   }
 
@@ -133,39 +159,54 @@ public class McpServer {
       line = line.strip();
       if (line.isEmpty())
         continue;
-      try {
-        JsonNode request = mapper.readTree(line);
-        JsonNode response = handle(request);
-        if (response != null)
-          out.println(mapper.writeValueAsString(response));
-      } catch (Exception e) {
-        LOG.warning("Error handling request: " + e.getMessage());
-        out.println(errorResponse(null, -32700, "Parse error: " + e.getMessage()));
-      }
+      String response = handleLine(line);
+      if (response != null)
+        out.println(response);
     }
   }
 
+  /** Handles one stdio line; returns the response line, or null when nothing must be written. */
+  String handleLine(String line) {
+    JsonNode request;
+    try {
+      request = mapper.readTree(line);
+    } catch (JsonProcessingException e) {
+      LOG.warning("Cannot parse request: " + e.getOriginalMessage());
+      return error(null, PARSE_ERROR, "Parse error: " + e.getOriginalMessage()).toString();
+    }
+    if (request == null || !request.isObject()) {
+      return error(null, INVALID_REQUEST, "Invalid Request: expected a JSON-RPC object").toString();
+    }
+    try {
+      JsonNode response = handle(request);
+      if (response == null) return null;
+      return response.toString();
+    } catch (RuntimeException e) {
+      LOG.log(Level.WARNING, "Internal error handling " + request.path("method").asText(), e);
+      if (!request.has("id")) return null;
+      return error(request.get("id"), INTERNAL_ERROR, "Internal error: " + describe(e)).toString();
+    }
+  }
+
+  /** Handles one JSON-RPC message; returns null for notifications (messages without an id). */
   JsonNode handle(JsonNode req) {
-    JsonNode id = req.has("id") ? req.get("id") : null;
     String method = req.path("method")
       .asText();
+    if (!req.has("id")) {
+      LOG.fine("Notification " + method + " needs no response");
+      return null;
+    }
+    JsonNode id = req.get("id");
     JsonNode params = req.path("params");
 
     return switch (method) {
       case "initialize" -> initializeResponse(id);
+      case "ping" -> response(id, mapper.createObjectNode());
       case "tools/list" -> toolsListResponse(id);
       case "tools/call" -> toolsCallResponse(id, params);
       case "prompts/list" -> promptsListResponse(id);
       case "prompts/get" -> promptsGetResponse(id, params);
-      // Notifications have no id and require no response — return null to skip output
-      case "notifications/initialized", "notifications/cancelled" -> null;
-      default -> {
-        try {
-          yield mapper.readTree(errorResponse(id, -32601, "Method not found: " + method));
-        } catch (Exception ex) {
-          yield mapper.createObjectNode();
-        }
-      }
+      default -> error(id, METHOD_NOT_FOUND, "Method not found: " + method);
     };
   }
 
@@ -183,6 +224,18 @@ public class McpServer {
   }
 
   private JsonNode toolsListResponse(JsonNode id) {
+    ObjectNode result = mapper.createObjectNode();
+    result.set("tools", tools.deepCopy());
+    return response(id, result);
+  }
+
+  private static Set<String> toolNames(ArrayNode tools) {
+    Set<String> names = new LinkedHashSet<>();
+    tools.forEach(tool -> names.add(tool.path("name").asText()));
+    return Set.copyOf(names);
+  }
+
+  private ArrayNode toolDefinitions() {
     ArrayNode tools = mapper.createArrayNode();
     tools.add(tool(
       "testara_summary",
@@ -207,10 +260,14 @@ public class McpServer {
     tools.add(tool(
       "testara_run",
       "Run tests by explicit Cucumber tag expression. Agents should pass tags from user intent or testara_index, not vague natural language.",
-      requiredStr("input", "Explicit Cucumber tag expression to run, e.g. @smoke or @ui and @checkout"),
+      requiredStr("input", "Explicit Cucumber tag expression to run, e.g. @smoke or @ui and @checkout. Ignored when rerunFailed=true."),
       optionalBool("dryRun", "Show plan only — default false"),
-      optionalBool("execute", "Actually execute Maven — default true"),
-      optionalStr("module", "Restrict to Maven module"),
+      optionalBool("execute", "Actually execute the build — default true"),
+      optionalBool("rerunFailed", "Re-run only the scenarios listed in the previous run's rerun file. Default false."),
+      optionalStr("module", "Restrict to a module: relative path (modules/api) or :artifactId"),
+      optionalInt("timeoutMinutes", "Kill the build after this many minutes (positive, default 15). The server handles no other call while a run is in progress."),
+      optionalStr("gradleTask", "Gradle projects only: test task to run (default test)"),
+      optionalStr("format", "json for a machine-readable report of an executed run; markdown otherwise"),
       optionalStr(
         "projectRoot",
         "Project root. Required when MCP server was launched outside the workspace (e.g. from home dir)."
@@ -261,8 +318,10 @@ public class McpServer {
       optionalStr("featureFiles", "JSON array of feature files for batch mode"),
       optionalBool("createFiles", "Write generated feature files directly. Default false."),
       optionalBool("useExistingActionCatalog", "Prefer existing @Action values. Default true in batch mode."),
-      optionalStr("slice", "Layer: api, ui, database, streaming, fullstack"),
-      optionalStr("domain", "Domain name override")
+      optionalStr("slice", "Layer: api, ui, database, streaming, fullstack. Omit to infer from intent."),
+      optionalStr("domain", "Domain name override"),
+      optionalBool("overwrite", OVERWRITE_DESCRIPTION),
+      optionalBool("compile", COMPILE_DESCRIPTION)
     ));
     tools.add(tool(
       "testara_guide",
@@ -295,7 +354,13 @@ public class McpServer {
       optionalStr("domain", "Service/domain name"),
       optionalStr("flow", "Request spec flow name"),
       optionalStr("method", "HTTP method: GET, POST, PUT, PATCH, DELETE"),
-      optionalStr("endpoint", "Endpoint URL or path")
+      optionalStr("endpoint", "Endpoint URL or path"),
+      optionalStr(
+        "projectRoot",
+        "Project root. Required when writing files or when MCP server was launched outside the workspace."
+      ),
+      optionalBool("write", "Write the config properties or request spec to disk. Default false."),
+      optionalBool("overwrite", OVERWRITE_DESCRIPTION)
     ));
     tools.add(tool(
       "testara_ui",
@@ -317,7 +382,9 @@ public class McpServer {
       optionalBool(
         "write",
         "Write the generated file to disk. Default false — returns structured artifact for manual creation."
-      )
+      ),
+      optionalBool("overwrite", OVERWRITE_DESCRIPTION),
+      optionalBool("compile", COMPILE_DESCRIPTION)
     ));
     tools.add(tool(
       "testara_bootstrap",
@@ -346,7 +413,9 @@ public class McpServer {
         "projectRoot",
         "Project root. Required when writing files or when MCP server was launched outside the workspace."
       ),
-      optionalBool("write", "Write generated artifact files to disk. Default false.")
+      optionalBool("write", "Write generated artifact files to disk. Default false."),
+      optionalBool("overwrite", OVERWRITE_DESCRIPTION),
+      optionalBool("compile", COMPILE_DESCRIPTION)
     ));
     tools.add(tool(
       "testara_db",
@@ -377,8 +446,8 @@ public class McpServer {
         "projectRoot",
         "Target workspace root. Required for writes when MCP server was launched outside the workspace."
       ),
-      optionalStr("type", "api | ui | all (full-stack). Also accepts: fullstack, database, streaming."),
-      optionalEnumArray("slices", "Automation capabilities to include; clients may render this as checkboxes. Overrides type when supplied.",
+      optionalStr("type", "api | ui | all (full-stack). Also accepts: fullstack, database, streaming. Combined with slices when both are given."),
+      optionalEnumArray("slices", "Automation capabilities to include; clients may render this as checkboxes.",
           "api", "ui", "sql", "mongo", "kafka", "elastic"),
       optionalStr(
         "groupId",
@@ -405,40 +474,51 @@ public class McpServer {
       optionalBool("write", "Create files on disk. Default false."),
       optionalBool("compile", "Run test-compile after writing files. Default true.")
     ));
-
-    ObjectNode result = mapper.createObjectNode();
-    result.set("tools", tools);
-    return response(id, result);
+    return tools;
   }
 
   private JsonNode toolsCallResponse(JsonNode id, JsonNode params) {
     String toolName = params.path("name")
       .asText();
+    if (!toolNames.contains(toolName)) {
+      return error(id, INVALID_PARAMS, "Unknown tool: " + toolName);
+    }
     JsonNode args = params.path("arguments");
 
+    String content;
+    boolean failed = false;
     try {
-      String content = dispatchTool(toolName, args);
-      ObjectNode result = mapper.createObjectNode();
-      ArrayNode contentArr = result.putArray("content");
-      contentArr.addObject()
-        .put("type", "text")
-        .put("text", content);
-      return response(id, result);
-    } catch (Exception e) {
-      try {
-        return mapper.readTree(errorResponse(id, -32000, "Tool execution error: " + e.getMessage()));
-      } catch (Exception ex) {
-        return mapper.createObjectNode();
-      }
+      content = dispatchTool(toolName, args);
+    } catch (RuntimeException e) {
+      LOG.log(Level.WARNING, "Tool " + toolName + " failed", e);
+      content = "Tool execution error: " + describe(e);
+      failed = true;
     }
+    ObjectNode result = mapper.createObjectNode();
+    ArrayNode contentArr = result.putArray("content");
+    contentArr.addObject()
+      .put("type", "text")
+      .put("text", content);
+    if (failed) result.put("isError", true);
+    return response(id, result);
+  }
+
+  private static String describe(Exception e) {
+    if (e.getMessage() == null) return e.getClass().getSimpleName();
+    return e.getMessage();
   }
 
   private String dispatchTool(String name, JsonNode args) {
-    if ((args.path("write").asBoolean(false) || args.path("createFiles").asBoolean(false))
-        && !writeEnabled()) {
-      return writeDisabledMessage(name);
+    Path effectiveRoot = resolveProjectRoot(args);
+    Map<String, String> opts = new LinkedHashMap<>();
+    AgentYamlConfig.load(effectiveRoot).apply(opts);
+    boolean writeRequested = args.path("write").asBoolean(false) || args.path("createFiles").asBoolean(false);
+    // Checked before any call argument is applied: a per-call write can never re-enable writes.
+    String writeDisabled = WriteGate.disabledMessage(name, opts);
+    if (writeRequested && writeDisabled != null) {
+      return writeDisabled;
     }
-    AgentContext ctx = buildContext(name, args);
+    AgentContext ctx = buildContext(name, args, effectiveRoot, opts, writeRequested);
     return switch (name) {
       case "testara_summary" -> summarySkill.execute(
         new TestSummarySkill.Input(
@@ -499,7 +579,7 @@ public class McpServer {
       case "testara_init" -> initSkill.execute(
         new TestInitSkill.Input(
           args.path("type")
-            .asText("api"),
+            .asText(null),   // null → InitCapabilities combines slices without an implied api type
           args.path("basePackage")
             .asText(null),
           args.path("engine")
@@ -621,25 +701,14 @@ public class McpServer {
     };
   }
 
-  private boolean writeEnabled() {
-    // Write is enabled by default — set TESTARA_AGENT_WRITE_ENABLED=false to disable
-    return !"false".equalsIgnoreCase(System.getenv()
-      .getOrDefault("TESTARA_AGENT_WRITE_ENABLED", "true"));
-  }
-
-  private String writeDisabledMessage(String toolName) {
-    return """
-      write_disabled: TESTARA_AGENT_WRITE_ENABLED=false is set in the environment
-      capability_available: %s can preview artifacts — call with write=false to get file_path/source
-      next_step: remove TESTARA_AGENT_WRITE_ENABLED=false from env to re-enable writes
-      """.formatted(toolName);
-  }
-
-  private AgentContext buildContext(String toolName, JsonNode args) {
-    Path effectiveRoot = resolveProjectRoot(args);
-    Map<String, String> opts = new LinkedHashMap<>();
-    AgentYamlConfig.load(effectiveRoot).apply(opts);
-
+  /**
+   * Builds the skill context from the project's YAML options plus the call arguments. The YAML file
+   * never grants writes: {@code write} comes from the call only, and APPLY mode needs an explicit
+   * write/createFiles argument or an executed test run.
+   */
+  private AgentContext buildContext(String toolName, JsonNode args, Path effectiveRoot,
+      Map<String, String> opts, boolean writeRequested) {
+    opts.remove("write");
     boolean isRun = "testara_run".equals(toolName);
     boolean defaultDryRun = Boolean.parseBoolean(opts.getOrDefault("dryRun", Boolean.toString(!isRun)));
     boolean defaultExecute = Boolean.parseBoolean(opts.getOrDefault("execute", Boolean.toString(isRun)));
@@ -658,7 +727,11 @@ public class McpServer {
     if (args.has("module")) opts.put("module", args.path("module").asText());
     if (args.has("detail")) opts.put("detail", args.path("detail").asText());
     if (args.has("write")) opts.put("write", Boolean.toString(args.path("write").asBoolean(false)));
+    if (args.has("overwrite")) opts.put("overwrite", Boolean.toString(args.path("overwrite").asBoolean(false)));
     if (args.has("compile")) opts.put("compile", Boolean.toString(args.path("compile").asBoolean(true)));
+    if (args.has("rerunFailed")) opts.put("rerunFailed", Boolean.toString(args.path("rerunFailed").asBoolean(false)));
+    if (args.has("timeoutMinutes")) opts.put("timeoutMinutes", args.path("timeoutMinutes").asText());
+    if (args.has("gradleTask")) opts.put("gradleTask", args.path("gradleTask").asText());
     if (args.has("autoGenerateCoordinates")) {
       opts.put("autoGenerateCoordinates",
           Boolean.toString(args.path("autoGenerateCoordinates").asBoolean(false)));
@@ -667,15 +740,17 @@ public class McpServer {
       opts.put("includeExamples", Boolean.toString(args.path("includeExamples").asBoolean(false)));
     }
     if (args.has("projectRoot")) opts.put("projectRootExplicit", "true");
-    if (!writeEnabled()) opts.put("write", "false");
 
     boolean dryRun = Boolean.parseBoolean(opts.getOrDefault("dryRun", "false"));
     boolean execute = Boolean.parseBoolean(opts.getOrDefault("execute", "false"));
-    boolean writeRequested = Boolean.parseBoolean(opts.getOrDefault("write", "false"))
-        || args.path("createFiles").asBoolean(false);
-    AgentMode mode = (writeRequested || (isRun && execute && !dryRun))
-        ? AgentMode.APPLY
-        : (isRun ? AgentMode.PLAN : AgentMode.READ_ONLY);
+    AgentMode mode;
+    if (writeRequested || (isRun && execute && !dryRun)) {
+      mode = AgentMode.APPLY;
+    } else if (isRun) {
+      mode = AgentMode.PLAN;
+    } else {
+      mode = AgentMode.READ_ONLY;
+    }
 
     LlmConfig cfg = LlmConfig.fromEnv(opts);
     String provider = cfg.provider() == null ? "" : cfg.provider().toLowerCase(java.util.Locale.ROOT);
@@ -781,6 +856,15 @@ public class McpServer {
     return n;
   }
 
+  private ObjectNode optionalInt(String name, String desc) {
+    ObjectNode n = mapper.createObjectNode();
+    n.put("_name", name);
+    n.put("_required", false);
+    n.put("type", "integer");
+    n.put("description", desc);
+    return n;
+  }
+
   private ObjectNode optionalEnumArray(String name, String desc, String... values) {
     ObjectNode n = mapper.createObjectNode();
     n.put("_name", name);
@@ -804,25 +888,24 @@ public class McpServer {
   private ObjectNode response(JsonNode id, JsonNode result) {
     ObjectNode r = mapper.createObjectNode();
     r.put("jsonrpc", "2.0");
-    if (id != null)
-      r.set("id", id);
+    r.set("id", id);
     r.set("result", result);
     return r;
   }
 
-  private String errorResponse(JsonNode id, int code, String message) {
-    try {
-      ObjectNode r = mapper.createObjectNode();
-      r.put("jsonrpc", "2.0");
-      if (id != null)
-        r.set("id", id);
-      ObjectNode err = r.putObject("error");
-      err.put("code", code);
-      err.put("message", message);
-      return mapper.writeValueAsString(r);
-    } catch (Exception e) {
-      return "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32700,\"message\":\"Internal error\"}}";
+  /** JSON-RPC error; a null id (unparseable or invalid request) is written as {@code "id": null}. */
+  private ObjectNode error(JsonNode id, int code, String message) {
+    ObjectNode r = mapper.createObjectNode();
+    r.put("jsonrpc", "2.0");
+    if (id == null) {
+      r.putNull("id");
+    } else {
+      r.set("id", id);
     }
+    ObjectNode err = r.putObject("error");
+    err.put("code", code);
+    err.put("message", message);
+    return r;
   }
 
   // ── Prompts ───────────────────────────────────────────────────────
