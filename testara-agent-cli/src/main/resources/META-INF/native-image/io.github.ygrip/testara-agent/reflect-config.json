@@ -28,7 +28,7 @@
     "name": "io.github.ygrip.testara.agent.cli.command.TestRunCommand",
     "allDeclaredConstructors": true,
     "allPublicMethods": true,
-    "fields": [{"name": "intent"}, {"name": "dryRun"}, {"name": "execute"}, {"name": "rerunFailed"}, {"name": "module"}, {"name": "reportFormat"}, {"name": "projectRoot"}]
+    "fields": [{"name": "intent"}, {"name": "dryRun"}, {"name": "execute"}, {"name": "rerunFailed"}, {"name": "module"}, {"name": "timeoutMinutes"}, {"name": "gradleTask"}, {"name": "reportFormat"}, {"name": "projectRoot"}]
   },
   {
     "name": "io.github.ygrip.testara.agent.cli.command.TestPlanCommand",
@@ -47,6 +47,36 @@
   },
   {
     "name": "io.github.ygrip.testara.agent.cli.command.TestInitCommand",
+    "allDeclaredConstructors": true,
+    "allPublicMethods": true
+  },
+  {
+    "name": "io.github.ygrip.testara.agent.cli.command.TestaraGuideCommand",
+    "allDeclaredConstructors": true,
+    "allPublicMethods": true
+  },
+  {
+    "name": "io.github.ygrip.testara.agent.cli.command.TestaraContextCommand",
+    "allDeclaredConstructors": true,
+    "allPublicMethods": true
+  },
+  {
+    "name": "io.github.ygrip.testara.agent.cli.command.TestaraPropertyCommand",
+    "allDeclaredConstructors": true,
+    "allPublicMethods": true
+  },
+  {
+    "name": "io.github.ygrip.testara.agent.cli.command.TestaraApiCommand",
+    "allDeclaredConstructors": true,
+    "allPublicMethods": true
+  },
+  {
+    "name": "io.github.ygrip.testara.agent.cli.command.TestaraUiCommand",
+    "allDeclaredConstructors": true,
+    "allPublicMethods": true
+  },
+  {
+    "name": "io.github.ygrip.testara.agent.cli.command.TestaraDbCommand",
     "allDeclaredConstructors": true,
     "allPublicMethods": true
   },
