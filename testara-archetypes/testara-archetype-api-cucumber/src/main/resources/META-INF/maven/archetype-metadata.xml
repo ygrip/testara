@@ -37,12 +37,13 @@
       <directory>src/test/resources</directory>
       <includes>
         <include>application.properties</include>
+        <include>cucumber.properties</include>
       </includes>
     </fileSet>
     <fileSet filtered="false" packaged="false">
       <directory>src/test/resources</directory>
       <includes><include>**/*</include></includes>
-      <excludes><exclude>application.properties</exclude></excludes>
+      <excludes><exclude>application.properties</exclude><exclude>cucumber.properties</exclude></excludes>
     </fileSet>
   </fileSets>
 </archetype-descriptor>

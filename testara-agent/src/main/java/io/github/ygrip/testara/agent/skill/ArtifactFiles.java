@@ -22,6 +22,9 @@ import java.util.Properties;
 final class ArtifactFiles {
 
   static final String OVERWRITE_OPTION = "overwrite";
+  /** Properties files the runtime loads from the test classpath, where generated config may live. */
+  private static final List<String> RUNTIME_PROPERTY_FILES =
+      List.of("src/test/resources/configuration.properties", "src/test/resources/application.properties");
 
   enum Status {
     CREATED("created"), OVERWRITTEN("overwritten"), EXISTS("exists");
@@ -149,17 +152,18 @@ final class ArtifactFiles {
   }
 
   /**
-   * Returns a warning when a configuration file already sets {@code automation.config.script-folder}
-   * to a folder other than the one generated request specs are written for; otherwise null.
+   * Returns a warning when any test properties file (the runtime loads them all) sets
+   * {@code automation.config.script-folder} to a folder other than the one generated request specs
+   * are written for; otherwise null.
    */
-  static String scriptFolderWarning(Path root, List<String> candidates) throws IOException {
-    for (String candidate : candidates) {
+  static String scriptFolderWarning(Path root) throws IOException {
+    for (String candidate : RUNTIME_PROPERTY_FILES) {
       Path file = resolve(root, candidate);
       if (!Files.exists(file)) continue;
       Properties defined = new Properties();
       defined.load(new StringReader(Files.readString(file, StandardCharsets.UTF_8)));
       String folder = defined.getProperty(PropertyKeys.SCRIPT_FOLDER_KEY);
-      if (folder == null || folder.strip().equals(PropertyKeys.SCRIPT_FOLDER)) return null;
+      if (folder == null || folder.strip().equals(PropertyKeys.SCRIPT_FOLDER)) continue;
       return "warning: " + candidate + " sets " + PropertyKeys.SCRIPT_FOLDER_KEY + "=" + folder.strip()
           + "; generated request specs under src/test/resources/files/ resolve only with "
           + PropertyKeys.scriptFolderEntry();

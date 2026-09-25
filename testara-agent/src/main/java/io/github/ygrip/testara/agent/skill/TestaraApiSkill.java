@@ -186,7 +186,7 @@ public class TestaraApiSkill implements AgentSkill<TestaraApiSkill.Input, String
         ArtifactFiles.PropertyMerge config = ArtifactFiles.mergeProperties(projectRoot, CONFIGURATION_FILES, configBlock);
         ArtifactFiles.PropertyMerge values = ArtifactFiles.mergeProperties(projectRoot, APPLICATION_FILES, applicationBlock);
         String changes = config.line() + "\n" + values.line();
-        String scriptFolderWarning = ArtifactFiles.scriptFolderWarning(projectRoot, CONFIGURATION_FILES);
+        String scriptFolderWarning = ArtifactFiles.scriptFolderWarning(projectRoot);
         if (scriptFolderWarning != null) changes += "\n" + scriptFolderWarning;
         return concise ? "api config for '" + d + "':\n" + changes
             : "## API Config Written\n\n- " + changes.replace("\n", "\n- ")
@@ -255,7 +255,7 @@ public class TestaraApiSkill implements AgentSkill<TestaraApiSkill.Input, String
     if (write) {
       try {
         ArtifactFiles.Written written = ArtifactFiles.writeJson(projectRoot, path, spec, overwrite);
-        String scriptFolderWarning = ArtifactFiles.scriptFolderWarning(projectRoot, CONFIGURATION_FILES);
+        String scriptFolderWarning = ArtifactFiles.scriptFolderWarning(projectRoot);
         String warningLine = "";
         if (scriptFolderWarning != null) warningLine = "\n" + scriptFolderWarning;
         if (!written.changed()) {
