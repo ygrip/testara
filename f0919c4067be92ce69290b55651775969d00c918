@@ -1,0 +1,23 @@
+testara-agent-mcp/src/main/java/io/github/ygrip/testara/agent/mcp/WriteGate.java
+  94ea26109a2333cd 1-44
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.23",
+  "base_commit_sha": "f0919c4067be92ce69290b55651775969d00c918",
+  "prompts": {
+    "94ea26109a2333cd": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2249c54b-fa50-4172-85ce-e832fc778248",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "ygrip <yunaz.gilang@gmail.com>",
+      "messages": [],
+      "total_additions": 45,
+      "total_deletions": 1,
+      "accepted_lines": 44,
+      "overriden_lines": 0
+    }
+  }
+}
