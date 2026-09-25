@@ -1,0 +1,31 @@
+testara-agent/src/main/java/io/github/ygrip/testara/agent/skill/TestPlanSkill.java
+  94ea26109a2333cd 1045,1047-1057
+testara-agent/src/test/java/io/github/ygrip/testara/agent/skill/ArtifactFilesTest.java
+  94ea26109a2333cd 1-61
+testara-agent/src/test/java/io/github/ygrip/testara/agent/skill/FlavorStepFillerTest.java
+  94ea26109a2333cd 1-43
+testara-agent/src/main/java/io/github/ygrip/testara/agent/skill/FlavorStepFiller.java
+  94ea26109a2333cd 1-46,48-76,78-114
+testara-agent/src/test/java/io/github/ygrip/testara/agent/skill/TestPlanSkillTest.java
+  94ea26109a2333cd 4-5,8,18,20-21,55-137,147,164-193,197-201,280-286,308-309,315-328,333-351,363,368
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.23",
+  "base_commit_sha": "01dd4d3b8342817354b5d49f05d4d7570c83a916",
+  "prompts": {
+    "94ea26109a2333cd": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2249c54b-fa50-4172-85ce-e832fc778248",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "ygrip <yunaz.gilang@gmail.com>",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 397,
+      "overriden_lines": 0
+    }
+  }
+}
