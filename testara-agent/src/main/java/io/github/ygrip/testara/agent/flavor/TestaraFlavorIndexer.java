@@ -1,5 +1,7 @@
 package io.github.ygrip.testara.agent.flavor;
 
+import io.github.ygrip.testara.agent.index.ProjectIndexer;
+
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
@@ -19,26 +21,16 @@ public class TestaraFlavorIndexer {
 
   // Handles escaped quotes inside the annotation string: @Given("...\"...\"..")
   private static final Pattern STEP_ANNOTATION = Pattern.compile(
-      "@(Given|When|Then)\\s*\\(\\s*\"((?:[^\"\\\\]|\\\\.)*?)\"");
+      "@(Given|When|Then|And|But)\\s*\\(\\s*\"((?:[^\"\\\\]|\\\\.)*?)\"");
   private static final Pattern CLASS_NAME = Pattern.compile(
       "(?:public\\s+)?class\\s+(\\w+)");
 
   /** Indexes all flavor steps reachable from any Maven module under {@code projectRoot}. */
   public List<FlavorEntry> index(Path projectRoot, List<String> modules) {
     List<FlavorEntry> entries = new ArrayList<>();
-    Set<Path> scanned = new LinkedHashSet<>();
-
-    // Always try to scan the project root's own source
-    scanned.add(projectRoot);
-
-    // Add each declared Maven module dir
-    for (String module : modules) {
-      Path moduleDir = projectRoot.resolve(module);
-      if (Files.isDirectory(moduleDir)) scanned.add(moduleDir);
-    }
-
-    for (Path root : scanned) {
-      entries.addAll(scanDir(root));
+    // Nested modules are already covered by the root walk; only external modules add a root.
+    for (Path root : ProjectIndexer.collectJavaSourceRoots(projectRoot, modules)) {
+      if (Files.isDirectory(root)) entries.addAll(scanDir(root));
     }
     entries.sort(Comparator.comparing(FlavorEntry::slice)
         .thenComparing(FlavorEntry::keyword)
@@ -54,7 +46,8 @@ public class TestaraFlavorIndexer {
         public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
           String name = dir.getFileName() == null ? "" : dir.getFileName().toString();
           // Skip non-step directories to stay fast
-          if (name.equals("target") || name.equals("test") || name.equals("resources")) {
+          if (dir.equals(root)) return FileVisitResult.CONTINUE;
+          if (ProjectIndexer.isExcludedDirectory(dir) || name.equals("test") || name.equals("resources")) {
             return FileVisitResult.SKIP_SUBTREE;
           }
           return FileVisitResult.CONTINUE;
@@ -64,7 +57,7 @@ public class TestaraFlavorIndexer {
         public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
           if (!file.toString().endsWith("Steps.java")) return FileVisitResult.CONTINUE;
           try {
-            entries.addAll(parseStepFile(file));
+            entries.addAll(parseStepFile(file, root.relativize(file)));
           } catch (IOException e) {
             LOG.fine("Cannot parse step file " + file + ": " + e.getMessage());
           }
@@ -90,11 +83,12 @@ public class TestaraFlavorIndexer {
     return CE_PARAM.matcher(expr).find() && !expr.contains("(.+)") && !expr.contains("(\\w");
   }
 
-  private List<FlavorEntry> parseStepFile(Path file) throws IOException {
+  /** Slice/module detection uses {@code relativePath} so directories above the scan root never match. */
+  private List<FlavorEntry> parseStepFile(Path file, Path relativePath) throws IOException {
     String source = Files.readString(file, StandardCharsets.UTF_8);
     String className = extractClassName(source);
-    String module = detectModule(file);
-    String slice = detectSlice(file, className);
+    String module = detectModule(relativePath);
+    String slice = detectSlice(relativePath, className);
 
     if (slice == null) return List.of();
 
@@ -295,7 +289,7 @@ public class TestaraFlavorIndexer {
   // ── Utilities ────────────────────────────────────────────────────────────
 
   /** Converts Java string escapes in annotation values to their actual characters. */
-  private String unescapeAnnotation(String s) {
+  public static String unescapeAnnotation(String s) {
     return s.replace("\\\\", " BSLASH ")  // protect actual backslashes first
             .replace("\\\"", "\"")                    // \" → "
             .replace("\\n", "\n")

@@ -25,8 +25,25 @@ public record TestaraProjectProfile(
     Map<String, String> properties,
     Map<String, Object> conventions,
     List<FlavorEntry> flavorSteps,
-    List<RuntimeCatalogEntry> runtimeCatalog
+    List<RuntimeCatalogEntry> runtimeCatalog,
+    List<String> parseErrors      // "<relative path>: <message>" for feature files that could not be indexed
 ) {
+  public TestaraProjectProfile {
+    if (parseErrors == null) parseErrors = List.of();
+  }
+
+  /** Backwards-compatible constructor — parseErrors defaults to an empty list. */
+  public TestaraProjectProfile(Path projectRoot, BuildTool buildTool, String javaVersion,
+      List<String> mavenModules, List<Path> featureRoots, List<Path> requestSpecRoots,
+      List<Path> validationRoots, List<FeatureIndex> features, List<StepDefinitionIndex> stepDefinitions,
+      List<CommandIndex> commands, List<ValidationIndex> validations, List<DriverIndex> drivers,
+      List<TagIndex> tags, Map<String, String> properties, Map<String, Object> conventions,
+      List<FlavorEntry> flavorSteps, List<RuntimeCatalogEntry> runtimeCatalog) {
+    this(projectRoot, buildTool, javaVersion, mavenModules, featureRoots, requestSpecRoots,
+        validationRoots, features, stepDefinitions, commands, validations, drivers, tags,
+        properties, conventions, flavorSteps, runtimeCatalog, List.of());
+  }
+
   /** Returns catalog entries for a given slice. */
   public List<RuntimeCatalogEntry> catalogForSlice(String slice) {
     return runtimeCatalog.stream()

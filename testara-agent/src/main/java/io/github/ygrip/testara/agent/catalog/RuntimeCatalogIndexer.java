@@ -1,5 +1,7 @@
 package io.github.ygrip.testara.agent.catalog;
 
+import io.github.ygrip.testara.agent.index.ProjectIndexer;
+
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
@@ -24,28 +26,18 @@ public final class RuntimeCatalogIndexer {
   private static final Pattern CLASS_NAME = Pattern.compile(
       "(?:public\\s+)?(?:class|interface)\\s+(\\w+)");
 
-  /** Scan source dirs for @LoadProperties and build catalog. Falls back to built-in if empty. */
+  /**
+   * Scan source dirs for @LoadProperties and merge the result over the built-in catalog: a source
+   * entry replaces the built-in entry with the same prefix, other built-ins are kept.
+   */
   public List<RuntimeCatalogEntry> index(Path projectRoot, List<String> modules) {
-    List<RuntimeCatalogEntry> entries = new ArrayList<>();
-    Set<Path> roots = collectRoots(projectRoot, modules);
-    for (Path root : roots) {
-      entries.addAll(scanDir(root));
+    Map<String, RuntimeCatalogEntry> byPrefix = new LinkedHashMap<>();
+    builtInCatalog().forEach(entry -> byPrefix.put(entry.prefix(), entry));
+    for (Path root : ProjectIndexer.collectJavaSourceRoots(projectRoot, modules)) {
+      if (!Files.isDirectory(root)) continue;
+      scanDir(root).forEach(entry -> byPrefix.put(entry.prefix(), entry));
     }
-    // If nothing was found from source (standalone user project), use built-in catalog
-    if (entries.isEmpty()) {
-      return builtInCatalog();
-    }
-    return List.copyOf(entries);
-  }
-
-  private Set<Path> collectRoots(Path root, List<String> modules) {
-    Set<Path> roots = new LinkedHashSet<>();
-    roots.add(root);
-    for (String module : modules) {
-      Path moduleDir = root.resolve(module);
-      if (Files.isDirectory(moduleDir)) roots.add(moduleDir);
-    }
-    return roots;
+    return List.copyOf(byPrefix.values());
   }
 
   private List<RuntimeCatalogEntry> scanDir(Path root) {
@@ -55,20 +47,23 @@ public final class RuntimeCatalogIndexer {
         @Override
         public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
           String name = dir.getFileName() == null ? "" : dir.getFileName().toString();
-          if (name.equals("target") || name.equals("test")) return FileVisitResult.SKIP_SUBTREE;
+          if (dir.equals(root)) return FileVisitResult.CONTINUE;
+          if (ProjectIndexer.isExcludedDirectory(dir) || name.equals("test")) return FileVisitResult.SKIP_SUBTREE;
           return FileVisitResult.CONTINUE;
         }
 
         @Override
         public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
-          if (!file.toString().endsWith("Properties.java")) return FileVisitResult.CONTINUE;
+          // Any class may carry @LoadProperties (e.g. ClassScannerConfig, ReportConfiguration).
+          if (!file.toString().endsWith(".java")) return FileVisitResult.CONTINUE;
           try {
             String source = Files.readString(file, StandardCharsets.UTF_8);
+            if (!source.contains("@LoadProperties")) return FileVisitResult.CONTINUE;
             Matcher m = LOAD_PROPS.matcher(source);
             if (m.find()) {
               String prefix = m.group(1);
               String className = extractClassName(source);
-              String module = detectModule(file);
+              String module = detectModule(root.relativize(file));
               String slice = detectSlice(prefix, module, className);
               List<String> examples = buildExampleKeys(prefix, className);
               entries.add(new RuntimeCatalogEntry(slice, prefix, module, className, examples));
