@@ -1,29 +1,35 @@
 package io.github.ygrip.testara.agent.validation;
 
-import java.io.BufferedReader;
 import java.io.IOException;
-import java.io.InputStreamReader;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
+import java.time.Duration;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
-import java.util.concurrent.TimeUnit;
-import java.util.logging.Logger;
 import java.util.stream.Collectors;
 
+import io.github.ygrip.testara.agent.safety.TestExecutionGuard;
+import io.github.ygrip.testara.agent.skill.run.ProcessRunner;
+
 /**
- * Runs mvn test-compile (or ./mvnw test-compile) and returns a compact result.
- * Used by TestInitSkill after writing project files.
+ * Runs mvn test-compile (or the project's Maven wrapper) and returns a compact result.
+ * Used by TestInitSkill after writing project files. Output goes to
+ * {@code target/testara-agent-logs/compile-*.log}; the gate honours
+ * {@code TESTARA_AGENT_RUN_ENABLED=false} by skipping the build.
  */
 public class TestCompileGate {
 
-  private static final Logger LOG = Logger.getLogger(TestCompileGate.class.getName());
   private static final int DEFAULT_TIMEOUT_SECONDS = 120;
 
-  public record Result(boolean passed, long durationMs, String summary, List<String> errors) {
+  public record Result(boolean passed, long durationMs, String summary, List<String> errors, boolean skipped) {
+
+    public Result(boolean passed, long durationMs, String summary, List<String> errors) {
+      this(passed, durationMs, summary, errors, false);
+    }
+
     public String toLine() {
       String dur = durationMs / 1000 + "." + (durationMs % 1000) / 100 + "s";
+      if (skipped) return summary;
       if (passed) return "compile: PASSED (" + dur + ")";
       String errSummary = errors.isEmpty() ? "" : "\n" + errors.stream()
           .limit(5).map(e -> "  - " + e).collect(Collectors.joining("\n"));
@@ -32,37 +38,35 @@ public class TestCompileGate {
   }
 
   public Result run(Path projectRoot, int timeoutSeconds) {
+    if (!TestExecutionGuard.isRunEnabled()) {
+      return new Result(false, 0, "compile: SKIPPED — " + TestExecutionGuard.RUN_ENABLED_ENV
+          + "=false blocks agent-launched builds", List.of(), true);
+    }
     long start = System.currentTimeMillis();
-    Path mvnw = projectRoot.resolve("mvnw");
-    String mvnExec = Files.exists(mvnw) ? mvnw.toAbsolutePath().toString() : "mvn";
+    List<String> command = List.of(ProcessRunner.mavenLauncher(projectRoot),
+        "test-compile", "-B", "--no-transfer-progress", "-q");
+    Path logFile = projectRoot.resolve("target/testara-agent-logs/compile-"
+        + DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss-SSS").format(LocalDateTime.now()) + ".log");
 
-    List<String> output = new ArrayList<>();
-    int exitCode;
+    ProcessRunner.Outcome outcome;
+    List<String> output;
     try {
-      ProcessBuilder pb = new ProcessBuilder(mvnExec, "test-compile", "-B", "--no-transfer-progress", "-q")
-          .directory(projectRoot.toFile())
-          .redirectErrorStream(true);
-      Process proc = pb.start();
-      try (BufferedReader br = new BufferedReader(
-          new InputStreamReader(proc.getInputStream(), StandardCharsets.UTF_8))) {
-        String line;
-        while ((line = br.readLine()) != null) output.add(line);
-      }
-      boolean finished = proc.waitFor(timeoutSeconds, TimeUnit.SECONDS);
-      if (!finished) {
-        proc.destroyForcibly();
-        return new Result(false, System.currentTimeMillis() - start,
-            "compile: TIMEOUT after " + timeoutSeconds + "s", List.of("Compilation timed out"));
-      }
-      exitCode = proc.exitValue();
-    } catch (IOException | InterruptedException e) {
-      if (e instanceof InterruptedException) Thread.currentThread().interrupt();
+      outcome = ProcessRunner.run(command, projectRoot, logFile, Duration.ofSeconds(timeoutSeconds));
+      output = ProcessRunner.readLogLines(logFile);
+    } catch (IOException e) {
       return new Result(false, System.currentTimeMillis() - start,
-          "compile: ERROR — " + e.getMessage(), List.of(e.getMessage()));
+          "compile: ERROR — " + e.getMessage(), List.of(String.valueOf(e.getMessage())));
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      return new Result(false, System.currentTimeMillis() - start,
+          "compile: INTERRUPTED", List.of("Compilation interrupted; build process terminated"));
+    }
+    if (outcome.timedOut()) {
+      return new Result(false, outcome.durationMs(),
+          "compile: TIMEOUT after " + timeoutSeconds + "s", List.of("Compilation timed out (log: " + logFile + ")"));
     }
 
-    long duration = System.currentTimeMillis() - start;
-    boolean passed = exitCode == 0;
+    boolean passed = outcome.exitCode() == 0;
 
     // Extract ERROR lines for the summary
     List<String> errors = output.stream()
@@ -74,7 +78,7 @@ public class TestCompileGate {
         .limit(10)
         .collect(Collectors.toList());
 
-    return new Result(passed, duration, passed ? "compile: PASSED" : "compile: FAILED", errors);
+    return new Result(passed, outcome.durationMs(), passed ? "compile: PASSED" : "compile: FAILED", errors);
   }
 
   public Result run(Path projectRoot) {

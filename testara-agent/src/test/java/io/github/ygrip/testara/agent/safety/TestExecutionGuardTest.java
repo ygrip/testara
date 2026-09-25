@@ -83,6 +83,16 @@ class TestExecutionGuardTest {
   }
 
   @Test
+  void acceptsWindowsAndGradleLaunchers() {
+    for (String launcher : List.of("mvn.cmd", "C:\\project\\mvnw.cmd", "gradle", "gradle.bat",
+        "/Users/dev/project/gradlew", "gradlew.bat")) {
+      assertNull(TestExecutionGuard.validateArgv(List.of(launcher, "test", "-Pcucumber.filter.tags=@smoke")),
+          launcher);
+    }
+    assertNotNull(TestExecutionGuard.validateArgv(List.of("gradle.sh", "test")));
+  }
+
+  @Test
   void rejectsArgvWithNonMavenExecutable() {
     String error = TestExecutionGuard.validateArgv(List.of("rm", "-rf", "/"));
     assertNotNull(error);
