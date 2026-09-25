@@ -98,8 +98,8 @@ testara-agent test-init
 # 2. Generate a Cucumber feature
 testara-agent test-plan 'test the login flow' --write
 
-# 3. Execute the tests
-TESTARA_AGENT_RUN_ENABLED=true testara-agent test-run 'login flow' --execute
+# 3. Execute the tests (test execution is enabled by default)
+testara-agent test-run 'login flow' --execute
 ```
 
 ### Non-interactive init
@@ -128,6 +128,10 @@ The installer adds the MCP config to all detected providers automatically:
 
 ### Manual MCP config
 
+Test execution and file writes are **enabled by default** — no env var is required to run tests or
+write files from MCP tools. Set `TESTARA_AGENT_RUN_ENABLED=false` and/or `TESTARA_AGENT_WRITE_ENABLED=false`
+in `env` below only if you want to hard-disable one of them for this server instance.
+
 **VS Code / Cursor** — add to `~/Library/Application Support/Code/User/mcp.json`:
 
 ```json
@@ -138,7 +142,6 @@ The installer adds the MCP config to all detected providers automatically:
       "command": "/Users/<you>/.local/bin/testara-agent",
       "args": ["mcp"],
       "env": {
-        "TESTARA_AGENT_RUN_ENABLED": "true",
         "JAVA_HOME": "/path/to/java21"
       }
     }
@@ -156,7 +159,6 @@ The installer adds the MCP config to all detected providers automatically:
       "command": "/Users/<you>/.local/bin/testara-agent",
       "args": ["mcp", "${workspaceFolder}"],
       "env": {
-        "TESTARA_AGENT_RUN_ENABLED": "true",
         "JAVA_HOME": "/path/to/java21"
       }
     }
@@ -171,10 +173,7 @@ The installer adds the MCP config to all detected providers automatically:
   "mcpServers": {
     "testara": {
       "command": "/Users/<you>/.local/bin/testara-agent",
-      "args": ["mcp"],
-      "env": {
-        "TESTARA_AGENT_RUN_ENABLED": "true"
-      }
+      "args": ["mcp"]
     }
   }
 }
@@ -290,23 +289,46 @@ of guessing. Agents should ask the user for the missing slice-specific context:
 API method/service/path/expected validation, UI page/action/expected state and
 selectors, or DB/Kafka/Elastic alias/query/topic/index details.
 
-**`--write` flag:** writes the `.feature` file and (for API) generates request spec + payload stubs.
+**`--write` flag:** writes the `.feature` file and, idempotently, the request specs, service config
+(`api.service.*` in `configuration.properties`, including
+`automation.config.script-folder=/src/test/resources/`), and application values the plan references.
+**`--overwrite`** replaces files that already exist (default false — an existing file is reported as
+`exists: <path> (pass overwrite=true to replace)` and left untouched). **`--compile`** runs the
+`mvn test-compile` gate after writing.
 
-**MCP tool:** `testara_plan`
+The write is blocked — nothing is written — when a generated step does not link to a real step
+definition or built-in Testara step: `write blocked: <n> step(s) do not link to a step definition
+and <n> step(s) are MISSING — nothing was written`.
+
+**MCP tool:** `testara_plan` (options: `createFiles`, `overwrite`, `compile`, `slice`, `domain`)
 
 ---
 
 ### test-run
 
-Resolve natural language test intent to a Cucumber tag expression and optionally execute.
+Resolve natural language test intent to a Cucumber tag expression and optionally execute. Test
+execution is **enabled by default** — set `TESTARA_AGENT_RUN_ENABLED=false` to disable it.
 
 ```sh
-testara-agent test-run 'run payment smoke tests'              # dry-run (default)
-testara-agent test-run 'all regression tests' --execute       # execute
-testara-agent test-run 'rerun failed'  --rerun-failed         # rerun from rerun.txt
+testara-agent test-run 'run payment smoke tests'                       # dry-run (default; no --execute)
+testara-agent test-run 'all regression tests' --execute                # execute
+testara-agent test-run 'rerun failed' --rerun-failed --execute         # rerun from rerun.txt
+testara-agent test-run 'run @smoke except @slow or @flaky' --execute   # → @smoke and not (@slow or @flaky)
+testara-agent test-run 'run @smoke' --module modules/api --execute     # restrict to a module
+testara-agent test-run 'run @smoke' --execute --timeout-minutes 30
+testara-agent test-run 'run @smoke' --execute --report json
 ```
 
-Requires `TESTARA_AGENT_RUN_ENABLED=true` to execute.
+`--dry-run` (optionally `--dry-run=false`) always wins over `--execute`; without `--execute`, only the
+plan is shown. `--timeout-minutes` defaults to 15 and kills the whole build process tree on timeout.
+`--module` accepts a relative path (`modules/api`) or `:artifactId`. `--report` controls the format of
+an *executed* run's output (`markdown` default, or `json`).
+
+**Gradle projects** (detected from `build.gradle`/`build.gradle.kts`) are supported alongside Maven:
+Cucumber tag/rerun filters are passed as `-Pcucumber.*` project properties through an agent-owned,
+regenerated-per-run init script (`.testara-agent/gradle/testara-cucumber.init.gradle`), and the test
+task defaults to `test` (override with `--gradle-task`, Gradle only). Maven runs use `mvnw`/`mvn`
+(`.cmd` on Windows); the whole process tree is killed on timeout or interruption.
 
 `testara_run` is context-driven. Exact `@tags` win, project-indexed tag words
 map to tags, and feature/scenario text maps to the matching scenario's feature
@@ -315,7 +337,16 @@ and scenario tags. Multiple resolved tags are joined with `and` by default;
 was launched outside the project, pass `projectRoot` so the tool can index the
 features before resolving natural language.
 
-**MCP tool:** `testara_run`
+**Verdict:** `FAILED` when the build exits non-zero or the parsed report has failures, `TIMEOUT` when
+the timeout is hit (always wins), otherwise `PASSED`. Only a `cucumber.json`/JUnit XML report written
+*by this run* is used — an older report on disk is ignored and the result shows `report missing`.
+Before/after hooks, background steps, and ambiguous/undefined/pending steps all fail the scenario.
+
+**Exit code** (CLI): `0` passed or plan-only; `1` failed, timed out, or preflight matched 0 scenarios;
+`2` invalid/missing input or execution blocked (e.g. `TESTARA_AGENT_RUN_ENABLED=false`).
+
+**MCP tool:** `testara_run` (options: `dryRun`, `execute` — default `true` for this tool — `rerunFailed`,
+`module`, `timeoutMinutes`, `gradleTask`, `format`)
 
 ---
 
@@ -514,12 +545,13 @@ When user do "login with credential" in "login" page with parameter
 
 ### testara-db
 
-Explain and generate DB (SQL/Mongo) and Kafka config and feature templates.
+Explain and generate SQL, Mongo, Elasticsearch, or Kafka config and feature templates.
 
 ```sh
 testara-agent testara-db --slice sql --mode config --name settlement
 testara-agent testara-db --slice mongo --mode feature --name product
 testara-agent testara-db --slice kafka --mode config --name payment
+testara-agent testara-db --slice elastic --mode config --name catalog
 ```
 
 Generated config uses `${ENV:fallback}` for host, credential, and topic values. Feature/request data can still use `properties(key)` for application values.
@@ -566,7 +598,7 @@ The cache stores the project profile in `.testara-agent/knowledge/profile-cache.
 4. **Page URL in properties** — `web.page.desktop.{name}.url`, never in `@Page(url=...)`
 5. **Include `io.github.ygrip.testara` in scan-locations** — always
 6. **Generate service config before features** — `api.service.*` must exist first
-7. **Compile gate** — `mvn test-compile` after `test-init --write`
+7. **Compile gate** — `mvn test-compile` runs automatically after `test-init` (unless `--preview`), and after `test-plan`/`testara-ui`/`testara_bootstrap` when `--compile`/`compile=true` is passed
 8. **Step priority** — built-in Testara steps > project steps > extension artifacts > custom step (last resort)
 9. **No duplicate custom steps** — command for dynamic data, validation for assertions
 10. **Clean init by default** — no placeholder `StepDefinitions`, `HomePage`, sample features/specs, or fake service aliases unless examples are requested
@@ -588,21 +620,48 @@ Testara resolves `properties(key)` expressions at runtime from loaded property s
 
 ## Environment Variables
 
+Test execution and file writes are **enabled by default**; the two `_ENABLED` switches below only
+ever turn a capability *off* — no per-call argument, CLI flag, or checked-in `testara-agent.yaml` can
+turn them back on.
+
 | Variable | Default | Description |
 |---|---|---|
-| `TESTARA_AGENT_RUN_ENABLED` | `false` | Enable `test-run --execute` and compile gate |
-| `TESTARA_AGENT_WRITE_ENABLED` | `false` | Enable file writes from MCP context |
-| `OPENAI_API_KEY` | — | Enable LLM-assisted generation (optional) |
-| `OPENAI_BASE_URL` | `https://api.openai.com/v1` | Override for local/proxy LLM |
-| `OPENAI_MODEL` | `gpt-4o` | Override model name |
+| `TESTARA_AGENT_RUN_ENABLED` | enabled (`false` disables) | Set to `false` to disable `test-run --execute` and the compile gate |
+| `TESTARA_AGENT_WRITE_ENABLED` | enabled (`false` disables) | Set to `false` to hard-disable file writes for every MCP/CLI call |
+| `TESTARA_AGENT_PROVIDER` | `openai` | LLM provider: `openai`, or `local`/`ollama` for a local model server |
+| `TESTARA_AGENT_MODEL` | `gpt-4.1-mini` (`llama3.1` for `local`/`ollama`) | LLM model name |
+| `TESTARA_AGENT_API_KEY` | — | API key for the OpenAI-compatible provider |
+| `TESTARA_AGENT_BASE_URL` | `https://api.openai.com/v1` (`http://localhost:11434` for `local`/`ollama`) | LLM endpoint override |
+| `TESTARA_AGENT_TEMPERATURE` | `0.2` | LLM sampling temperature |
+| `TESTARA_AGENT_MAX_CONTEXT_FILES` | `80` | Max files fed to the LLM as context |
+| `TESTARA_AGENT_MAX_OUTPUT_FILES` | `20` | Max files the LLM may produce in one call |
+| `TESTARA_AGENT_APPLY_ENABLED` | `false` | Reserved for LLM-driven writes |
 | `JAVA_HOME` | — | Override Java path in wrapper script |
+
+LLM configuration is currently **config-only** — no skill calls out to an LLM yet, so these variables
+have no effect on generation today beyond being readable via `LlmConfig`. When an API key comes from
+`TESTARA_AGENT_API_KEY`, `llm.baseUrl` from a checked-in `testara-agent.yaml` is ignored and only
+`TESTARA_AGENT_BASE_URL` (or the provider default) can set the endpoint, so a key from the environment
+is never sent to a host chosen by repository config.
 
 ---
 
 ## Security Model
 
-- **File writes disabled by default** in MCP mode (`TESTARA_AGENT_WRITE_ENABLED=false`)
-- **Test execution disabled by default** (`TESTARA_AGENT_RUN_ENABLED=false`)
-- **No secret redaction bypass** — agent will not output secrets or tokens
-- **Maven command injection protection** — `test-run` validates tag expressions before passing to Maven
-- All skills that write files check the target is within the project root
+- **File writes and test execution are enabled by default.** `TESTARA_AGENT_WRITE_ENABLED=false` (env)
+  or `write: { enabled: false }` in the project's `testara-agent.yaml` hard-disables writes for every
+  call; `TESTARA_AGENT_RUN_ENABLED=false` disables `test-run --execute` and the compile gate. Neither a
+  per-call `write`/`overwrite`/`createFiles` argument nor a CLI flag can re-enable a switch that is off.
+- **A checked-in `testara-agent.yaml` can only ever disable writes, never enable them.** `write`,
+  `overwrite`, and `createFiles` are call-only keys; if present in the YAML they are ignored (with a
+  warning) rather than applied.
+- **Agent modes** — `READ_ONLY` (analyze only), `PLAN` (plan/dry-run, no writes), `APPLY` (writes files
+  or executes commands). A tool call only reaches `APPLY` from an explicit `write`/`createFiles`
+  argument (or CLI `--write`) or from an executed `test-run`.
+- **Secret redaction** — `SecretRedactionGuard` keeps property values and secrets out of tool output.
+- **Maven/Gradle command injection protection** — builds run via `ProcessBuilder` argv (no shell);
+  `TestExecutionGuard` validates the executable (`mvn`/`mvnw`/`gradle`/`gradlew` and their Windows
+  `.cmd`/`.bat` forms), the tag expression, and the module/task name before executing.
+- **Path containment** — `ProjectPathGuard` keeps every generated file target within the project root.
+- **LLM key host pinning** — an API key from the environment is never sent to an endpoint chosen by a
+  checked-in YAML file; see [Environment Variables](#environment-variables).
