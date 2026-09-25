@@ -48,6 +48,15 @@ public class TestRunSkill implements AgentSkill<String, String> {
   private static final int MAX_LOG_FACTS = 20;
   private static final Pattern AFFECTED_LINE = Pattern.compile("([\\w./\\\\-]+\\.(?:java|feature|xml|properties)):(\\d+)");
   private static final Pattern ZERO_COUNT = Pattern.compile("\\b(?:failures|errors)\\s*:\\s*0\\b");
+  // Output markers read by exitCode(String); keep them in sync with the messages that use them.
+  private static final String INVALID_OPTION = "Invalid test-run option: ";
+  private static final String NEEDS_INPUT = "needs_input: ";
+  private static final String PREFLIGHT_FAILED = "preflight: FAILED";
+  private static final String EXECUTION_BLOCKED = "Execution blocked";
+  private static final String EXECUTION_FAILED = "Execution failed: ";
+  private static final String EXECUTION_INTERRUPTED = "Execution interrupted: ";
+  private static final String STATUS_LINE = "**Status:** ";
+  private static final List<String> FAILED_STATUSES = List.of("FAILED", "TIMEOUT");
 
   private final TagExpressionResolver resolver;
   private final MavenCommandBuilder cmdBuilder;
@@ -71,13 +80,33 @@ public class TestRunSkill implements AgentSkill<String, String> {
   @Override
   public String name() { return "test-run"; }
 
+  /**
+   * Process exit code for an {@link #execute} output, for command-line callers: {@code 0} when the
+   * run passed or only a plan was shown, {@code 1} when the run failed, timed out, could not start or
+   * matched no scenario, {@code 2} when input was invalid or missing or execution was blocked.
+   */
+  public static int exitCode(String output) {
+    String text = output.stripLeading();
+    if (text.startsWith(INVALID_OPTION) || text.startsWith(NEEDS_INPUT) || text.contains(EXECUTION_BLOCKED)) {
+      return 2;
+    }
+    if (text.startsWith(PREFLIGHT_FAILED) || text.startsWith(EXECUTION_FAILED)
+        || text.startsWith(EXECUTION_INTERRUPTED)) {
+      return 1;
+    }
+    for (String status : FAILED_STATUSES) {
+      if (text.contains(STATUS_LINE + status) || text.contains("\"status\":\"" + status + "\"")) return 1;
+    }
+    return 0;
+  }
+
   /** Invalid user input (module, Gradle task, timeout, tag expression) is reported, never thrown. */
   @Override
   public String execute(String input, AgentContext context) {
     try {
       return run(input, context);
     } catch (IllegalArgumentException e) {
-      return "Invalid test-run option: " + e.getMessage() + "\n";
+      return INVALID_OPTION + e.getMessage() + "\n";
     }
   }
 
@@ -186,10 +215,10 @@ public class TestRunSkill implements AgentSkill<String, String> {
   /** Returns the markdown note explaining why execution is blocked, or {@code null} when allowed. */
   private String executionBlocked(AgentContext context) {
     if (!context.allowsExecution()) {
-      return "\n> **Execution blocked.** Agent mode does not allow command execution.\n";
+      return "\n> **" + EXECUTION_BLOCKED + ".** Agent mode does not allow command execution.\n";
     }
     if (!TestExecutionGuard.isRunEnabled()) {
-      return "\n> **Execution blocked.** Set " + TestExecutionGuard.RUN_ENABLED_ENV
+      return "\n> **" + EXECUTION_BLOCKED + ".** Set " + TestExecutionGuard.RUN_ENABLED_ENV
           + "=true to allow test execution.\n";
     }
     return null;
@@ -211,7 +240,7 @@ public class TestRunSkill implements AgentSkill<String, String> {
         .flatMap(f -> f.scenarios().stream().map(s -> s.name()))
         .limit(8)
         .collect(Collectors.joining(" | "));
-    return "needs_input: test_run_filter\n"
+    return NEEDS_INPUT + "test_run_filter\n"
         + "question: Which tests should run? Provide an explicit tag, feature name, or scenario name from the project.\n"
         + "input: " + input + "\n"
         + "project-root: " + context.projectRoot() + "\n"
@@ -229,7 +258,7 @@ public class TestRunSkill implements AgentSkill<String, String> {
         .limit(15)
         .collect(Collectors.joining(", "));
     StringBuilder sb = new StringBuilder();
-    sb.append("preflight: FAILED\n");
+    sb.append(PREFLIGHT_FAILED).append("\n");
     sb.append("reason: resolved expression matches 0 scenarios — ").append(toolName(settings))
         .append(" execution skipped\n");
     sb.append("mavenExecuted: false\n");
@@ -249,13 +278,13 @@ public class TestRunSkill implements AgentSkill<String, String> {
       RunSettings settings, boolean json) {
     String guardError = TestExecutionGuard.validateArgv(command.argv());
     if (guardError != null) {
-      return "Execution blocked by safety guard: " + guardError + "\n";
+      return EXECUTION_BLOCKED + " by safety guard: " + guardError + "\n";
     }
     if (settings.gradle()) {
       try {
         gradleBuilder.writeInitScript(projectRoot);
       } catch (IOException e) {
-        return "Execution failed: cannot write Gradle init script "
+        return EXECUTION_FAILED + "cannot write Gradle init script "
             + GradleCommandBuilder.initScriptPath(projectRoot) + ": " + e.getMessage() + "\n";
       }
     }
@@ -268,10 +297,10 @@ public class TestRunSkill implements AgentSkill<String, String> {
     try {
       outcome = ProcessRunner.run(command.argv(), projectRoot, logFile, settings.timeout());
     } catch (IOException e) {
-      return "Execution failed: " + e.getMessage() + "\n";
+      return EXECUTION_FAILED + e.getMessage() + "\n";
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
-      return "Execution interrupted: the build process tree was terminated. Log: " + logFile + "\n";
+      return EXECUTION_INTERRUPTED + "the build process tree was terminated. Log: " + logFile + "\n";
     }
 
     Path executionRoot = RunArguments.moduleDirectory(projectRoot, settings.module());
@@ -420,7 +449,7 @@ public class TestRunSkill implements AgentSkill<String, String> {
     String tool = toolName(settings);
     StringBuilder sb = new StringBuilder();
     sb.append("## Test Run Log Summary\n\n");
-    sb.append("**Status:** ").append(status).append("  \n");
+    sb.append(STATUS_LINE).append(status).append("  \n");
     sb.append("**Exit code:** ").append(outcome.exitCode()).append("  \n");
     sb.append("**Duration:** ").append(outcome.durationMs() / 1000).append("s  \n");
     sb.append("**Tag filter:** `").append(tagExpr).append("`  \n");

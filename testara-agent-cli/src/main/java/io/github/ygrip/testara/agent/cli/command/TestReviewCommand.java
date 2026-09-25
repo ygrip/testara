@@ -2,13 +2,12 @@ package io.github.ygrip.testara.agent.cli.command;
 
 import java.nio.file.Path;
 import java.util.Map;
+import java.util.concurrent.Callable;
 
 import io.github.ygrip.testara.agent.AgentMode;
-import io.github.ygrip.testara.agent.knowledge.JsonlKnowledgeStore;
-import io.github.ygrip.testara.agent.llm.DisabledLlmClient;
-import io.github.ygrip.testara.agent.skill.AgentContext;
 import io.github.ygrip.testara.agent.skill.TestReviewSkill;
 import picocli.CommandLine.Command;
+import picocli.CommandLine.Option;
 import picocli.CommandLine.Parameters;
 
 @Command(name = "/test-review",
@@ -16,22 +15,19 @@ import picocli.CommandLine.Parameters;
   description = "Review feature files for quality issues",
   mixinStandardHelpOptions = true
 )
-public class TestReviewCommand implements Runnable {
+public class TestReviewCommand implements Callable<Integer> {
 
-  @Parameters(index = "0", description = "Path to a .feature file or directory")
+  @Parameters(index = "0", description = "Path to a .feature file or directory (absolute, or relative to --project)")
   private Path target;
 
+  @Option(names = "--project", defaultValue = ".", description = "Project root (default: current directory)")
+  private Path projectRoot;
+
   @Override
-  public void run() {
-    Path root = target.toAbsolutePath()
-      .normalize();
-    AgentContext ctx = new AgentContext(
-      root,
-      JsonlKnowledgeStore.loadProfile(root),
-      AgentMode.READ_ONLY,
-      new DisabledLlmClient(),
-      Map.of()
-    );
-    System.out.println(new TestReviewSkill().execute(target, ctx));
+  public Integer call() {
+    Path root = CliSupport.root(projectRoot);
+    return CliSupport.print(new TestReviewSkill().execute(
+      target, CliSupport.context(root, AgentMode.READ_ONLY, Map.of())
+    ));
   }
 }

@@ -3,16 +3,12 @@ package io.github.ygrip.testara.agent.cli.command;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.nio.file.Path;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.concurrent.Callable;
 
 import io.github.ygrip.testara.agent.AgentMode;
-import io.github.ygrip.testara.agent.config.AgentYamlConfig;
-import io.github.ygrip.testara.agent.knowledge.JsonlKnowledgeStore;
-import io.github.ygrip.testara.agent.llm.DisabledLlmClient;
-import io.github.ygrip.testara.agent.skill.AgentContext;
 import io.github.ygrip.testara.agent.skill.TestInitSkill;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
@@ -22,9 +18,11 @@ import picocli.CommandLine.Option;
   description = "Bootstrap a new Testara project or integrate into an existing one",
   mixinStandardHelpOptions = true
 )
-public class TestInitCommand implements Runnable {
+public class TestInitCommand implements Callable<Integer> {
 
-  @Option(names = "--type", description = "Project type: api, ui, sql, mongo, kafka, fullstack")
+  @Option(names = "--type",
+    description = "Project type: api, ui, sql, mongo, kafka, fullstack (combined with --slices; default api)"
+  )
   private String type;
 
   @Option(names = {"--slices", "--capabilities"}, split = ",",
@@ -79,10 +77,15 @@ public class TestInitCommand implements Runnable {
   )
   private boolean forceInteractive;
 
+  @Option(names = "--no-compile",
+    defaultValue = "false",
+    description = "Skip the test-compile gate that runs after files are written"
+  )
+  private boolean skipCompile;
+
   @Override
-  public void run() {
-    Path root = projectRoot.toAbsolutePath()
-      .normalize();
+  public Integer call() {
+    Path root = CliSupport.root(projectRoot);
 
     boolean interactive = !nonInteractive && (forceInteractive || System.console() != null);
     if (interactive) {
@@ -91,13 +94,21 @@ public class TestInitCommand implements Runnable {
       applyDefaults(root);
     }
 
-    Map<String, String> opts = new LinkedHashMap<>();
-    AgentYamlConfig.load(root).apply(opts);
-    opts.put("write", Boolean.toString(!preview));
+    Map<String, String> opts = CliSupport.projectOptions(root);
+    String blocked = CliSupport.requestWrite("test-init", opts, !preview);
+    if (blocked != null) {
+      return CliSupport.print(blocked);
+    }
     opts.put("includeExamples", Boolean.toString(includeExamples));
-    AgentContext ctx =
-      new AgentContext(root, JsonlKnowledgeStore.loadProfile(root), preview ? AgentMode.PATCH : AgentMode.APPLY, new DisabledLlmClient(), opts);
-    System.out.println(new TestInitSkill().execute(
+    if (skipCompile) {
+      opts.put("compile", "false");
+    }
+    AgentMode mode = AgentMode.APPLY;
+    if (preview) {
+      mode = AgentMode.PATCH;
+    }
+    // A null type lets the skill combine --slices without an implied api type.
+    return CliSupport.print(new TestInitSkill().execute(
       new TestInitSkill.Input(
         type,
         basePackage,
@@ -106,7 +117,7 @@ public class TestInitCommand implements Runnable {
         groupId,
         artifactId,
         slices
-      ), ctx
+      ), CliSupport.context(root, mode, opts)
     ));
   }
 
@@ -119,8 +130,6 @@ public class TestInitCommand implements Runnable {
       groupId = "io.github.ygrip";
     if (artifactId == null)
       artifactId = toKebab(dirName);
-    if (type == null)
-      type = "api";
     if (basePackage == null)
       basePackage = groupId + "." + toPackage(artifactId);
   }

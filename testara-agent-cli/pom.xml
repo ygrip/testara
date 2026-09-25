@@ -153,6 +153,7 @@
                 <arg>--no-fallback</arg>
                 <arg>-H:+ReportExceptionStackTraces</arg>
                 <arg>-H:IncludeResources=logging.properties</arg>
+                <arg>-H:IncludeResources=testara-agent.*-version\.properties</arg>
                 <arg>-J-Xmx4g</arg>
               </buildArgs>
             </configuration>
