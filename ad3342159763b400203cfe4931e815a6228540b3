@@ -1,0 +1,25 @@
+testara-agent/src/test/java/io/github/ygrip/testara/agent/skill/TestaraPropertySkillTest.java
+  94ea26109a2333cd 1-42
+testara-agent/src/test/java/io/github/ygrip/testara/agent/skill/TestCommandSkillTest.java
+  94ea26109a2333cd 1-48
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.23",
+  "base_commit_sha": "ad3342159763b400203cfe4931e815a6228540b3",
+  "prompts": {
+    "94ea26109a2333cd": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2249c54b-fa50-4172-85ce-e832fc778248",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "ygrip <yunaz.gilang@gmail.com>",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 90,
+      "overriden_lines": 0
+    }
+  }
+}
