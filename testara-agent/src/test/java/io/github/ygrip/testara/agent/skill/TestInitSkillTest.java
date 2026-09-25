@@ -343,6 +343,98 @@ class TestInitSkillTest {
     assertTrue(Files.exists(projectRoot.resolve("pom.xml")));
   }
 
+  @Test
+  void rejectsUnsupportedTypeAndInvalidBasePackageBeforeWriting() {
+    AgentContext write = new AgentContext(projectRoot, null, AgentMode.APPLY, null,
+        Map.of("write", "true", "compile", "false", "engineConfirmed", "true"));
+
+    String traversal = new TestInitSkill().execute(
+        new TestInitSkill.Input("../../escape", "io.github.ygrip.sample", "selenium", false,
+            "io.github.ygrip", "sample"), write);
+    String badPackage = new TestInitSkill().execute(
+        new TestInitSkill.Input("api", "../evil", "selenium", false, "io.github.ygrip", "sample"), write);
+
+    assertTrue(traversal.contains("needs_input: testara_init_type"), traversal);
+    assertTrue(badPackage.contains("needs_input: testara_init_base_package"), badPackage);
+    assertFalse(Files.exists(projectRoot.resolveSibling("escape")));
+    assertFalse(Files.exists(projectRoot.resolve("src")));
+  }
+
+  @Test
+  void existingPomIsNeverEditedAndMissingCapabilityDependenciesAreReported() throws IOException {
+    String pom = """
+        <project>
+          <modelVersion>4.0.0</modelVersion>
+          <groupId>com.acme</groupId>
+          <artifactId>existing</artifactId>
+          <version>1.0.0</version>
+          <dependencyManagement>
+            <dependencies>
+            </dependencies>
+          </dependencyManagement>
+          <dependencies>
+          </dependencies>
+        </project>
+        """;
+    Files.writeString(projectRoot.resolve("pom.xml"), pom);
+
+    String output = new TestInitSkill().execute(
+        new TestInitSkill.Input("api", "com.acme.existing", "selenium", true, "com.acme", "existing",
+            List.of("api", "sql")),
+        new AgentContext(projectRoot, null, AgentMode.APPLY, null,
+            Map.of("write", "true", "compile", "false", "engineConfirmed", "true")));
+
+    assertEquals(pom, Files.readString(projectRoot.resolve("pom.xml")));
+    assertTrue(output.contains("## Add to pom.xml"), output);
+    assertTrue(output.contains("<artifactId>testara-database</artifactId>"), output);
+    assertFalse(output.contains("${testara.version}"), output);
+  }
+
+  @Test
+  void topLevelDependenciesSkipsDependencyManagementAndProfiles() {
+    String pom = """
+        <project>
+          <!-- <dependencies></dependencies> -->
+          <dependencyManagement><dependencies><dependency/></dependencies></dependencyManagement>
+          <dependencies>
+            <dependency/>
+          </dependencies>
+          <profiles><profile><dependencies></dependencies></profile></profiles>
+        </project>
+        """;
+
+    int end = TestInitSkill.topLevelDependenciesEnd(pom);
+
+    assertEquals(pom.indexOf("</dependencies>\n  <profiles>"), end);
+  }
+
+  @Test
+  void appiumPreviewUsesAppiumPageAndDriverKeys() {
+    String output = new TestInitSkill().execute(
+        new TestInitSkill.Input("ui", "io.github.ygrip.mobile", "appium", false, "io.github.ygrip", "mobile"),
+        examplesContext());
+
+    assertTrue(output.contains("public class HomePage extends AppiumPage"), output);
+    assertTrue(output.contains("appium.driver.page-scan-locations=io.github.ygrip.testara,io.github.ygrip.mobile"), output);
+    assertFalse(output.contains("selenium.driver."), output);
+  }
+
+  @Test
+  void sampleFeaturesUseParseableDataTablesAndQuotes() {
+    TestInitSkill skill = new TestInitSkill();
+    String mongo = skill.execute(new TestInitSkill.Input("mongo", "io.github.ygrip.automation", "selenium", false,
+        "io.github.ygrip", "mongo-automation"), examplesContext());
+    String kafka = skill.execute(new TestInitSkill.Input("kafka", "io.github.ygrip.automation", "selenium", false,
+        "io.github.ygrip", "kafka-automation"), examplesContext());
+    String ui = skill.execute(new TestInitSkill.Input("ui", "io.github.ygrip.automation", "selenium", false,
+        "io.github.ygrip", "ui-automation"), examplesContext());
+
+    assertTrue(mongo.matches("(?s).*select data with query :\\n\\s+\\| key\\s+\\| value.*"), mongo);
+    assertTrue(kafka.contains("with data '{\"id\":\"uuid()\"}'"), kafka);
+    assertFalse(ui.contains("DISPLAYED"), ui);
+    assertTrue(ui.contains("IS_VISIBLE"), ui);
+  }
+
   private AgentContext context() {
     return new AgentContext(projectRoot, null, AgentMode.READ_ONLY, null, Map.of());
   }

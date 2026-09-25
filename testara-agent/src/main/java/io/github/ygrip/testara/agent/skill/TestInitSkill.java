@@ -14,6 +14,8 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.logging.Logger;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 /**
@@ -25,6 +27,10 @@ import java.util.stream.Collectors;
 public class TestInitSkill implements AgentSkill<TestInitSkill.Input, String> {
 
   private static final Logger LOG = Logger.getLogger(TestInitSkill.class.getName());
+  private static final Pattern JAVA_PACKAGE = Pattern.compile("^[a-z_][\\w]*(\\.[a-z_][\\w]*)*$");
+  private static final Pattern ARTIFACT_ID = Pattern.compile("^[A-Za-z0-9][A-Za-z0-9_.-]*$");
+  private static final Pattern XML_TAG = Pattern.compile("<(/?)([A-Za-z][\\w.:-]*)[^>]*?(/?)>");
+  private static final Pattern XML_COMMENT = Pattern.compile("<!--.*?-->", Pattern.DOTALL);
   private final TestaraVersionResolver versionResolver;
   private final ProjectStateDetector stateDetector;
   private final ArchetypeInvoker archetypeInvoker;
@@ -62,6 +68,13 @@ public class TestInitSkill implements AgentSkill<TestInitSkill.Input, String> {
   public String execute(Input input, AgentContext context) {
     List<String> capabilities = InitCapabilities.normalize(input.type(), input.slices());
     String type = InitCapabilities.contentType(input.type(), input.slices());
+    if (!InitCapabilities.isSupported(type)) {
+      return """
+          needs_input: testara_init_type
+          reason: unsupported project type '%s'.
+          options: api, ui, fullstack, sql, mongo, kafka, elastic
+          """.formatted(input.type());
+    }
     boolean isUiType = type.equals("ui") || type.equals("fullstack");
     boolean autoCoordinates = "true".equals(context.options().get("autoGenerateCoordinates"));
     // Engine prompt: fires only when engine is null (not yet chosen).
@@ -78,6 +91,15 @@ public class TestInitSkill implements AgentSkill<TestInitSkill.Input, String> {
         : context.projectRoot().getFileName() != null ? toKebab(context.projectRoot().getFileName().toString()) : "automation";
     String basePkg = input.basePackage() != null ? input.basePackage()
         : groupId + "." + artifactId.replaceAll("[^a-zA-Z0-9]+", "").toLowerCase(Locale.ROOT);
+    // Both end up in file paths (package directories, archetype output folder)
+    if (!JAVA_PACKAGE.matcher(basePkg).matches()) {
+      return "needs_input: testara_init_base_package\nreason: '" + basePkg
+          + "' is not a valid Java package (lowercase segments such as com.acme.qa).\n";
+    }
+    if (!ARTIFACT_ID.matcher(artifactId).matches()) {
+      return "needs_input: testara_init_coordinates\nreason: '" + artifactId
+          + "' is not a valid Maven artifactId (letters, digits, '.', '_' or '-').\n";
+    }
     String pkgPath = basePkg.replace('.', '/');
     boolean integrate = input.integrateExisting();
     boolean write  = context.allowsWrite() && "true".equals(context.options().get("write"));
@@ -186,15 +208,15 @@ public class TestInitSkill implements AgentSkill<TestInitSkill.Input, String> {
 
     try {
       writeConfigFiles(type, basePkg, pkgPath, engine, generatedRoot, includeExamples, created, skipped);
-      appendCapabilityDependencies(generatedRoot.resolve("pom.xml"), capabilities);
+      appendCapabilityDependencies(generatedRoot.resolve("pom.xml"), capabilities, testaraVersion);
     } catch (IOException e) {
       return "init_error: Failed to write config files: " + e.getMessage() + "\n";
     }
 
     String compileResult = "";
     if (compile) {
-      TestCompileGate.Result cr = new TestCompileGate().run(generatedRoot);
-      compileResult = "compile: " + cr.toLine();
+      // toLine() already carries the "compile:" prefix (or the SKIPPED summary)
+      compileResult = new TestCompileGate().run(generatedRoot).toLine();
     }
 
     String configFilesLine = created.isEmpty() ? "none" : String.join(", ", created);
@@ -249,20 +271,23 @@ public class TestInitSkill implements AgentSkill<TestInitSkill.Input, String> {
       boolean integrate, Path root, boolean compile, boolean includeExamples) {
     List<String> created = new ArrayList<>();
     List<String> skipped = new ArrayList<>();
+    String manualDependencies = "";
 
     try {
-      Path pom = root.resolve("pom.xml");
-      if (integrate && Files.exists(pom)) {
-        skipped.add("pom.xml (existing project — add dependencies manually, see preview)");
-      } else if (!Files.exists(pom)) {
+      Path pom = ArtifactFiles.resolve(root, "pom.xml");
+      if (!Files.exists(pom)) {
         writeFile(pom, generateFullPom(type, groupId, artifactId, basePkg, engine, root));
         created.add("pom.xml");
+        appendCapabilityDependencies(pom, capabilities, versionResolver.resolve(root));
       } else {
-        skipped.add("pom.xml (already exists)");
+        // Never edit a user's existing pom: report the dependencies to add instead
+        manualDependencies = missingCapabilityDependencies(Files.readString(pom, StandardCharsets.UTF_8),
+            capabilities, versionResolver.resolve(root));
+        skipped.add("pom.xml (existing project — add dependencies manually"
+            + (manualDependencies.isEmpty() ? ", none missing" : ", see below") + ")");
       }
 
       writeConfigFiles(type, basePkg, pkgPath, engine, root, includeExamples, created, skipped);
-      appendCapabilityDependencies(root.resolve("pom.xml"), capabilities);
 
       boolean isUi  = type.equals("ui") || type.equals("fullstack");
       boolean isApi = type.equals("api") || type.equals("fullstack");
@@ -292,6 +317,9 @@ public class TestInitSkill implements AgentSkill<TestInitSkill.Input, String> {
       sb.append("## Skipped\n\n");
       skipped.forEach(f -> sb.append("- ").append(f).append("\n"));
       sb.append("\n");
+    }
+    if (!manualDependencies.isEmpty()) {
+      sb.append("## Add to pom.xml `<dependencies>`\n\n```xml\n").append(manualDependencies).append("```\n\n");
     }
 
     if (compile) {
@@ -351,9 +379,20 @@ public class TestInitSkill implements AgentSkill<TestInitSkill.Input, String> {
     };
   }
 
-  private void appendCapabilityDependencies(Path pom, List<String> capabilities) throws IOException {
+  /** Adds capability dependencies to a pom this skill generated, inside its top-level {@code <dependencies>}. */
+  private void appendCapabilityDependencies(Path pom, List<String> capabilities, String testaraVersion)
+      throws IOException {
     if (!Files.exists(pom)) return;
     String content = Files.readString(pom, StandardCharsets.UTF_8);
+    String additions = missingCapabilityDependencies(content, capabilities, testaraVersion);
+    if (additions.isEmpty()) return;
+    int end = topLevelDependenciesEnd(content);
+    if (end < 0) throw new IOException("Cannot add capabilities: pom.xml has no top-level <dependencies> block");
+    Files.writeString(pom, content.substring(0, end) + additions + content.substring(end), StandardCharsets.UTF_8);
+  }
+
+  /** Dependency XML for capabilities the pom does not declare yet ("" when nothing is missing). */
+  private String missingCapabilityDependencies(String pomContent, List<String> capabilities, String testaraVersion) {
     LinkedHashSet<String> artifacts = new LinkedHashSet<>();
     if (capabilities.contains("sql") || capabilities.contains("mongo")) {
       artifacts.add("testara-database"); artifacts.add("testara-database-cucumber");
@@ -364,24 +403,54 @@ public class TestInitSkill implements AgentSkill<TestInitSkill.Input, String> {
     if (capabilities.contains("elastic")) {
       artifacts.add("testara-elastic"); artifacts.add("testara-elastic-cucumber");
     }
+    // Only reference ${testara.version} when the pom defines it
+    String version = testaraVersion;
+    if (pomContent.contains("<testara.version>")) version = "${testara.version}";
     StringBuilder additions = new StringBuilder();
     for (String artifact : artifacts) {
-      if (content.contains("<artifactId>" + artifact + "</artifactId>")) continue;
+      if (pomContent.contains("<artifactId>" + artifact + "</artifactId>")) continue;
       additions.append("    <dependency>\n      <groupId>io.github.ygrip</groupId>\n      <artifactId>")
-          .append(artifact).append("</artifactId>\n      <version>${testara.version}</version>\n")
+          .append(artifact).append("</artifactId>\n      <version>").append(version).append("</version>\n")
           .append(artifact.endsWith("-cucumber") ? "      <scope>test</scope>\n" : "")
           .append("    </dependency>\n");
     }
-    if (!additions.isEmpty()) {
-      int end = content.indexOf("  </dependencies>");
-      if (end < 0) throw new IOException("Cannot add capabilities: pom.xml has no dependencies block");
-      Files.writeString(pom, content.substring(0, end) + additions + content.substring(end), StandardCharsets.UTF_8);
+    return additions.toString();
+  }
+
+  /**
+   * Index of the {@code </dependencies>} closing the project-level block — not the one inside
+   * {@code <dependencyManagement>}, a profile or a plugin. Returns -1 when there is none.
+   */
+  static int topLevelDependenciesEnd(String pom) {
+    // Blank out comments (same length) so commented-out XML does not affect nesting
+    Matcher comments = XML_COMMENT.matcher(pom);
+    StringBuilder masked = new StringBuilder();
+    while (comments.find()) comments.appendReplacement(masked, " ".repeat(comments.group().length()));
+    comments.appendTail(masked);
+
+    List<String> stack = new ArrayList<>();
+    Matcher tag = XML_TAG.matcher(masked);
+    while (tag.find()) {
+      boolean closing = !tag.group(1).isEmpty();
+      boolean selfClosing = !tag.group(3).isEmpty();
+      String name = tag.group(2);
+      if (selfClosing) continue;
+      if (!closing) {
+        stack.add(name);
+        continue;
+      }
+      if (stack.isEmpty()) continue;
+      stack.remove(stack.size() - 1);
+      if ("dependencies".equals(name) && stack.size() == 1 && "project".equals(stack.get(0))) {
+        return tag.start();
+      }
     }
+    return -1;
   }
 
   private void writeIfAbsent(Path root, String rel, String content,
       List<String> created, List<String> skipped) throws IOException {
-    Path target = root.resolve(rel);
+    Path target = ArtifactFiles.resolve(root, rel);
     if (Files.exists(target)) { skipped.add(rel + " (exists)"); return; }
     writeFile(target, content);
     created.add(rel);
@@ -393,7 +462,7 @@ public class TestInitSkill implements AgentSkill<TestInitSkill.Input, String> {
   }
 
   private void mkdirs(Path root, String rel) throws IOException {
-    Files.createDirectories(root.resolve(rel));
+    Files.createDirectories(ArtifactFiles.resolve(root, rel));
   }
 
   // ── Preview mode ──────────────────────────────────────────────────────────
@@ -749,6 +818,9 @@ public class TestInitSkill implements AgentSkill<TestInitSkill.Input, String> {
           vibium.browser.remote-connect.enabled=false
           vibium.browser.remote-connect.url=${UI_REMOTE_URL:http://localhost:4444/}
           %s""".formatted(basePkg, basePkg, basePkg, pageConfig);
+      case "appium" -> """
+          # UI engine configuration
+          %s%s""".formatted(TestaraUiSkill.appiumDriverBlock(basePkg), pageConfig);
       default -> """
           # UI engine configuration
           automation.engine.default-engine=selenium
@@ -1019,17 +1091,8 @@ public class TestInitSkill implements AgentSkill<TestInitSkill.Input, String> {
   }
 
   private String generatePageObject(String basePkg, String engine) {
-    String uiEngine = engine == null ? "selenium" : engine.toLowerCase(Locale.ROOT);
-    String pageBaseImport = switch (uiEngine) {
-      case "playwright" -> "io.github.ygrip.testara.ui.playwright.page.PlaywrightPage";
-      case "vibium"     -> "io.github.ygrip.testara.ui.vibium.page.VibiumPage";
-      default           -> "io.github.ygrip.testara.ui.selenium.page.SeleniumPage";
-    };
-    String pageBaseClass = switch (uiEngine) {
-      case "playwright" -> "PlaywrightPage";
-      case "vibium"     -> "VibiumPage";
-      default           -> "SeleniumPage";
-    };
+    String pageBaseImport = TestaraUiSkill.pageBaseImport(engine);
+    String pageBaseClass = TestaraUiSkill.pageBaseClass(engine);
     return """
         package %s.page;
 
@@ -1038,13 +1101,13 @@ public class TestInitSkill implements AgentSkill<TestInitSkill.Input, String> {
         import io.github.ygrip.testara.ui.model.Page;
         import %s;
 
-        @Page(name = "home", url = "", platforms = {DeviceType.DEFAULT, DeviceType.DESKTOP})
+        @Page(name = "home", url = "", platforms = {%s})
         public class HomePage extends %s {
           private static final Locator SEARCH_INPUT = Locator.css("[name='q']");
           private static final Locator SEARCH_BUTTON = Locator.css("button[type='submit']");
           private static final Locator ERROR_MESSAGE = Locator.css("[data-testid='error-message']");
         }
-        """.formatted(basePkg, pageBaseImport, pageBaseClass);
+        """.formatted(basePkg, pageBaseImport, TestaraUiSkill.pagePlatforms(engine), pageBaseClass);
   }
 
   private String generateRequestSpec(String basePkg, String type) {
@@ -1110,7 +1173,7 @@ public class TestInitSkill implements AgentSkill<TestInitSkill.Input, String> {
               And user click the "search button"
               Then user see that
                 | actual        | validation | expectation |
-                | error message | DISPLAYED   | true        |
+                | error message | IS_VISIBLE | true        |
           """;
       case "sql", "database-sql" -> """
           # Sample SQL feature — uses Testara built-in SqlBaseSteps.
@@ -1136,6 +1199,7 @@ public class TestInitSkill implements AgentSkill<TestInitSkill.Input, String> {
               Given [mongo] connect to database with name productDb
               Given [mongo] select collection with name sample
               When [mongo] select data with query :
+                | key   | value             |
                 | query | {"_id": "uuid()"} |
                 | limit | 1                 |
               Then [mongo] assign previous database response to sampleRows
@@ -1149,7 +1213,7 @@ public class TestInitSkill implements AgentSkill<TestInitSkill.Input, String> {
             @P1
             Scenario: Publish order event
               Given user start kafka producer for orderStream
-              When user send kafka message to topic "properties(kafka.topic.orders)" with data "{\"id\":\"uuid()\"}"
+              When user send kafka message to topic "orders" with data '{"id":"uuid()"}'
               Then user stop kafka producer
           """;
       case "elastic", "elastic-search" -> """
@@ -1162,7 +1226,8 @@ public class TestInitSkill implements AgentSkill<TestInitSkill.Input, String> {
             Scenario: Product document exists
               Given [elastic-search] connect to elastic search with name catalog
               When [elastic-search] assign data productResults from index products with query :
-                | query | {"query":{"term":{"id":"properties(test.product.id)"}}} |
+                | key         | value                                        |
+                | luceneQuery | {"term":{"id":"properties(test.product.id)"}} |
               Then [elastic-search] assign previous elastic search response to productResults
           """;
       default -> """
@@ -1173,9 +1238,9 @@ public class TestInitSkill implements AgentSkill<TestInitSkill.Input, String> {
 
             @P1 @positive
             Scenario: Happy path
-              Given the system is in a valid state # MISSING
-              When the operation is performed      # MISSING
-              Then the result should be successful  # MISSING
+              # MISSING: replace with Testara built-in steps that prepare a valid state
+              # MISSING: perform the operation under test
+              # MISSING: assert the result
           """;
     };
   }

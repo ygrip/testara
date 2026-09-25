@@ -11,14 +11,22 @@ final class InitCapabilities {
 
   private InitCapabilities() {}
 
+  /**
+   * Union of the legacy {@code type} and the requested slices. {@code api} is the surfaces' default
+   * type, so it only applies when no slices were requested; any other explicit type is kept
+   * ({@code type=ui, slices=[sql]} is a UI project with SQL, not an API project).
+   */
   static List<String> normalize(String legacyType, List<String> requested) {
     LinkedHashSet<String> values = new LinkedHashSet<>();
+    if (legacyType != null && !legacyType.isBlank() && !"api".equals(canonical(legacyType))) {
+      values.add(canonical(legacyType));
+    }
     if (requested != null) {
       requested.stream().filter(value -> value != null && !value.isBlank())
           .flatMap(value -> List.of(value.split(",")).stream())
           .map(value -> canonical(value.trim())).filter(SUPPORTED::contains).forEach(values::add);
     }
-    if (values.isEmpty()) values.add(canonical(legacyType == null ? "api" : legacyType));
+    if (values.isEmpty()) values.add("api");
     if (values.contains("fullstack")) {
       values.remove("fullstack"); values.add("api"); values.add("ui");
     }
@@ -35,10 +43,14 @@ final class InitCapabilities {
 
   static String contentType(String legacyType, List<String> capabilities) {
     if (legacyType != null && !legacyType.isBlank() && (capabilities == null || capabilities.isEmpty())) {
-      String value = canonical(legacyType);
-      return "fullstack".equals(value) ? "fullstack" : value;
+      return canonical(legacyType);
     }
-    return baseType(capabilities);
+    return baseType(normalize(legacyType, capabilities));
+  }
+
+  /** True for a content type the scaffold knows how to generate; anything else must be rejected. */
+  static boolean isSupported(String type) {
+    return SUPPORTED.contains(type);
   }
 
   private static String canonical(String value) {

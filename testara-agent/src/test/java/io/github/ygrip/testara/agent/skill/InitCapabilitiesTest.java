@@ -21,4 +21,15 @@ class InitCapabilitiesTest {
     assertEquals(List.of("api", "ui"), InitCapabilities.normalize("fullstack", List.of()));
     assertEquals(List.of("kafka"), InitCapabilities.normalize("streaming", List.of()));
   }
+
+  @Test
+  void explicitNonDefaultTypeIsKeptAlongsideSlices() {
+    assertEquals(List.of("ui", "sql"), InitCapabilities.normalize("ui", List.of("sql")));
+    assertEquals("ui", InitCapabilities.contentType("ui", List.of("sql")));
+  }
+
+  @Test
+  void unknownTypesAreNotSupported() {
+    assertEquals(false, InitCapabilities.isSupported(InitCapabilities.contentType("../../x", List.of())));
+  }
 }
