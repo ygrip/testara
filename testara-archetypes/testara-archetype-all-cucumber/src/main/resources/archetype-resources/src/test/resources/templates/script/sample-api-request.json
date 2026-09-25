@@ -1,7 +1,7 @@
 {
-  "specification": "sample-api",
+  "specification": "sample",
   "httpMethod": "GET",
-  "url": "properties(api.sample.path)",
+  "url": "properties(sample.health.path)",
   "contentType": "application/json",
   "queryParameters": {},
   "formParameters": {},

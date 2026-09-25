@@ -35,9 +35,16 @@
       <directory>src/main/java</directory>
       <includes><include>**/*.java</include></includes>
     </fileSet>
+    <fileSet filtered="true" packaged="false">
+      <directory>src/test/resources</directory>
+      <includes>
+        <include>application.properties</include>
+      </includes>
+    </fileSet>
     <fileSet filtered="false" packaged="false">
       <directory>src/test/resources</directory>
       <includes><include>**/*</include></includes>
+      <excludes><exclude>application.properties</exclude></excludes>
     </fileSet>
     <fileSet filtered="false" packaged="false">
       <directory>src/main/java</directory>

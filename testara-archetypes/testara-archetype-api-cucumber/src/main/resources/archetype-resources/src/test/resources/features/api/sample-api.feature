@@ -2,6 +2,6 @@
 Feature: Sample API health check
 
   Scenario: Check the sample API health endpoint
-    Given an API client uses "properties(api.sample.base-url)"
-    When the client sends GET "properties(api.sample.path)"
-    Then the response status should be 200
+    Given user using service with alias sample
+    When user process request to "sample-api-request"
+    Then user response statusCode should be 200
