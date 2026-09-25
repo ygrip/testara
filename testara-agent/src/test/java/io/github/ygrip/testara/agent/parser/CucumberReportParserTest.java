@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 
 import io.github.ygrip.testara.agent.skill.run.TestRunReport;
 import org.junit.jupiter.api.Test;
@@ -81,19 +82,19 @@ class CucumberReportParserTest {
             "uri": "features/checkout.feature",
             "elements": [
               {
+                "type": "scenario",
                 "keyword": "Scenario",
-                "name": "Not yet implemented",
+                "name": "Skipped by hook",
                 "steps": [
-                  {"result": {"status": "passed"}},
-                  {"result": {"status": "pending"}}
+                  {"result": {"status": "skipped"}},
+                  {"result": {"status": "skipped"}}
                 ]
               }
             ]
           }
         ]
         """;
-    Path reportFile = dir.resolve("cucumber.json");
-    Files.writeString(reportFile, cucumberJson, StandardCharsets.UTF_8);
+    Path reportFile = write(dir, cucumberJson);
 
     TestRunReport report = CucumberReportParser.parseCucumberJson(reportFile, "@ui", 500L);
 
@@ -102,6 +103,145 @@ class CucumberReportParserTest {
     assertEquals(1, report.skipped());
     assertEquals("PASSED", report.status());
     assertTrue(report.failedScenarios().isEmpty());
+  }
+
+  @Test
+  void pendingUndefinedAndAmbiguousStepsFailTheScenario(@TempDir Path dir) throws IOException {
+    Path reportFile = write(dir, """
+        [{"uri": "features/checkout.feature", "elements": [
+          {"type": "scenario", "keyword": "Scenario", "name": "pending one", "steps": [
+            {"name": "a", "result": {"status": "passed"}},
+            {"name": "b", "result": {"status": "pending", "error_message": "TODO: implement me"}}]},
+          {"type": "scenario", "keyword": "Scenario", "name": "undefined one", "steps": [
+            {"name": "the cart is empty", "result": {"status": "undefined"}}]},
+          {"type": "scenario", "keyword": "Scenario", "name": "ambiguous one", "steps": [
+            {"name": "c", "result": {"status": "ambiguous", "error_message": "Ambiguous step definitions"}}]}
+        ]}]
+        """);
+
+    TestRunReport report = CucumberReportParser.parseCucumberJson(reportFile, "@ui", 1L);
+
+    assertEquals("FAILED", report.status());
+    assertEquals(3, report.failed());
+    assertEquals(0, report.passed());
+    assertEquals("TODO: implement me", report.failedScenarios().get(0).error());
+    assertTrue(report.failedScenarios().get(1).error().contains("the cart is empty"));
+    assertEquals("Ambiguous step definitions", report.failedScenarios().get(2).error());
+  }
+
+  @Test
+  void failedHooksFailTheScenarioEvenWhenStepsAreSkippedOrPassed(@TempDir Path dir) throws IOException {
+    Path reportFile = write(dir, """
+        [{"uri": "features/login.feature", "elements": [
+          {"type": "scenario", "keyword": "Scenario", "name": "before hook broke",
+           "before": [{"result": {"status": "failed", "error_message": "driver did not start"}}],
+           "steps": [{"result": {"status": "skipped"}}]},
+          {"type": "scenario", "keyword": "Scenario", "name": "after hook broke",
+           "steps": [{"result": {"status": "passed"}}],
+           "after": [{"result": {"status": "failed", "error_message": "cleanup failed"}}]},
+          {"type": "scenario", "keyword": "Scenario", "name": "after step hook broke",
+           "steps": [{"result": {"status": "passed"},
+                      "after": [{"result": {"status": "failed", "error_message": "screenshot failed"}}]}]}
+        ]}]
+        """);
+
+    TestRunReport report = CucumberReportParser.parseCucumberJson(reportFile, "@ui", 1L);
+
+    assertEquals("FAILED", report.status());
+    assertEquals(3, report.failed());
+    assertEquals("driver did not start", report.failedScenarios().get(0).error());
+    assertEquals("cleanup failed", report.failedScenarios().get(1).error());
+    assertEquals("screenshot failed", report.failedScenarios().get(2).error());
+  }
+
+  @Test
+  void failedBackgroundStepFailsTheFollowingScenarioOnly(@TempDir Path dir) throws IOException {
+    Path reportFile = write(dir, """
+        [{"uri": "features/login.feature", "elements": [
+          {"type": "background", "keyword": "Background", "name": "", "steps": [
+            {"result": {"status": "failed", "error_message": "login page down"}}]},
+          {"type": "scenario", "keyword": "Scenario", "name": "first", "steps": [
+            {"result": {"status": "skipped"}}]},
+          {"type": "background", "keyword": "Background", "name": "", "steps": [
+            {"result": {"status": "passed"}}]},
+          {"type": "scenario", "keyword": "Scenario", "name": "second", "steps": [
+            {"result": {"status": "passed"}}]}
+        ]}]
+        """);
+
+    TestRunReport report = CucumberReportParser.parseCucumberJson(reportFile, "@ui", 1L);
+
+    assertEquals(2, report.total());
+    assertEquals(1, report.failed());
+    assertEquals(1, report.passed());
+    assertEquals("first", report.failedScenarios().get(0).scenario());
+    assertEquals("login page down", report.failedScenarios().get(0).error());
+  }
+
+  @Test
+  void countsScenariosByTypeRegardlessOfKeywordLanguage(@TempDir Path dir) throws IOException {
+    Path reportFile = write(dir, """
+        [{"uri": "features/login.feature", "elements": [
+          {"type": "scenario", "keyword": "Example", "name": "english example", "steps": [
+            {"result": {"status": "passed"}}]},
+          {"type": "scenario", "keyword": "Skenario", "name": "indonesian scenario", "steps": [
+            {"result": {"status": "failed", "error_message": "boom"}}]},
+          {"type": "scenario", "keyword": "Scenario Template", "name": "outline row", "steps": [
+            {"result": {"status": "passed"}}]}
+        ]}]
+        """);
+
+    TestRunReport report = CucumberReportParser.parseCucumberJson(reportFile, "@ui", 1L);
+
+    assertEquals(3, report.total());
+    assertEquals(2, report.passed());
+    assertEquals(1, report.failed());
+  }
+
+  @Test
+  void clipsLongStackTracesInFailedScenarioErrors(@TempDir Path dir) throws IOException {
+    StringBuilder trace = new StringBuilder("java.lang.AssertionError: expected 200");
+    for (int i = 0; i < 60; i++) trace.append("\\n\\tat com.example.Step.line").append(i).append("(Step.java)");
+    Path reportFile = write(dir, """
+        [{"uri": "f.feature", "elements": [
+          {"type": "scenario", "keyword": "Scenario", "name": "s", "steps": [
+            {"result": {"status": "failed", "error_message": "%s"}}]}
+        ]}]
+        """.formatted(trace));
+
+    TestRunReport report = CucumberReportParser.parseCucumberJson(reportFile, "@ui", 1L);
+
+    String error = report.failedScenarios().get(0).error();
+    assertTrue(error.startsWith("java.lang.AssertionError: expected 200"));
+    assertTrue(error.lines().count() <= 21, "stack trace must be clipped, got " + error.lines().count());
+    assertTrue(error.contains("more lines"));
+  }
+
+  @Test
+  void aggregatesSeveralJunitReports(@TempDir Path dir) throws IOException {
+    Path first = dir.resolve("TEST-a.xml");
+    Files.writeString(first, """
+        <testsuite name="a"><testcase name="one" classname="A"/>
+          <testcase name="two" classname="A"><failure message="bad"/></testcase></testsuite>
+        """, StandardCharsets.UTF_8);
+    Path second = dir.resolve("TEST-b.xml");
+    Files.writeString(second, """
+        <testsuite name="b"><testcase name="three" classname="B"><skipped/></testcase></testsuite>
+        """, StandardCharsets.UTF_8);
+
+    TestRunReport report = CucumberReportParser.parseJunitXml(List.of(first, second), "@ui", 1L);
+
+    assertEquals(3, report.total());
+    assertEquals(1, report.passed());
+    assertEquals(1, report.failed());
+    assertEquals(1, report.skipped());
+    assertEquals("FAILED", report.status());
+  }
+
+  private Path write(Path dir, String json) throws IOException {
+    Path reportFile = dir.resolve("cucumber.json");
+    Files.writeString(reportFile, json, StandardCharsets.UTF_8);
+    return reportFile;
   }
 
   @Test
