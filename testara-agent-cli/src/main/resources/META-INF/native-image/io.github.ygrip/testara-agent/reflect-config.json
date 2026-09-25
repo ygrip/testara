@@ -202,5 +202,17 @@
     "allDeclaredConstructors": true,
     "allDeclaredMethods": true,
     "allDeclaredFields": true
+  },
+  {
+    "name": "io.github.ygrip.testara.agent.skill.run.TestRunReport",
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true,
+    "allDeclaredFields": true
+  },
+  {
+    "name": "io.github.ygrip.testara.agent.skill.run.TestRunReport$FailedScenario",
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true,
+    "allDeclaredFields": true
   }
 ]

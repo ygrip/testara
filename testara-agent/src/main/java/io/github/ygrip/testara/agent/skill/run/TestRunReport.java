@@ -13,11 +13,34 @@ public record TestRunReport(
     int passed,
     int failed,
     int skipped,
-    List<FailedScenario> failedScenarios
+    List<FailedScenario> failedScenarios,
+    String logFile,
+    String reportFile
 ) {
   private static final ObjectMapper MAPPER = new ObjectMapper();
 
   public record FailedScenario(String feature, String scenario, String error) {}
+
+  /** A report parsed from a result file, before it is attached to a concrete run. */
+  public TestRunReport(String status, long durationMs, String tagExpression, int total, int passed,
+      int failed, int skipped, List<FailedScenario> failedScenarios) {
+    this(status, durationMs, tagExpression, total, passed, failed, skipped, failedScenarios, null, null);
+  }
+
+  /** A run whose result file is missing: counts are zero and {@code reportFile} is {@code null}. */
+  public static TestRunReport withoutReport(String status, long durationMs, String tagExpression,
+      String logFile) {
+    return new TestRunReport(status, durationMs, tagExpression, 0, 0, 0, 0, List.of(), logFile, null);
+  }
+
+  /**
+   * Attach this parsed report to the run that produced it. The run status wins over the parsed one
+   * because a non-zero exit or timeout is a failure even when every parsed scenario passed.
+   */
+  public TestRunReport forRun(String runStatus, long runDurationMs, String runLogFile, String runReportFile) {
+    return new TestRunReport(runStatus, runDurationMs, tagExpression, total, passed, failed, skipped,
+        failedScenarios, runLogFile, runReportFile);
+  }
 
   public String toMarkdown() {
     return toMarkdown(false);

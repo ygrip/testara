@@ -1,11 +1,15 @@
 package io.github.ygrip.testara.agent.skill.run;
 
+import io.github.ygrip.testara.agent.index.ExamplesIndex;
+import io.github.ygrip.testara.agent.index.FeatureIndex;
+import io.github.ygrip.testara.agent.index.ScenarioIndex;
 import io.github.ygrip.testara.agent.index.TagIndex;
 import io.github.ygrip.testara.agent.index.TestaraProjectProfile;
 import io.cucumber.tagexpressions.Expression;
 import io.cucumber.tagexpressions.TagExpressionParser;
 
 import java.util.*;
+import java.util.logging.Logger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -15,6 +19,8 @@ import java.util.stream.Collectors;
  * Priority: explicit tags → known aliases → indexed project tags → domain inference.
  */
 public class TagExpressionResolver {
+
+  private static final Logger LOG = Logger.getLogger(TagExpressionResolver.class.getName());
 
   private static final Map<String, String> DEFAULT_ALIASES = Map.of(
       "smoke",      "@smoke",
@@ -271,25 +277,46 @@ public class TagExpressionResolver {
     return tags;
   }
 
-  /** Count scenarios matching the resolved expression (simple tag set match). */
+  /** Count scenarios (or Scenario Outlines with at least one matching Examples block) matching the expression. */
   public int countMatching(String tagExpression, TestaraProjectProfile profile) {
     if (tagExpression.isBlank()) return profile.totalScenarios();
+    Expression expression = parseOrNull(tagExpression);
+    if (expression == null) return 0;
     return (int) profile.features().stream()
-        .flatMap(f -> f.scenarios().stream().map(s -> Map.entry(f, s)))
-        .filter(entry -> {
-          Set<String> scenarioTags = new HashSet<>(entry.getKey().tags());
-          scenarioTags.addAll(entry.getValue().tags());
-          return matchesExpression(tagExpression, scenarioTags);
-        })
+        .flatMap(f -> f.scenarios().stream().filter(s -> matches(expression, f, s)))
         .count();
   }
 
-  private boolean matchesExpression(String expr, Set<String> tags) {
+  /**
+   * Whether Cucumber would run {@code scenario} for {@code tagExpression}: pickles inherit feature
+   * and scenario tags, and a Scenario Outline's pickles additionally carry the tags of the Examples
+   * block they come from, so an outline matches when any of its Examples blocks does.
+   */
+  public boolean matches(String tagExpression, FeatureIndex feature, ScenarioIndex scenario) {
+    Expression expression = parseOrNull(tagExpression);
+    return expression != null && matches(expression, feature, scenario);
+  }
+
+  private boolean matches(Expression expression, FeatureIndex feature, ScenarioIndex scenario) {
+    List<String> baseTags = new ArrayList<>(feature.tags());
+    baseTags.addAll(scenario.tags());
+    if (scenario.examples() == null || scenario.examples().isEmpty()) {
+      return expression.evaluate(baseTags);
+    }
+    for (ExamplesIndex examples : scenario.examples()) {
+      List<String> pickleTags = new ArrayList<>(baseTags);
+      if (examples.tags() != null) pickleTags.addAll(examples.tags());
+      if (expression.evaluate(pickleTags)) return true;
+    }
+    return false;
+  }
+
+  private Expression parseOrNull(String tagExpression) {
     try {
-      Expression expression = TagExpressionParser.parse(expr);
-      return expression.evaluate(List.copyOf(tags));
+      return TagExpressionParser.parse(tagExpression);
     } catch (RuntimeException e) {
-      return false;
+      LOG.fine("Not a valid Cucumber tag expression: " + tagExpression + " (" + e.getMessage() + ")");
+      return null;
     }
   }
 
