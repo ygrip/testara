@@ -1,0 +1,23 @@
+testara-agent/src/main/java/io/github/ygrip/testara/agent/skill/TestaraApiSkill.java
+  94ea26109a2333cd 266
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.23",
+  "base_commit_sha": "23c63002e1cf451ee6ee685dda479521d0d793fa",
+  "prompts": {
+    "94ea26109a2333cd": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2249c54b-fa50-4172-85ce-e832fc778248",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "ygrip <yunaz.gilang@gmail.com>",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 1,
+      "overriden_lines": 0
+    }
+  }
+}
