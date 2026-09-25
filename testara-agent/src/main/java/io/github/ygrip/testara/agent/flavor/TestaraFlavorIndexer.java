@@ -290,11 +290,11 @@ public class TestaraFlavorIndexer {
 
   /** Converts Java string escapes in annotation values to their actual characters. */
   public static String unescapeAnnotation(String s) {
-    return s.replace("\\\\", " BSLASH ")  // protect actual backslashes first
+    return s.replace("\\\\", "\u0000BSLASH\u0000")  // protect actual backslashes first
             .replace("\\\"", "\"")                    // \" → "
             .replace("\\n", "\n")
             .replace("\\t", "\t")
-            .replace(" BSLASH ", "\\");     // restore actual backslashes
+            .replace("\u0000BSLASH\u0000", "\\");     // restore actual backslashes
   }
 
   private String stripAnchors(String expr) {

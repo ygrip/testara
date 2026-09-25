@@ -62,7 +62,9 @@ public class ProjectIndexer {
   private static final String TESTARA_PACKAGE = "io.github.ygrip.testara";
   private static final List<String> RESOURCE_DIRS = List.of("src/test/resources", "src/main/resources");
   private static final Set<String> EXCLUDED_DIRECTORIES = Set.of(
-      "target", ".git", ".testara-agent", "node_modules", ".idea", ".gradle");
+      "target", ".git", ".testara-agent", "node_modules", ".idea", ".gradle",
+      // Agent/editor tool dirs may hold full repo copies (e.g. .claude/worktrees).
+      ".claude", ".serena", ".vscode");
 
   private record ScanPackages(Set<String> commands, Set<String> validations) {}
 
