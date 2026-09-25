@@ -3,6 +3,7 @@ package io.github.ygrip.testara.agent.llm;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import io.github.ygrip.testara.agent.safety.SecretRedactionGuard;
 
 import java.io.IOException;
 import java.net.URI;
@@ -17,7 +18,8 @@ import java.util.logging.Logger;
  * LLM client for local models via Ollama API (http://localhost:11434).
  *
  * <p>Supports any Ollama-compatible endpoint. Default model is configurable
- * via {@code TESTARA_AGENT_MODEL}. No API key is required for local models.
+ * via {@code TESTARA_AGENT_MODEL}. No API key is required for local models. The prompt is scrubbed
+ * of secrets via {@link SecretRedactionGuard} before it is sent.
  */
 public class LocalLlmClient implements LlmClient {
 
@@ -61,8 +63,8 @@ public class LocalLlmClient implements LlmClient {
           httpRequest, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
 
       if (response.statusCode() >= 400) {
-        throw new RuntimeException("Ollama API returned " + response.statusCode()
-            + ": " + response.body());
+        // The body may echo the prompt or credentials; report the status only
+        throw new RuntimeException("Ollama API returned HTTP " + response.statusCode());
       }
       return parseResponse(response.body(), request);
     } catch (IOException | InterruptedException e) {
@@ -87,7 +89,7 @@ public class LocalLlmClient implements LlmClient {
     for (LlmMessage msg : request.messages()) {
       prompt.append(msg.role()).append(": ").append(msg.content()).append("\n");
     }
-    root.put("prompt", prompt.toString());
+    root.put("prompt", SecretRedactionGuard.sanitize(prompt.toString()));
 
     return mapper.writeValueAsString(root);
   }

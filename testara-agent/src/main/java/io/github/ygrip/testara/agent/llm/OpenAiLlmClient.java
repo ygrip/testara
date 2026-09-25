@@ -59,7 +59,8 @@ public class OpenAiLlmClient implements LlmClient {
           httpRequest, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
 
       if (response.statusCode() >= 400) {
-        throw new RuntimeException("LLM API returned " + response.statusCode() + ": " + response.body());
+        // The body may echo the prompt or credentials; report the status only
+        throw new RuntimeException("LLM API returned HTTP " + response.statusCode());
       }
       return parseResponse(response.body());
     } catch (IOException | InterruptedException e) {
