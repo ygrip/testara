@@ -10,6 +10,8 @@ import io.github.ygrip.testara.agent.index.ScenarioType;
 import io.github.ygrip.testara.agent.index.TagIndex;
 import io.github.ygrip.testara.agent.index.TestaraProjectProfile;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.DisabledOnOs;
+import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.io.IOException;
@@ -20,9 +22,11 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class TestRunSkillTest {
@@ -276,6 +280,68 @@ class TestRunSkillTest {
   }
 
   @Test
+  @DisabledOnOs(OS.WINDOWS)
+  void startReturnsWhileTheBuildRunsAndCompletesWithTheVerdict() throws Exception {
+    Path fixture = projectRoot.resolve("passing.json");
+    Files.writeString(fixture, PASSING_REPORT);
+    fakeLauncher("mvnw", """
+        sleep 2
+        mkdir -p target/destination
+        cp passing.json target/destination/cucumber.json
+        exit 0
+        """);
+
+    TestRunSkill.RunHandle handle = new TestRunSkill().start("run @smoke", executeContext(profileWithSaucedemo()));
+
+    assertTrue(handle.started());
+    assertFalse(handle.result().isDone(), "start must not wait for the build");
+    assertEquals(TestRunSkill.RUNNING, handle.status());
+    assertNull(handle.exitCode());
+    assertTrue(handle.logFile().getFileName().toString().contains(handle.runId()), handle.logFile().toString());
+    assertTrue(handle.command().contains("-Dcucumber.filter.tags"), handle.command());
+    String output = handle.result().get(30, TimeUnit.SECONDS);
+    assertTrue(output.contains("**Status:** PASSED"), output);
+    assertTrue(output.contains("- Passed: 1"), output);
+    assertEquals("PASSED", handle.status());
+    assertEquals(0, handle.exitCode());
+  }
+
+  @Test
+  @DisabledOnOs(OS.WINDOWS)
+  void cancelledRunKillsTheBuildAndReportsCancelled() throws Exception {
+    fakeLauncher("mvnw", """
+        sleep 60 &
+        echo $! > child.pid
+        wait
+        """);
+
+    TestRunSkill.RunHandle handle = new TestRunSkill().start("run @smoke", executeContext(profileWithSaucedemo()));
+    long childPid = awaitPid(projectRoot.resolve("child.pid"));
+    handle.cancel();
+    String output = handle.result().get(30, TimeUnit.SECONDS);
+
+    assertTrue(output.contains("**Status:** CANCELLED"), output);
+    assertTrue(output.contains("Test execution was CANCELLED"), output);
+    assertEquals(1, TestRunSkill.exitCode(output));
+    assertEquals("CANCELLED", handle.status());
+    assertEquals(-1, handle.exitCode());
+    assertFalse(handle.isAlive());
+    assertFalse(ProcessHandle.of(childPid).map(ProcessHandle::isAlive).orElse(false));
+    handle.cancel();
+    assertEquals("CANCELLED", handle.status(), "cancelling a finished run changes nothing");
+  }
+
+  @Test
+  void startOfAPlanIsAlreadyCompleteWithTheExecuteOutput() {
+    TestRunSkill.RunHandle handle = new TestRunSkill().start("run @smoke", context(profileWithSaucedemo()));
+
+    assertFalse(handle.started());
+    assertTrue(handle.result().isDone());
+    assertNull(handle.runId());
+    assertEquals(new TestRunSkill().execute("run @smoke", context(profileWithSaucedemo())), handle.result().join());
+  }
+
+  @Test
   void logAnalysisIgnoresZeroFailureCounters() {
     TestRunSkill.LogFacts facts = TestRunSkill.analyzeLog(List.of(
         "[INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0",
@@ -286,6 +352,15 @@ class TestRunSkillTest {
     assertEquals(List.of("line 3: [ERROR] Tests run: 3, Failures: 1, Errors: 0, Skipped: 0",
         "line 4: java.lang.IllegalStateException: boom"), facts.errors());
     assertEquals("[INFO] BUILD SUCCESS", facts.buildSummary());
+  }
+
+  private long awaitPid(Path pidFile) throws Exception {
+    long deadline = System.currentTimeMillis() + 10_000;
+    while (!Files.isRegularFile(pidFile) || Files.readString(pidFile).isBlank()) {
+      assertTrue(System.currentTimeMillis() < deadline, "child pid was never written");
+      Thread.sleep(20);
+    }
+    return Long.parseLong(Files.readString(pidFile).strip());
   }
 
   private void fakeLauncher(String name, String body) throws IOException {

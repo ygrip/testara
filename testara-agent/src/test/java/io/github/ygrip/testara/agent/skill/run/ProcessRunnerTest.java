@@ -6,6 +6,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.DisabledOnOs;
@@ -39,6 +41,40 @@ class ProcessRunnerTest {
     long childPid = Long.parseLong(Files.readString(pidFile).strip());
     assertFalse(ProcessHandle.of(childPid).map(ProcessHandle::isAlive).orElse(false),
         "forked child (test JVM/browser stand-in) must be killed with its parent");
+  }
+
+  @Test
+  @DisabledOnOs(OS.WINDOWS)
+  void cancelKillsTheWholeProcessTreeAndReportsCancelled() throws Exception {
+    Path pidFile = dir.resolve("child.pid");
+    Path script = script("build.sh", """
+        sleep 60 &
+        echo $! > child.pid
+        wait
+        """);
+
+    RunningProcess process = ProcessRunner.start(List.of(script.toString()), dir, dir.resolve("run.log"));
+    CompletableFuture<ProcessRunner.Outcome> awaited = new CompletableFuture<>();
+    Thread waiter = new Thread(() -> {
+      try {
+        awaited.complete(process.await(Duration.ofMinutes(1)));
+      } catch (InterruptedException e) {
+        awaited.completeExceptionally(e);
+      }
+    });
+    waiter.start();
+    long childPid = awaitPid(pidFile);
+    assertTrue(process.isAlive());
+
+    process.cancel();
+    ProcessRunner.Outcome outcome = awaited.get(20, TimeUnit.SECONDS);
+
+    assertTrue(outcome.cancelled());
+    assertFalse(outcome.timedOut());
+    assertEquals(-1, outcome.exitCode());
+    assertFalse(process.isAlive());
+    assertFalse(ProcessHandle.of(childPid).map(ProcessHandle::isAlive).orElse(false),
+        "forked child must be killed with its parent on cancel");
   }
 
   @Test
@@ -86,6 +122,15 @@ class ProcessRunnerTest {
     assertEquals(dir.resolve("mvnw.cmd").toAbsolutePath().toString(), ProcessRunner.mavenLauncher(dir, true));
     assertEquals(dir.resolve("gradlew").toAbsolutePath().toString(), ProcessRunner.gradleLauncher(dir, false));
     assertEquals(dir.resolve("gradlew.bat").toAbsolutePath().toString(), ProcessRunner.gradleLauncher(dir, true));
+  }
+
+  private long awaitPid(Path pidFile) throws Exception {
+    long deadline = System.currentTimeMillis() + 10_000;
+    while (!Files.isRegularFile(pidFile) || Files.readString(pidFile).isBlank()) {
+      assertTrue(System.currentTimeMillis() < deadline, "child pid was never written");
+      Thread.sleep(20);
+    }
+    return Long.parseLong(Files.readString(pidFile).strip());
   }
 
   private Path script(String name, String body) throws IOException {

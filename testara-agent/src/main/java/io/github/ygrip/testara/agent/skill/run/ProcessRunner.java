@@ -7,26 +7,27 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
 import java.util.Locale;
-import java.util.concurrent.TimeUnit;
-import java.util.logging.Logger;
 
 /**
  * Runs build-tool processes (Maven/Gradle) for the agent: OS-aware launcher resolution, output
  * redirected to a log file (so a chatty build can never block on a full pipe), a hard timeout, and
- * termination of the whole process tree (forked test JVMs, browsers, drivers) on timeout or
- * interrupt.
+ * termination of the whole process tree (forked test JVMs, browsers, drivers) on timeout, interrupt
+ * or cancellation.
  */
 public final class ProcessRunner {
 
-  private static final Logger LOG = Logger.getLogger(ProcessRunner.class.getName());
-  private static final long KILL_WAIT_SECONDS = 5;
-
   /**
-   * @param exitCode   process exit code, or {@code -1} when it timed out
+   * @param exitCode   process exit code, or {@code -1} when it timed out or was cancelled
    * @param timedOut   whether the timeout elapsed and the process tree was killed
    * @param durationMs wall-clock duration
+   * @param cancelled  whether {@link RunningProcess#cancel()} killed the process tree
    */
-  public record Outcome(int exitCode, boolean timedOut, long durationMs) {}
+  public record Outcome(int exitCode, boolean timedOut, long durationMs, boolean cancelled) {
+
+    public Outcome(int exitCode, boolean timedOut, long durationMs) {
+      this(exitCode, timedOut, durationMs, false);
+    }
+  }
 
   private ProcessRunner() { /* utility */ }
 
@@ -73,6 +74,14 @@ public final class ProcessRunner {
    */
   public static Outcome run(List<String> argv, Path workingDir, Path logFile, Duration timeout)
       throws IOException, InterruptedException {
+    return start(argv, workingDir, logFile).await(timeout);
+  }
+
+  /**
+   * Start {@code argv} (no shell) in {@code workingDir}, writing stdout and stderr to {@code logFile},
+   * without waiting for it; {@link RunningProcess#await} applies the timeout.
+   */
+  public static RunningProcess start(List<String> argv, Path workingDir, Path logFile) throws IOException {
     Files.createDirectories(logFile.toAbsolutePath().getParent());
     long start = System.currentTimeMillis();
     Process process = new ProcessBuilder(argv)
@@ -80,34 +89,7 @@ public final class ProcessRunner {
         .redirectErrorStream(true)
         .redirectOutput(logFile.toFile())
         .start();
-    boolean finished = false;
-    try {
-      finished = process.waitFor(timeout.toMillis(), TimeUnit.MILLISECONDS);
-    } finally {
-      if (!finished) {
-        destroyTree(process);
-      }
-    }
-    long duration = System.currentTimeMillis() - start;
-    if (!finished) {
-      return new Outcome(-1, true, duration);
-    }
-    return new Outcome(process.exitValue(), false, duration);
-  }
-
-  /** Kill descendants first (they are re-parented, and invisible, once the root dies), then the root. */
-  static void destroyTree(Process process) {
-    List<ProcessHandle> descendants = process.descendants().toList();
-    descendants.forEach(ProcessHandle::destroyForcibly);
-    process.destroyForcibly();
-    try {
-      if (!process.waitFor(KILL_WAIT_SECONDS, TimeUnit.SECONDS)) {
-        LOG.warning("Build process " + process.pid() + " did not exit after being killed");
-      }
-    } catch (InterruptedException e) {
-      Thread.currentThread().interrupt();
-      LOG.warning("Interrupted while waiting for killed build process " + process.pid() + " to exit");
-    }
+    return new RunningProcess(process, start);
   }
 
   /** Read a captured log leniently: malformed or non-UTF-8 bytes are replaced instead of failing. */

@@ -10,6 +10,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
@@ -19,6 +20,11 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.Executor;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.logging.Logger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -33,6 +39,9 @@ import java.util.stream.Stream;
  * as {@code modules/api}, or {@code :artifactId}), {@code format} ({@code json} for
  * {@link TestRunReport#toJson()}), {@code timeoutMinutes} (default {@value #DEFAULT_TIMEOUT_MINUTES}),
  * {@code gradleTask} (Gradle only, default {@value GradleCommandBuilder#DEFAULT_TASK}).
+ *
+ * <p>{@link #execute} blocks until the run finishes; {@link #start} returns a {@link RunHandle} as soon
+ * as the build process is launched and completes it from a daemon thread.
  */
 public class TestRunSkill implements AgentSkill<String, String> {
 
@@ -57,7 +66,15 @@ public class TestRunSkill implements AgentSkill<String, String> {
   private static final String EXECUTION_FAILED = "Execution failed: ";
   private static final String EXECUTION_INTERRUPTED = "Execution interrupted: ";
   private static final String STATUS_LINE = "**Status:** ";
-  private static final List<String> FAILED_STATUSES = List.of("FAILED", "TIMEOUT");
+  private static final String CANCELLED = "CANCELLED";
+  private static final List<String> FAILED_STATUSES = List.of("FAILED", "TIMEOUT", CANCELLED);
+  /** Status of a {@link RunHandle} whose build process has not finished yet. */
+  public static final String RUNNING = "RUNNING";
+  private static final ExecutorService RUN_EXECUTOR = Executors.newCachedThreadPool(runnable -> {
+    Thread thread = new Thread(runnable, "testara-test-run");
+    thread.setDaemon(true);
+    return thread;
+  });
 
   private final TagExpressionResolver resolver;
   private final MavenCommandBuilder cmdBuilder;
@@ -83,8 +100,8 @@ public class TestRunSkill implements AgentSkill<String, String> {
 
   /**
    * Process exit code for an {@link #execute} output, for command-line callers: {@code 0} when the
-   * run passed or only a plan was shown, {@code 1} when the run failed, timed out, could not start or
-   * matched no scenario, {@code 2} when input was invalid or missing or execution was blocked.
+   * run passed or only a plan was shown, {@code 1} when the run failed, timed out, was cancelled,
+   * could not start or matched no scenario, {@code 2} when input was invalid or missing or execution was blocked.
    */
   public static int exitCode(String output) {
     String text = output.stripLeading();
@@ -101,17 +118,38 @@ public class TestRunSkill implements AgentSkill<String, String> {
     return 0;
   }
 
-  /** Invalid user input (module, Gradle task, timeout, tag expression) is reported, never thrown. */
+  /**
+   * Resolve, and when allowed execute, the run on the calling thread. Invalid user input (module,
+   * Gradle task, timeout, tag expression) is reported, never thrown.
+   */
   @Override
   public String execute(String input, AgentContext context) {
     try {
-      return run(input, context);
-    } catch (IllegalArgumentException e) {
-      return INVALID_OPTION + e.getMessage() + "\n";
+      return start(input, context, Runnable::run).result().join();
+    } catch (CompletionException e) {
+      if (e.getCause() instanceof RuntimeException cause) throw cause;
+      throw e;
     }
   }
 
-  private String run(String input, AgentContext context) {
+  /**
+   * Like {@link #execute}, but an executed run is awaited on a daemon thread: the returned handle is
+   * {@link RunHandle#started() started} and its result completes when the build finishes. Plans,
+   * preflight failures, invalid input and blocked runs return an already-completed handle.
+   */
+  public RunHandle start(String input, AgentContext context) {
+    return start(input, context, RUN_EXECUTOR);
+  }
+
+  private RunHandle start(String input, AgentContext context, Executor executor) {
+    try {
+      return run(input, context, executor);
+    } catch (IllegalArgumentException e) {
+      return RunHandle.completed(INVALID_OPTION + e.getMessage() + "\n");
+    }
+  }
+
+  private RunHandle run(String input, AgentContext context, Executor executor) {
     TestaraProjectProfile profile = context.profile();
     Map<String, String> opts = context.options();
     TagExpressionResolver activeResolver = resolverFor(opts);
@@ -125,25 +163,29 @@ public class TestRunSkill implements AgentSkill<String, String> {
     if (rerunFail) {
       Path rerunFile = findRerunFile(context.projectRoot(), settings.module());
       if (rerunFile == null) {
-        return "No previous test failures found. Check that " + RERUN_FILE_PATH
-            + " exists from a previous test run" + moduleHint(settings) + ".\n";
+        return RunHandle.completed("No previous test failures found. Check that " + RERUN_FILE_PATH
+            + " exists from a previous test run" + moduleHint(settings) + ".\n");
       }
       BuildCommand command = rerunCommand(context.projectRoot(), rerunFile, settings);
       TestRunPlan plan = new TestRunPlan("rerun-failed", "@" + rerunFile, 0, 0, command.display(), List.of());
-      if (dryRun || !execute) return plan.toMarkdown();
+      if (dryRun || !execute) return RunHandle.completed(plan.toMarkdown());
       String blocked = executionBlocked(context);
-      if (blocked != null) return plan.toMarkdown() + blocked;
+      if (blocked != null) return RunHandle.completed(plan.toMarkdown() + blocked);
+      String prefix = "";
+      if (!json) {
+        prefix = plan.toMarkdown() + "\n> **Rerun-failed** uses Cucumber's native rerun-file feature-path.\n\n";
+      }
       // The rerun file is not preflighted, so an empty report is not judged against a scenario count
-      String result = executeAndReport(command, "@" + rerunFile, context.projectRoot(), settings, json, 0);
-      if (json) return result;
-      return plan.toMarkdown() + "\n> **Rerun-failed** uses Cucumber's native rerun-file feature-path.\n\n" + result;
+      return startExecution(command, "@" + rerunFile, context.projectRoot(), settings, json, 0, prefix, executor);
     }
 
     String tagExpr = activeResolver.resolve(input, profile);
-    if (tagExpr.isBlank()) return unresolvedPrompt(input, context, profile);
+    if (tagExpr.isBlank()) return RunHandle.completed(unresolvedPrompt(input, context, profile));
 
     int matched = activeResolver.countMatching(tagExpr, profile);
-    if (matched == 0) return preflightFailure(input, tagExpr, context, profile, activeResolver, settings);
+    if (matched == 0) {
+      return RunHandle.completed(preflightFailure(input, tagExpr, context, profile, activeResolver, settings));
+    }
     int matchedFeatures = (int) profile.features().stream()
         .filter(f -> f.scenarios().stream().anyMatch(s -> activeResolver.matches(tagExpr, f, s)))
         .count();
@@ -158,10 +200,10 @@ public class TestRunSkill implements AgentSkill<String, String> {
     BuildCommand command = runCommand(context.projectRoot(), tagExpr, settings);
     TestRunPlan plan = new TestRunPlan(input, tagExpr, matchedFeatures, matched, command.display(), matchedNames);
 
-    if (dryRun || !execute) return plan.toMarkdown();
+    if (dryRun || !execute) return RunHandle.completed(plan.toMarkdown());
     String blocked = executionBlocked(context);
-    if (blocked != null) return plan.toMarkdown() + blocked;
-    return executeAndReport(command, tagExpr, context.projectRoot(), settings, json, matched);
+    if (blocked != null) return RunHandle.completed(plan.toMarkdown() + blocked);
+    return startExecution(command, tagExpr, context.projectRoot(), settings, json, matched, "", executor);
   }
 
   private TagExpressionResolver resolverFor(Map<String, String> options) {
@@ -276,34 +318,53 @@ public class TestRunSkill implements AgentSkill<String, String> {
     return sb.toString();
   }
 
-  /** {@code expectedScenarios} is the preflight match count ({@code 0} when the run was not preflighted). */
-  private String executeAndReport(BuildCommand command, String tagExpr, Path projectRoot,
-      RunSettings settings, boolean json, int expectedScenarios) {
+  /**
+   * Launch the build and await it on {@code executor}. {@code expectedScenarios} is the preflight match
+   * count ({@code 0} when the run was not preflighted); {@code prefix} is prepended to every output.
+   */
+  private RunHandle startExecution(BuildCommand command, String tagExpr, Path projectRoot,
+      RunSettings settings, boolean json, int expectedScenarios, String prefix, Executor executor) {
     String guardError = TestExecutionGuard.validateArgv(command.argv());
     if (guardError != null) {
-      return EXECUTION_BLOCKED + " by safety guard: " + guardError + "\n";
+      return RunHandle.completed(prefix + EXECUTION_BLOCKED + " by safety guard: " + guardError + "\n");
     }
     if (settings.gradle()) {
       try {
         gradleBuilder.writeInitScript(projectRoot);
       } catch (IOException e) {
-        return EXECUTION_FAILED + "cannot write Gradle init script "
-            + GradleCommandBuilder.initScriptPath(projectRoot) + ": " + e.getMessage() + "\n";
+        return RunHandle.completed(prefix + EXECUTION_FAILED + "cannot write Gradle init script "
+            + GradleCommandBuilder.initScriptPath(projectRoot) + ": " + e.getMessage() + "\n");
       }
     }
 
-    Path logFile = runLogFile(projectRoot, settings);
+    String runId = newRunId();
+    Path logFile = runLogFile(projectRoot, settings, runId);
+    Instant startedAt = Instant.now();
     // Report files older than this belong to an earlier run. Truncate to the second so that
     // filesystems with coarse (1 s) modification times still accept a report this run wrote.
-    long runStart = System.currentTimeMillis() / 1000 * 1000;
+    long runStart = startedAt.toEpochMilli() / 1000 * 1000;
+    RunningProcess process;
+    try {
+      process = ProcessRunner.start(command.argv(), projectRoot, logFile);
+    } catch (IOException e) {
+      return RunHandle.completed(prefix + EXECUTION_FAILED + e.getMessage() + "\n");
+    }
+    CompletableFuture<Finished> finished = CompletableFuture.supplyAsync(
+        () -> report(process, command, tagExpr, projectRoot, settings, json, expectedScenarios, logFile, runStart)
+            .prefixed(prefix),
+        executor);
+    return new RunHandle(runId, command.display(), logFile, startedAt, process, finished);
+  }
+
+  private Finished report(RunningProcess process, BuildCommand command, String tagExpr, Path projectRoot,
+      RunSettings settings, boolean json, int expectedScenarios, Path logFile, long runStart) {
     ProcessRunner.Outcome outcome;
     try {
-      outcome = ProcessRunner.run(command.argv(), projectRoot, logFile, settings.timeout());
-    } catch (IOException e) {
-      return EXECUTION_FAILED + e.getMessage() + "\n";
+      outcome = process.await(settings.timeout());
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
-      return EXECUTION_INTERRUPTED + "the build process tree was terminated. Log: " + logFile + "\n";
+      return new Finished(CANCELLED, -1,
+          EXECUTION_INTERRUPTED + "the build process tree was terminated. Log: " + logFile + "\n");
     }
 
     Path executionRoot = RunArguments.moduleDirectory(projectRoot, settings.module());
@@ -316,7 +377,7 @@ public class TestRunSkill implements AgentSkill<String, String> {
     } else {
       report = parsed.report().forRun(status, outcome.durationMs(), logFile.toString(), parsed.file().toString());
     }
-    if (json) return report.toJson();
+    if (json) return new Finished(status, outcome.exitCode(), report.toJson());
 
     String summary = logSummary(String.join(" ", command.argv()), tagExpr, logFile, outcome, status,
         parsed.description(), settings);
@@ -328,15 +389,19 @@ public class TestRunSkill implements AgentSkill<String, String> {
       summary += "\nTest execution exceeded the " + settings.timeout().toMinutes()
           + "-minute limit; the build process tree was terminated.\n";
     }
-    if (parsed.report() == null) return summary;
-    return report.toMarkdown() + "\n\n" + summary;
+    if (outcome.cancelled()) {
+      summary += "\nTest execution was " + CANCELLED + "; the build process tree was terminated.\n";
+    }
+    if (parsed.report() == null) return new Finished(status, outcome.exitCode(), summary);
+    return new Finished(status, outcome.exitCode(), report.toMarkdown() + "\n\n" + summary);
   }
 
   /**
-   * TIMEOUT and non-zero exit codes always win over a parsed report; a failed report, or a report
-   * without scenarios when preflight matched some, fails a clean exit.
+   * CANCELLED, TIMEOUT and non-zero exit codes always win over a parsed report; a failed report, or a
+   * report without scenarios when preflight matched some, fails a clean exit.
    */
   private String verdict(ProcessRunner.Outcome outcome, TestRunReport report, boolean noScenariosExecuted) {
+    if (outcome.cancelled()) return CANCELLED;
     if (outcome.timedOut()) return "TIMEOUT";
     if (outcome.exitCode() != 0) return "FAILED";
     if (report != null && "FAILED".equals(report.status())) return "FAILED";
@@ -440,13 +505,17 @@ public class TestRunSkill implements AgentSkill<String, String> {
     }
   }
 
-  private Path runLogFile(Path projectRoot, RunSettings settings) {
+  /** A sortable, file-name-safe id: {@code yyyyMMdd-HHmmss-SSS-<8 hex>}. */
+  private String newRunId() {
     String timestamp = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss-SSS").format(LocalDateTime.now());
-    String suffix = UUID.randomUUID().toString().substring(0, 8);
+    return timestamp + "-" + UUID.randomUUID().toString().substring(0, 8);
+  }
+
+  private Path runLogFile(Path projectRoot, RunSettings settings, String runId) {
     if (settings.gradle()) {
-      return projectRoot.resolve("build/testara-agent-logs/gradle-run-" + timestamp + "-" + suffix + ".log");
+      return projectRoot.resolve("build/testara-agent-logs/gradle-run-" + runId + ".log");
     }
-    return projectRoot.resolve("target/testara-agent-logs/maven-run-" + timestamp + "-" + suffix + ".log");
+    return projectRoot.resolve("target/testara-agent-logs/maven-run-" + runId + ".log");
   }
 
   private String toolName(RunSettings settings) {
@@ -552,6 +621,112 @@ public class TestRunSkill implements AgentSkill<String, String> {
   }
 
   private record RunSettings(boolean gradle, String module, String gradleTask, Duration timeout) {}
+
+  /** A run's final output with its verdict status and process exit code (both null when not executed). */
+  private record Finished(String status, Integer exitCode, String output) {
+
+    Finished prefixed(String prefix) {
+      return new Finished(status, exitCode, prefix + output);
+    }
+  }
+
+  /**
+   * A test run started by {@link #start}. {@link #result()} completes with exactly the output
+   * {@link #execute} would have returned. Handles that never launched a build (plans, preflight
+   * failures, invalid input, blocked runs) are already complete and not {@link #started()}.
+   */
+  public static final class RunHandle {
+
+    private final String runId;
+    private final String command;
+    private final Path logFile;
+    private final Instant startedAt;
+    private final RunningProcess process;
+    private final CompletableFuture<Finished> finished;
+    private final CompletableFuture<String> result;
+
+    private RunHandle(String runId, String command, Path logFile, Instant startedAt, RunningProcess process,
+        CompletableFuture<Finished> finished) {
+      this.runId = runId;
+      this.command = command;
+      this.logFile = logFile;
+      this.startedAt = startedAt;
+      this.process = process;
+      this.finished = finished;
+      this.result = finished.thenApply(Finished::output);
+    }
+
+    private static RunHandle completed(String output) {
+      return new RunHandle(null, null, null, Instant.now(), null,
+          CompletableFuture.completedFuture(new Finished(null, null, output)));
+    }
+
+    /** Whether a build process was launched; only then are the run id, command and log file set. */
+    public boolean started() {
+      return process != null;
+    }
+
+    public String runId() {
+      return runId;
+    }
+
+    public String command() {
+      return command;
+    }
+
+    public Path logFile() {
+      return logFile;
+    }
+
+    public Instant startedAt() {
+      return startedAt;
+    }
+
+    public CompletableFuture<String> result() {
+      return result;
+    }
+
+    /**
+     * {@value #RUNNING} until the build finishes, then its verdict: PASSED, FAILED, TIMEOUT or
+     * CANCELLED ({@code null} for a handle that never launched a build).
+     */
+    public String status() {
+      if (!finished.isDone()) return RUNNING;
+      if (finished.isCompletedExceptionally()) return "FAILED";
+      return finished.join().status();
+    }
+
+    /** The build's exit code once finished ({@code -1} on timeout or cancellation), else {@code null}. */
+    public Integer exitCode() {
+      if (!finished.isDone() || finished.isCompletedExceptionally()) return null;
+      return finished.join().exitCode();
+    }
+
+    /** Kill the build process tree; the result then completes with a CANCELLED verdict. */
+    public void cancel() {
+      if (process != null && !finished.isDone()) {
+        process.cancel();
+      }
+    }
+
+    public boolean isAlive() {
+      return process != null && process.isAlive();
+    }
+
+    /** The last {@code maxLines} lines of the captured build log, each clipped. */
+    public List<String> logTail(int maxLines) {
+      if (logFile == null) return List.of();
+      List<String> lines;
+      try {
+        lines = ProcessRunner.readLogLines(logFile);
+      } catch (IOException e) {
+        return List.of("Cannot read captured log: " + e.getMessage());
+      }
+      return lines.subList(Math.max(0, lines.size() - maxLines), lines.size()).stream()
+          .map(TestRunSkill::clipped)
+          .toList();
+    }
+  }
 
   record LogFacts(String testSummary, String scenarioSummary, String buildSummary, String elapsedTime,
       List<String> errors, List<String> affectedLines) {}
