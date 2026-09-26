@@ -4,12 +4,15 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.io.OutputStream;
 import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.ArrayList;
@@ -18,6 +21,14 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.function.Function;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -73,6 +84,14 @@ import io.github.ygrip.testara.agent.skill.run.TagExpressionResolver;
  * <p>
  * Protocol: messages without an {@code id} are notifications and never get a response. A tool that
  * fails returns a result with {@code isError: true}; an unknown tool is a {@code -32602} error.
+ * <p>
+ * Threading ({@link #run()}): {@code tools/call} requests run on a small worker pool while
+ * {@code initialize}, {@code ping}, {@code tools/list}, {@code prompts/*} and notifications are
+ * answered on the reader thread, so a long call never blocks a ping. Every response goes through one
+ * {@link LineWriter}. {@code notifications/cancelled} cancels a waiting {@code testara_run}
+ * ({@code wait=true}) or ends a {@code testara_run_status} long-poll, and suppresses its response.
+ * An executed {@code testara_run} starts in the background ({@link RunRegistry}); on stdin EOF or JVM
+ * shutdown every active run is cancelled.
  */
 public class McpServer {
 
@@ -90,8 +109,18 @@ public class McpServer {
       "Replace files that already exist. Default false: existing files are reported as exists and left untouched.";
   private static final String COMPILE_DESCRIPTION =
       "Run the test-compile gate after writing files. Default false.";
+  private static final String RUN_ID_DESCRIPTION = "Run id returned by testara_run (run_started: <runId>)";
+  private static final String RUN_STATUS_TOOL = "testara_run_status";
+  private static final String RUN_CANCEL_TOOL = "testara_run_cancel";
+  private static final int WORKER_THREADS = 4;
+  private static final long WORKER_SHUTDOWN_SECONDS = 5;
+  private static final int MAX_WAIT_SECONDS = 60;
+  private static final int LOG_TAIL_LINES = 30;
   private final Path projectRoot;
   private final ObjectMapper mapper = new ObjectMapper();
+  private final RunRegistry registry = new RunRegistry(mapper);
+  /** Cancellation signals of in-flight {@code tools/call} requests, keyed by JSON request id. */
+  private final Map<String, CompletableFuture<Void>> cancellations = new ConcurrentHashMap<>();
   private final ArrayNode tools = toolDefinitions();
   private final Set<String> toolNames = toolNames(tools);
   // Skills
@@ -139,8 +168,13 @@ public class McpServer {
   }
 
   public void run() throws IOException {
-    BufferedReader in = new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8));
-    PrintWriter out = new PrintWriter(new OutputStreamWriter(System.out, StandardCharsets.UTF_8), true);
+    run(System.in, System.out);
+  }
+
+  /** Serves JSON-RPC lines from {@code input} until EOF, then cancels active runs and stops workers. */
+  void run(InputStream input, OutputStream output) throws IOException {
+    BufferedReader in = new BufferedReader(new InputStreamReader(input, StandardCharsets.UTF_8));
+    LineWriter out = new LineWriter(new PrintWriter(new OutputStreamWriter(output, StandardCharsets.UTF_8), true));
 
     // Index only when the root looks like a real project — skip when launched from home dir or
     // a non-project directory (e.g. VS Code global MCP config with "." as CWD)
@@ -155,19 +189,88 @@ public class McpServer {
       profile = emptyProfile(projectRoot);
     }
 
-    String line;
-    while ((line = in.readLine()) != null) {
-      line = line.strip();
-      if (line.isEmpty())
-        continue;
-      String response = handleLine(line);
-      if (response != null)
-        out.println(response);
+    Runtime.getRuntime().addShutdownHook(new Thread(registry::cancelAll, "testara-mcp-shutdown"));
+    ExecutorService workers = Executors.newFixedThreadPool(WORKER_THREADS, runnable -> {
+      Thread thread = new Thread(runnable, "testara-mcp-worker");
+      thread.setDaemon(true);
+      return thread;
+    });
+    try {
+      String line;
+      while ((line = in.readLine()) != null) {
+        line = line.strip();
+        if (line.isEmpty())
+          continue;
+        String response = handleLine(line, request -> dispatch(request, workers, out));
+        if (response != null)
+          out.write(response);
+      }
+    } finally {
+      registry.cancelAll();
+      shutdown(workers);
     }
+  }
+
+  private static void shutdown(ExecutorService workers) {
+    workers.shutdownNow();
+    try {
+      if (!workers.awaitTermination(WORKER_SHUTDOWN_SECONDS, TimeUnit.SECONDS)) {
+        LOG.warning("MCP worker threads did not stop within " + WORKER_SHUTDOWN_SECONDS + "s");
+      }
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      LOG.warning("Interrupted while stopping MCP worker threads");
+    }
+  }
+
+  /**
+   * Answers a parsed request on the reader thread, except {@code tools/call}, which is queued on the
+   * worker pool and written when done (unless the client cancelled it); returns the line to write now.
+   */
+  private String dispatch(JsonNode request, ExecutorService workers, LineWriter out) {
+    String method = request.path("method").asText();
+    if ("notifications/cancelled".equals(method)) {
+      cancelRequest(request.path("params").path("requestId"));
+      return null;
+    }
+    if (!"tools/call".equals(method) || !request.has("id")) {
+      return respond(request, new CompletableFuture<>());
+    }
+    String key = request.get("id").toString();
+    CompletableFuture<Void> cancelled = new CompletableFuture<>();
+    cancellations.put(key, cancelled);
+    workers.execute(() -> {
+      try {
+        String response = respond(request, cancelled);
+        if (response != null && !cancelled.isDone()) {
+          out.write(response);
+        }
+      } finally {
+        cancellations.remove(key, cancelled);
+      }
+    });
+    return null;
+  }
+
+  private void cancelRequest(JsonNode requestId) {
+    if (requestId.isMissingNode() || requestId.isNull()) {
+      LOG.fine("notifications/cancelled without a requestId");
+      return;
+    }
+    CompletableFuture<Void> cancelled = cancellations.get(requestId.toString());
+    if (cancelled == null) {
+      LOG.fine("notifications/cancelled for request " + requestId + " that is not in flight");
+      return;
+    }
+    cancelled.complete(null);
   }
 
   /** Handles one stdio line; returns the response line, or null when nothing must be written. */
   String handleLine(String line) {
+    return handleLine(line, request -> respond(request, new CompletableFuture<>()));
+  }
+
+  private String handleLine(String line, Function<JsonNode, String> responder) {
     JsonNode request;
     try {
       request = mapper.readTree(line);
@@ -178,8 +281,13 @@ public class McpServer {
     if (request == null || !request.isObject()) {
       return error(null, INVALID_REQUEST, "Invalid Request: expected a JSON-RPC object").toString();
     }
+    return responder.apply(request);
+  }
+
+  /** {@code cancelled} completes when the client cancels this request. */
+  private String respond(JsonNode request, CompletableFuture<Void> cancelled) {
     try {
-      JsonNode response = handle(request);
+      JsonNode response = handle(request, cancelled);
       if (response == null) return null;
       return response.toString();
     } catch (RuntimeException e) {
@@ -191,6 +299,10 @@ public class McpServer {
 
   /** Handles one JSON-RPC message; returns null for notifications (messages without an id). */
   JsonNode handle(JsonNode req) {
+    return handle(req, new CompletableFuture<>());
+  }
+
+  private JsonNode handle(JsonNode req, CompletableFuture<Void> cancelled) {
     String method = req.path("method")
       .asText();
     if (!req.has("id")) {
@@ -204,7 +316,7 @@ public class McpServer {
       case "initialize" -> initializeResponse(id);
       case "ping" -> response(id, mapper.createObjectNode());
       case "tools/list" -> toolsListResponse(id);
-      case "tools/call" -> toolsCallResponse(id, params);
+      case "tools/call" -> toolsCallResponse(id, params, cancelled);
       case "prompts/list" -> promptsListResponse(id);
       case "prompts/get" -> promptsGetResponse(id, params);
       default -> error(id, METHOD_NOT_FOUND, "Method not found: " + method);
@@ -260,19 +372,40 @@ public class McpServer {
     ));
     tools.add(tool(
       "testara_run",
-      "Run tests by explicit Cucumber tag expression. Agents should pass tags from user intent or testara_index, not vague natural language.",
+      "Run tests by explicit Cucumber tag expression. Agents should pass tags from user intent or testara_index, not vague natural language. "
+        + "An executed run starts in the background and returns run_started: <runId> at once; then call "
+        + "testara_run_status {\"runId\":\"<runId>\",\"waitSeconds\":30} until state is not RUNNING and report its result. "
+        + "One run per project at a time. Plans (dryRun/execute=false) return immediately.",
       requiredStr("input", "Explicit Cucumber tag expression to run, e.g. @smoke or @ui and @checkout. Ignored when rerunFailed=true."),
       optionalBool("dryRun", "Show plan only — default false"),
       optionalBool("execute", "Actually execute the build — default true"),
       optionalBool("rerunFailed", "Re-run only the scenarios listed in the previous run's rerun file. Default false."),
       optionalStr("module", "Restrict to a module: relative path (modules/api) or :artifactId"),
-      optionalInt("timeoutMinutes", "Kill the build after this many minutes (positive, default 15). The server handles no other call while a run is in progress."),
+      optionalInt("timeoutMinutes", "Kill the build after this many minutes (positive, default 15)."),
+      optionalBool("wait", "Block until the run finishes and return its final result instead of run_started. Default false."),
       optionalStr("gradleTask", "Gradle projects only: test task to run (default test)"),
       optionalStr("format", "json for a machine-readable report of an executed run; markdown otherwise"),
       optionalStr(
         "projectRoot",
         "Project root. Required when MCP server was launched outside the workspace (e.g. from home dir)."
       )
+    ));
+    tools.add(tool(
+      RUN_STATUS_TOOL,
+      "State of a testara_run: RUNNING (with elapsed time and the last log lines), or PASSED/FAILED/TIMEOUT/CANCELLED "
+        + "with the full final result. Long-polls up to waitSeconds for the run to finish.",
+      requiredStr("runId", RUN_ID_DESCRIPTION),
+      optionalInt("waitSeconds", "Wait up to this many seconds for the run to finish (0-60, default 0; larger values are capped at 60)."),
+      optionalStr("format", "markdown (default) or json"),
+      optionalStr("projectRoot", "Project root the run was started for. Used to read a run's recorded state after a server restart.")
+    ));
+    tools.add(tool(
+      RUN_CANCEL_TOOL,
+      "Cancel a testara_run started by this server: kills the build process tree and returns the CANCELLED state. "
+        + "A finished run is left as is and its final state is returned.",
+      requiredStr("runId", RUN_ID_DESCRIPTION),
+      optionalStr("format", "markdown (default) or json"),
+      optionalStr("projectRoot", "Project root the run was started for. Used to read a run's recorded state after a server restart.")
     ));
     tools.add(tool(
       "testara_index",
@@ -478,7 +611,7 @@ public class McpServer {
     return tools;
   }
 
-  private JsonNode toolsCallResponse(JsonNode id, JsonNode params) {
+  private JsonNode toolsCallResponse(JsonNode id, JsonNode params, CompletableFuture<Void> cancelled) {
     String toolName = params.path("name")
       .asText();
     if (!toolNames.contains(toolName)) {
@@ -489,7 +622,11 @@ public class McpServer {
     String content;
     boolean failed = false;
     try {
-      content = dispatchTool(toolName, args);
+      content = dispatchTool(toolName, args, cancelled);
+    } catch (ToolError e) {
+      LOG.fine("Tool " + toolName + " reported " + e.getMessage());
+      content = e.getMessage();
+      failed = true;
     } catch (RuntimeException e) {
       LOG.log(Level.WARNING, "Tool " + toolName + " failed", e);
       content = "Tool execution error: " + describe(e);
@@ -509,8 +646,15 @@ public class McpServer {
     return e.getMessage();
   }
 
-  private String dispatchTool(String name, JsonNode args) {
+  private String dispatchTool(String name, JsonNode args, CompletableFuture<Void> cancelled) {
     Path effectiveRoot = resolveProjectRoot(args);
+    // Run tracking needs neither the project index nor an agent mode: it only touches runs this server started.
+    if (RUN_STATUS_TOOL.equals(name)) {
+      return runStatus(args, effectiveRoot, cancelled);
+    }
+    if (RUN_CANCEL_TOOL.equals(name)) {
+      return runCancel(args, effectiveRoot);
+    }
     Map<String, String> opts = new LinkedHashMap<>();
     AgentYamlConfig.load(effectiveRoot).apply(opts);
     boolean writeRequested = args.path("write").asBoolean(false) || args.path("createFiles").asBoolean(false);
@@ -537,10 +681,7 @@ public class McpServer {
         Paths.get(args.path("path")
           .asText(".")), ctx
       );
-      case "testara_run" -> runSkill.execute(
-        args.path("input")
-          .asText(""), ctx
-      );
+      case "testara_run" -> runTests(args, ctx, cancelled);
       case "testara_index" -> indexSkill.execute(null, ctx);
       case "testara_command" -> commandSkill.execute(
         args.path("description")
@@ -700,6 +841,197 @@ public class McpServer {
       );
       default -> throw new IllegalArgumentException("Unknown tool: " + name);
     };
+  }
+
+  // ── Test runs ─────────────────────────────────────────────────────
+
+  /**
+   * An executed run is started in the background and answered with {@code run_started}; with
+   * {@code wait=true} the call blocks until the run finishes (cancelled when the client cancels the
+   * request). Plans, preflight failures and blocked runs are answered synchronously as before.
+   */
+  private String runTests(JsonNode args, AgentContext ctx, CompletableFuture<Void> cancelled) {
+    String input = args.path("input").asText("");
+    if (!ctx.allowsExecution()) {
+      return runSkill.execute(input, ctx);
+    }
+    RunRegistry.Started started = registry.start(ctx.projectRoot(), () -> runSkill.start(input, ctx));
+    if (started.activeRunId() != null) {
+      return "run_in_progress: " + started.activeRunId() + "\n"
+          + "reason: a test run is already active for this project; only one run per project at a time.\n"
+          + nextStep(started.activeRunId());
+    }
+    if (started.run() == null) {
+      return started.handle().result().join();
+    }
+    RunRegistry.Run run = started.run();
+    TestRunSkill.RunHandle handle = run.handle();
+    if (!args.path("wait").asBoolean(false)) {
+      return "run_started: " + handle.runId() + "\n"
+          + "state: " + TestRunSkill.RUNNING + "\n"
+          + "command: `" + handle.command() + "`\n"
+          + "log: " + handle.logFile() + "\n"
+          + nextStep(handle.runId());
+    }
+    awaitRun(run, cancelled, -1);
+    if (cancelled.isDone()) {
+      cancelRun(run);
+    }
+    if (!handle.result().isDone()) {
+      return runState(run, isJson(args));
+    }
+    return handle.result().join();
+  }
+
+  private String runStatus(JsonNode args, Path root, CompletableFuture<Void> cancelled) {
+    String runId = requiredRunId(args);
+    boolean json = isJson(args);
+    RunRegistry.Run run = registry.find(runId);
+    if (run == null) {
+      return recordedRun(root, runId, json);
+    }
+    int waitSeconds = Math.min(Math.max(args.path("waitSeconds").asInt(0), 0), MAX_WAIT_SECONDS);
+    if (waitSeconds > 0 && run.active()) {
+      awaitRun(run, cancelled, waitSeconds);
+    }
+    return runState(run, json);
+  }
+
+  private String runCancel(JsonNode args, Path root) {
+    String runId = requiredRunId(args);
+    boolean json = isJson(args);
+    RunRegistry.Run run = registry.find(runId);
+    if (run == null) {
+      return recordedRun(root, runId, json);
+    }
+    cancelRun(run);
+    return runState(run, json);
+  }
+
+  private void cancelRun(RunRegistry.Run run) {
+    try {
+      registry.cancel(run);
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      LOG.warning("Interrupted while cancelling test run " + run.handle().runId());
+    }
+  }
+
+  /** Waits for the run's final state, the client's cancellation, or {@code timeoutSeconds} (negative: no limit). */
+  private void awaitRun(RunRegistry.Run run, CompletableFuture<Void> cancelled, long timeoutSeconds) {
+    CompletableFuture<Object> finishedOrCancelled = CompletableFuture.anyOf(run.done(), cancelled);
+    try {
+      if (timeoutSeconds < 0) {
+        finishedOrCancelled.get();
+      } else {
+        finishedOrCancelled.get(timeoutSeconds, TimeUnit.SECONDS);
+      }
+    } catch (TimeoutException e) {
+      LOG.fine("Test run " + run.handle().runId() + " still running after " + timeoutSeconds + "s");
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      LOG.fine("Stopped waiting for test run " + run.handle().runId() + ": interrupted");
+    } catch (ExecutionException e) {
+      throw new IllegalStateException("run and cancellation signals never complete exceptionally", e);
+    }
+  }
+
+  private String runState(RunRegistry.Run run, boolean json) {
+    TestRunSkill.RunHandle handle = run.handle();
+    RunRegistry.RunMetadata metadata = registry.metadata(run);
+    Instant end = run.finishedAt();
+    if (end == null) {
+      end = Instant.now();
+    }
+    long elapsedSeconds = Duration.between(handle.startedAt(), end).toSeconds();
+    boolean running = TestRunSkill.RUNNING.equals(metadata.state());
+    if (json) {
+      ObjectNode node = mapper.valueToTree(metadata);
+      node.put("elapsedSeconds", elapsedSeconds);
+      if (running) {
+        ArrayNode tail = node.putArray("logTail");
+        handle.logTail(LOG_TAIL_LINES).forEach(tail::add);
+      } else {
+        node.put("result", handle.result().join());
+      }
+      return node.toString();
+    }
+    StringBuilder sb = new StringBuilder();
+    sb.append("run_id: ").append(metadata.runId()).append("\n");
+    sb.append("state: ").append(metadata.state()).append("\n");
+    sb.append("elapsed: ").append(elapsedSeconds).append("s\n");
+    sb.append("command: `").append(metadata.command()).append("`\n");
+    sb.append("log: ").append(metadata.logFile()).append("\n");
+    if (running) {
+      sb.append(nextStep(metadata.runId()));
+      sb.append("\nlog-tail (last ").append(LOG_TAIL_LINES).append(" lines):\n");
+      handle.logTail(LOG_TAIL_LINES).forEach(line -> sb.append(line).append("\n"));
+      return sb.toString();
+    }
+    sb.append("exit-code: ").append(metadata.exitCode()).append("\n\n");
+    sb.append(handle.result().join());
+    return sb.toString();
+  }
+
+  /** A run this server does not track (e.g. after a restart): its recorded metadata, or unknown_run. */
+  private String recordedRun(Path root, String runId, boolean json) {
+    RunRegistry.RunMetadata metadata = registry.readMetadata(root, runId);
+    if (metadata == null) {
+      throw new ToolError("unknown_run: " + runId);
+    }
+    String note = "this server is not tracking the run (e.g. it was restarted); showing its recorded state.";
+    if (json) {
+      ObjectNode node = mapper.valueToTree(metadata);
+      node.put("note", note);
+      return node.toString();
+    }
+    return "run_id: " + metadata.runId() + "\n"
+        + "state: " + metadata.state() + "\n"
+        + "note: " + note + "\n"
+        + "command: `" + metadata.command() + "`\n"
+        + "log: " + metadata.logFile() + "\n"
+        + "started: " + metadata.startedAt() + "\n"
+        + "finished: " + metadata.finishedAt() + "\n"
+        + "exit-code: " + metadata.exitCode() + "\n";
+  }
+
+  private String nextStep(String runId) {
+    return "next-step: call " + RUN_STATUS_TOOL + " {\"runId\":\"" + runId + "\",\"waitSeconds\":30} until state is not "
+        + TestRunSkill.RUNNING + ", then report the result; " + RUN_CANCEL_TOOL + " {\"runId\":\"" + runId
+        + "\"} stops the run.\n";
+  }
+
+  private static String requiredRunId(JsonNode args) {
+    String runId = args.path("runId").asText("").strip();
+    if (runId.isEmpty()) {
+      throw new ToolError("invalid_arguments: runId is required");
+    }
+    return runId;
+  }
+
+  private static boolean isJson(JsonNode args) {
+    return "json".equalsIgnoreCase(args.path("format").asText(""));
+  }
+
+  /** A tool failure whose message is the whole {@code isError} result text. */
+  private static final class ToolError extends RuntimeException {
+    ToolError(String message) {
+      super(message);
+    }
+  }
+
+  /** Writes whole response lines; shared by the reader thread and the workers so lines never interleave. */
+  static final class LineWriter {
+
+    private final PrintWriter out;
+
+    LineWriter(PrintWriter out) {
+      this.out = out;
+    }
+
+    synchronized void write(String line) {
+      out.println(line);
+    }
   }
 
   /**
