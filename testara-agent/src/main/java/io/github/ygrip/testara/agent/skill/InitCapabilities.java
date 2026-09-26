@@ -12,13 +12,13 @@ final class InitCapabilities {
   private InitCapabilities() {}
 
   /**
-   * Union of the legacy {@code type} and the requested slices. {@code api} is the surfaces' default
-   * type, so it only applies when no slices were requested; any other explicit type is kept
-   * ({@code type=ui, slices=[sql]} is a UI project with SQL, not an API project).
+   * Union of the legacy {@code type} and the requested slices. A {@code null} or blank type means no
+   * type was given; an explicit type, {@code api} included, is always kept ({@code type=ui,
+   * slices=[sql]} is a UI project with SQL). {@code api} is used only when neither yields a
+   * supported capability.
    */
   static List<String> normalize(String legacyType, List<String> requested) {
     LinkedHashSet<String> values = new LinkedHashSet<>();
-    // MCP/CLI pass null when no type was given, so an explicit type (including api) is always kept.
     if (legacyType != null && !legacyType.isBlank()) {
       values.add(canonical(legacyType));
     }

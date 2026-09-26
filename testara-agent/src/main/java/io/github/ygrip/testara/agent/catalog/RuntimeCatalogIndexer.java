@@ -123,8 +123,8 @@ public final class RuntimeCatalogIndexer {
       case "spec"            -> List.of("spec.api.{name}.header.Content-Type", "spec.api.{name}.header.Accept");
       case "response"        -> List.of("response.default-fields.success", "response.default-fields.error-code");
       case "selenium.driver" -> List.of("selenium.driver.headless", "selenium.driver.page-scan-locations", "selenium.driver.action-scan-locations");
-      case "playwright.browser" -> List.of("playwright.browser.headless", "playwright.browser.browserType");
-      case "appium.driver"   -> List.of("appium.driver.platformName", "appium.driver.deviceName");
+      case "playwright.browser" -> List.of("playwright.browser.headless", "playwright.browser.page-scan-locations", "playwright.browser.action-scan-locations");
+      case "appium.driver"   -> List.of("appium.driver.remote-driver.android.uri", "appium.driver.capabilities.android.{name}.platformName", "appium.driver.capabilities.android.{name}.deviceName");
       case "vibium.browser"  -> List.of("vibium.browser.headless", "vibium.browser.vibium-binary-path");
       case "automation.engine" -> List.of("automation.engine.default-engine", "automation.engine.active-engines");
       case "web"             -> List.of("web.page.desktop.{page-name}.url");
@@ -147,8 +147,8 @@ public final class RuntimeCatalogIndexer {
         entry("ui",          "automation.engine","testara-ui",            "EngineProperties",      "automation.engine.default-engine", "automation.engine.active-engines"),
         entry("ui",          "web",              "testara-ui",            "WebPageDataProperties", "web.page.desktop.{page}.url"),
         entry("ui-selenium", "selenium.driver",  "testara-ui-selenium",   "SeleniumDriverProperties", "selenium.driver.headless", "selenium.driver.page-scan-locations", "selenium.driver.action-scan-locations"),
-        entry("ui-playwright","playwright.browser","testara-ui-playwright","PlaywrightDriverProperties", "playwright.browser.headless", "playwright.browser.browserType"),
-        entry("ui-appium",   "appium.driver",    "testara-ui-appium",     "AppiumDriverProperties","appium.driver.platformName", "appium.driver.deviceName"),
+        entry("ui-playwright","playwright.browser","testara-ui-playwright","PlaywrightDriverProperties", "playwright.browser.headless", "playwright.browser.page-scan-locations", "playwright.browser.action-scan-locations"),
+        entry("ui-appium",   "appium.driver",    "testara-ui-appium",     "AppiumDriverProperties","appium.driver.remote-driver.android.uri", "appium.driver.capabilities.android.{name}.platformName", "appium.driver.capabilities.android.{name}.deviceName"),
         entry("ui-vibium",   "vibium.browser",   "testara-ui-vibium",     "VibiumDriverProperties","vibium.browser.headless", "vibium.browser.vibium-binary-path"),
         entry("sql",         "sql",              "testara-database",      "DatabaseProperties",    "sql.service.{name}.host-name", "sql.service.{name}.db-name", "sql.service.{name}.db-type"),
         entry("mongo",       "mongo",            "testara-database",      "MongoProperties",       "mongo.service.{name}.hosts", "mongo.service.{name}.db-name"),

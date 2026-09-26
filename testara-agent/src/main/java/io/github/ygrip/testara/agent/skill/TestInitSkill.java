@@ -3,6 +3,7 @@ package io.github.ygrip.testara.agent.skill;
 import io.github.ygrip.testara.agent.init.ArchetypeInvoker;
 import io.github.ygrip.testara.agent.init.ProjectStateDetector;
 import io.github.ygrip.testara.agent.init.ProjectStateDetector.ProjectState;
+import io.github.ygrip.testara.agent.safety.TestExecutionGuard;
 import io.github.ygrip.testara.agent.validation.TestCompileGate;
 
 import java.io.IOException;
@@ -31,6 +32,13 @@ public class TestInitSkill implements AgentSkill<TestInitSkill.Input, String> {
   private static final Pattern ARTIFACT_ID = Pattern.compile("^[A-Za-z0-9][A-Za-z0-9_.-]*$");
   private static final Pattern XML_TAG = Pattern.compile("<(/?)([A-Za-z][\\w.:-]*)[^>]*?(/?)>");
   private static final Pattern XML_COMMENT = Pattern.compile("<!--.*?-->", Pattern.DOTALL);
+  // Output markers read by exitCode(String); keep them in sync with the messages that use them.
+  private static final String NEEDS_INPUT = "needs_input: ";
+  private static final String INIT_UNSUPPORTED = "init_unsupported: ";
+  private static final String INIT_AMBIGUOUS = "init_ambiguous: ";
+  private static final String INIT_FAILED = "init_failed: ";
+  private static final String INIT_ERROR = "init_error: ";
+  private static final String FILES_ERROR = "Error creating project files: ";
   private final TestaraVersionResolver versionResolver;
   private final ProjectStateDetector stateDetector;
   private final ArchetypeInvoker archetypeInvoker;
@@ -64,6 +72,23 @@ public class TestInitSkill implements AgentSkill<TestInitSkill.Input, String> {
   @Override
   public String name() { return "test-init"; }
 
+  /**
+   * Process exit code for an {@link #execute} output, for command-line callers: {@code 0} when the
+   * project was created, patched or previewed, {@code 1} when generation, a file write or the compile
+   * gate failed, {@code 2} when input was missing, unsupported or ambiguous.
+   */
+  public static int exitCode(String output) {
+    String text = output.stripLeading();
+    if (text.startsWith(NEEDS_INPUT) || text.startsWith(INIT_UNSUPPORTED) || text.startsWith(INIT_AMBIGUOUS)) {
+      return 2;
+    }
+    if (text.startsWith(INIT_FAILED) || text.startsWith(INIT_ERROR) || text.startsWith(FILES_ERROR)
+        || TestCompileGate.reportsFailure(text)) {
+      return 1;
+    }
+    return 0;
+  }
+
   @Override
   public String execute(Input input, AgentContext context) {
     List<String> capabilities = InitCapabilities.normalize(input.type(), input.slices());
@@ -93,11 +118,11 @@ public class TestInitSkill implements AgentSkill<TestInitSkill.Input, String> {
         : groupId + "." + artifactId.replaceAll("[^a-zA-Z0-9]+", "").toLowerCase(Locale.ROOT);
     // Both end up in file paths (package directories, archetype output folder)
     if (!JAVA_PACKAGE.matcher(basePkg).matches()) {
-      return "needs_input: testara_init_base_package\nreason: '" + basePkg
+      return NEEDS_INPUT + "testara_init_base_package\nreason: '" + basePkg
           + "' is not a valid Java package (lowercase segments such as com.acme.qa).\n";
     }
     if (!ARTIFACT_ID.matcher(artifactId).matches()) {
-      return "needs_input: testara_init_coordinates\nreason: '" + artifactId
+      return NEEDS_INPUT + "testara_init_coordinates\nreason: '" + artifactId
           + "' is not a valid Maven artifactId (letters, digits, '.', '_' or '-').\n";
     }
     String pkgPath = basePkg.replace('.', '/');
@@ -171,10 +196,10 @@ public class TestInitSkill implements AgentSkill<TestInitSkill.Input, String> {
     ProjectState state = stateDetector.detect(root);
     return switch (state) {
       case FRESH -> applyArchetype(type, capabilities, groupId, artifactId, basePkg, pkgPath, engine, root, compile, includeExamples);
-      case UNSUPPORTED_GRADLE -> "init_unsupported: Gradle projects are not supported by testara_init.\n";
+      case UNSUPPORTED_GRADLE -> INIT_UNSUPPORTED + "Gradle projects are not supported by testara_init.\n";
       case AMBIGUOUS -> integrate
           ? applyPatch(type, capabilities, groupId, artifactId, basePkg, pkgPath, engine, true, root, compile, includeExamples)
-          : "init_ambiguous: Directory is not empty and has no recognised build file.\n"
+          : INIT_AMBIGUOUS + "Directory is not empty and has no recognised build file.\n"
               + "action: Set integrateExisting=true to patch anyway, or clear the directory first.\n";
       default -> applyPatch(type, capabilities, groupId, artifactId, basePkg, pkgPath, engine, integrate, root, compile, includeExamples);
     };
@@ -191,9 +216,16 @@ public class TestInitSkill implements AgentSkill<TestInitSkill.Input, String> {
         groupId, effectiveArtifactId, "1.0.0-SNAPSHOT", basePkg,
         archetypeFlavor(type), engine, testaraVersion, "21", outputDir);
 
+    // The archetype runs Maven, so it follows the same kill switch as test runs and the compile gate
+    if (!TestExecutionGuard.isRunEnabled()) {
+      return INIT_ERROR + TestExecutionGuard.RUN_ENABLED_ENV + "=false blocks agent-launched builds, so the "
+          + "Maven archetype cannot run.\n"
+          + "action: unset " + TestExecutionGuard.RUN_ENABLED_ENV + " (or set it to true) and call again, or run "
+          + "without write to preview the files and create them manually.\n";
+    }
     ArchetypeInvoker.ArchetypeResult result = archetypeInvoker.invoke(req);
     if (!result.success()) {
-      return "init_failed: Archetype generation failed.\nerrors:\n"
+      return INIT_FAILED + "Archetype generation failed.\nerrors:\n"
           + result.errors().stream().map(e -> "  - " + e).collect(Collectors.joining("\n")) + "\n";
     }
 
@@ -201,7 +233,7 @@ public class TestInitSkill implements AgentSkill<TestInitSkill.Input, String> {
     try {
       generatedRoot = reconcileGeneratedLocation(result.generatedDir(), root);
     } catch (IllegalStateException e) {
-      return "init_error: " + e.getMessage() + "\n";
+      return INIT_ERROR + e.getMessage() + "\n";
     }
     List<String> created = new ArrayList<>();
     List<String> skipped = new ArrayList<>();
@@ -210,7 +242,7 @@ public class TestInitSkill implements AgentSkill<TestInitSkill.Input, String> {
       writeConfigFiles(type, basePkg, pkgPath, engine, generatedRoot, includeExamples, created, skipped);
       appendCapabilityDependencies(generatedRoot.resolve("pom.xml"), capabilities, testaraVersion);
     } catch (IOException e) {
-      return "init_error: Failed to write config files: " + e.getMessage() + "\n";
+      return INIT_ERROR + "Failed to write config files: " + e.getMessage() + "\n";
     }
 
     String compileResult = "";
@@ -283,8 +315,11 @@ public class TestInitSkill implements AgentSkill<TestInitSkill.Input, String> {
         // Never edit a user's existing pom: report the dependencies to add instead
         manualDependencies = missingCapabilityDependencies(Files.readString(pom, StandardCharsets.UTF_8),
             capabilities, versionResolver.resolve(root));
-        skipped.add("pom.xml (existing project — add dependencies manually"
-            + (manualDependencies.isEmpty() ? ", none missing" : ", see below") + ")");
+        String dependencyNote = ", see below";
+        if (manualDependencies.isEmpty()) {
+          dependencyNote = ", none missing";
+        }
+        skipped.add("pom.xml (existing project — add dependencies manually" + dependencyNote + ")");
       }
 
       writeConfigFiles(type, basePkg, pkgPath, engine, root, includeExamples, created, skipped);
@@ -302,7 +337,7 @@ public class TestInitSkill implements AgentSkill<TestInitSkill.Input, String> {
             generateRequestSpec(basePkg, type), created, skipped);
       }
     } catch (IOException e) {
-      return "Error creating project files: " + e.getMessage() + "\n";
+      return FILES_ERROR + e.getMessage() + "\n";
     }
 
     StringBuilder sb = new StringBuilder();

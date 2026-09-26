@@ -6,9 +6,11 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -59,7 +61,7 @@ public class TestaraBootstrapSkill implements AgentSkill<TestaraBootstrapSkill.I
       case "action" -> uiSkill.execute(new TestaraUiSkill.Input("action",
           first(input.pageName(), inferPage(input.intent())),
           first(input.actionName(), input.intent(), "perform action"), input.engine(), basePackage), context);
-      case "ui", "ui-bundle", "page-action" -> uiBundle(input, context, basePackage);
+      case "ui", "ui-bundle", "page-action" -> uiBundle(input, context, basePackage, write);
       case "api-config" -> apiSkill.execute(new TestaraApiSkill.Input("config",
           first(input.domain(), inferDomain(input.intent())), null, null, null), context);
       case "request-spec", "api-request-spec" -> apiSkill.execute(new TestaraApiSkill.Input("request-spec",
@@ -72,12 +74,30 @@ public class TestaraBootstrapSkill implements AgentSkill<TestaraBootstrapSkill.I
     };
   }
 
-  private String uiBundle(Input input, AgentContext context, String basePackage) {
+  private String uiBundle(Input input, AgentContext context, String basePackage, boolean write) {
     String pageName = first(input.pageName(), inferPage(input.intent()));
     String actionName = first(input.actionName(), input.intent(), "perform action");
-    String page = uiSkill.execute(new TestaraUiSkill.Input("page", pageName, null, input.engine(), basePackage), context);
-    String action = uiSkill.execute(new TestaraUiSkill.Input("action", pageName, actionName, input.engine(), basePackage), context);
-    return "artifact: ui-bundle\n\n" + page + "\n\n" + action;
+    AgentContext childContext = withoutCompileGate(context);
+    String page = uiSkill.execute(new TestaraUiSkill.Input("page", pageName, null, input.engine(), basePackage),
+        childContext);
+    String action = uiSkill.execute(new TestaraUiSkill.Input("action", pageName, actionName, input.engine(),
+        basePackage), childContext);
+    String bundle = "artifact: ui-bundle\n\n" + page + "\n\n" + action;
+    if (write) {
+      String compile = ArtifactFiles.compileLine(context);
+      if (compile != null) bundle += "\n" + compile;
+    }
+    return bundle;
+  }
+
+  /**
+   * The same context without the compile gate: a batch or bundle compiles once after all its
+   * artifacts are written instead of once per generated page or action.
+   */
+  private AgentContext withoutCompileGate(AgentContext context) {
+    Map<String, String> options = new HashMap<>(context.options());
+    options.remove("compile");
+    return new AgentContext(context.projectRoot(), context.profile(), context.mode(), context.llmClient(), options);
   }
 
   private String uiBatch(Input input, AgentContext context, String basePackage, boolean write) {
@@ -94,6 +114,7 @@ public class TestaraBootstrapSkill implements AgentSkill<TestaraBootstrapSkill.I
     List<String> warnings = new ArrayList<>();
     List<String> filesChanged = new ArrayList<>();
     StringBuilder raw = new StringBuilder();
+    AgentContext childContext = withoutCompileGate(context);
 
     for (PageSpec pageSpec : pages) {
       String pageName = first(pageSpec.name(), "page");
@@ -101,7 +122,7 @@ public class TestaraBootstrapSkill implements AgentSkill<TestaraBootstrapSkill.I
       String pageClass = toClassName(pageKey) + "Page";
       pageCatalog.add(pageKey + " -> " + pageClass);
       String pageOutput = uiSkill.execute(new TestaraUiSkill.Input("page", pageName, null, input.engine(), basePackage,
-          null), context);
+          null), childContext);
       raw.append("\n--- page ").append(pageKey).append(" ---\n").append(pageOutput).append("\n");
       String pagePath = "src/main/java/" + basePackage.replace('.', '/') + "/page/" + pageClass + ".java";
       files.add(pagePath);
@@ -132,7 +153,11 @@ public class TestaraBootstrapSkill implements AgentSkill<TestaraBootstrapSkill.I
     sb.append("pages: ").append(pages.size()).append("\n");
     sb.append("actions: ").append(actionCatalog.size()).append("\n");
     // Preview mode lists what would be written; only a write reports files as created.
-    sb.append(write ? "createdFiles:\n" : "plannedFiles:\n");
+    if (write) {
+      sb.append("createdFiles:\n");
+    } else {
+      sb.append("plannedFiles:\n");
+    }
     files.stream().distinct().forEach(path -> sb.append("- ").append(path).append("\n"));
     sb.append("pageCatalog:\n");
     pageCatalog.forEach(page -> sb.append("- ").append(page).append("\n"));
@@ -242,12 +267,15 @@ public class TestaraBootstrapSkill implements AgentSkill<TestaraBootstrapSkill.I
               + "\nscan-location: " + scanHint;
         }
         String className = Path.of(relativePath).getFileName().toString().replace(".java", "");
-        String compile = ArtifactFiles.compileLine(context);
-        return "artifact: " + artifact + "\nwritten: " + relativePath
+        String result = "artifact: " + artifact + "\nwritten: " + relativePath
             + "\nfilesChanged:\n- " + written.status().label() + " " + relativePath + " [class:" + className
             + "; type:" + artifact + "]"
-            + "\nscan-location: " + scanHint
-            + (compile == null ? "" : "\n" + compile);
+            + "\nscan-location: " + scanHint;
+        String compile = ArtifactFiles.compileLine(context);
+        if (compile != null) {
+          result += "\n" + compile;
+        }
+        return result;
       } catch (IOException e) {
         return "Error: " + e.getMessage();
       }

@@ -248,7 +248,7 @@ public class TestaraUiSkill implements AgentSkill<TestaraUiSkill.Input, String> 
         ArtifactFiles.Written written = ArtifactFiles.writeJava(root, relativePath, source,
             ArtifactFiles.overwrite(context), false, false);
         ArtifactFiles.PropertyMerge merge = ArtifactFiles.mergeProperties(root,
-            List.of("src/test/resources/application.properties"), pageUrlEntry);
+            ArtifactFiles.APPLICATION_PROPERTIES, pageUrlEntry);
         String status = merge.addedKeys().isEmpty() ? "application.properties unchanged" : "updated application.properties";
         if (!written.changed()) return "exists: " + relativePath + " (pass overwrite=true to replace)\n" + status;
         return concise ? "written: " + relativePath + "\n" + status + todoWarning

@@ -20,6 +20,8 @@ import io.github.ygrip.testara.agent.skill.run.ProcessRunner;
 public class TestCompileGate {
 
   private static final int DEFAULT_TIMEOUT_SECONDS = 120;
+  /** Start of the {@link Result#toLine()} line of a failed compile; read by the skills' exit codes. */
+  private static final String FAILED_LINE = "compile: FAILED";
 
   public record Result(boolean passed, long durationMs, String summary, List<String> errors, boolean skipped) {
 
@@ -33,7 +35,7 @@ public class TestCompileGate {
       if (passed) return "compile: PASSED (" + dur + ")";
       String errSummary = errors.isEmpty() ? "" : "\n" + errors.stream()
           .limit(5).map(e -> "  - " + e).collect(Collectors.joining("\n"));
-      return "compile: FAILED — " + errors.size() + " error(s) (" + dur + ")" + errSummary;
+      return FAILED_LINE + " — " + errors.size() + " error(s) (" + dur + ")" + errSummary;
     }
   }
 
@@ -78,10 +80,19 @@ public class TestCompileGate {
         .limit(10)
         .collect(Collectors.toList());
 
-    return new Result(passed, outcome.durationMs(), passed ? "compile: PASSED" : "compile: FAILED", errors);
+    String summary = "compile: PASSED";
+    if (!passed) {
+      summary = FAILED_LINE;
+    }
+    return new Result(passed, outcome.durationMs(), summary, errors);
   }
 
   public Result run(Path projectRoot) {
     return run(projectRoot, DEFAULT_TIMEOUT_SECONDS);
+  }
+
+  /** True when a skill output carries the line of a failed compile gate. */
+  public static boolean reportsFailure(String output) {
+    return output.contains(FAILED_LINE);
   }
 }

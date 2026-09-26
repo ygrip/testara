@@ -346,6 +346,39 @@ class TestPlanSkillTest {
     assertTrue(output.contains("blockedFeatureFiles:\n- none"), output);
   }
 
+  @Test
+  void batchPlanWithoutSliceAddsBrowserBackgroundOnlyForUiFeatures() {
+    String featureFiles = """
+        [{"path":"src/test/resources/features/api/ping.feature","featureName":"Ping","tags":["@api"],
+          "scenarios":[{"name":"Ping","steps":["Given [api] using service with alias ping-api",
+            "When [api] process request to \\"files/ping/request/ping\\"",
+            "Then [api] response statusCode should be 200"]}]},
+         {"path":"src/test/resources/features/ui/cart.feature","featureName":"Cart","tags":["@ui"],
+          "scenarios":[{"name":"Cart","steps":["When user open \\"cart\\" page",
+            "Then user is in \\"cart\\" page"]}]}]
+        """;
+
+    String output = new TestPlanSkill().execute(
+        new TestPlanSkill.Input("", null, null, List.of(), "batch", featureFiles, false, false), context());
+
+    String api = output.substring(output.indexOf("--- src/test/resources/features/api/ping.feature ---"),
+        output.indexOf("--- src/test/resources/features/ui/cart.feature ---"));
+    String ui = output.substring(output.indexOf("--- src/test/resources/features/ui/cart.feature ---"));
+    assertFalse(api.contains("user using chrome in desktop"), output);
+    assertTrue(ui.contains("user using chrome in desktop"), output);
+  }
+
+  @Test
+  void sliceInferenceMatchesWholeWords() {
+    assertEquals("ui", TestPlanSkill.inferSlice("login page in browser"));
+    assertEquals("api", TestPlanSkill.inferSlice("send feedback form"));
+    assertEquals("api", TestPlanSkill.inferSlice("build order api"));
+    assertEquals("api", TestPlanSkill.inferSlice("follow the testara guide"));
+    assertEquals("sql", TestPlanSkill.inferSlice("settlement rows in db table"));
+    assertEquals("ui", TestPlanSkill.inferSlice("click the submit button on the UI"));
+    assertEquals("kafka", TestPlanSkill.inferSlice("publish order event to topics"));
+  }
+
   private String featureOf(String conciseOutput) {
     return conciseOutput.substring(0, conciseOutput.indexOf("\nflavor-score:"));
   }

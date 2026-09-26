@@ -36,19 +36,34 @@ class ArtifactFilesTest {
 
   @Test
   void mergesOnlyMissingPropertyKeys() throws IOException {
-    Path file = root.resolve("src/test/resources/application.properties");
+    Path file = root.resolve(ArtifactFiles.APPLICATION_PROPERTIES);
     Files.createDirectories(file.getParent());
     Files.writeString(file, "existing.key=keep\n");
-    List<String> candidates = List.of("src/test/resources/application.properties");
 
-    ArtifactFiles.PropertyMerge merge = ArtifactFiles.mergeProperties(root, candidates,
+    ArtifactFiles.PropertyMerge merge = ArtifactFiles.mergeProperties(root, ArtifactFiles.APPLICATION_PROPERTIES,
         "# block\nexisting.key=replace\nnew.key=value\n");
-    ArtifactFiles.PropertyMerge again = ArtifactFiles.mergeProperties(root, candidates,
+    ArtifactFiles.PropertyMerge again = ArtifactFiles.mergeProperties(root, ArtifactFiles.APPLICATION_PROPERTIES,
         "# block\nexisting.key=replace\nnew.key=value\n");
 
     assertEquals(List.of("new.key"), merge.addedKeys());
     assertTrue(again.addedKeys().isEmpty());
     assertEquals("existing.key=keep\n\n# block\nnew.key=value\n", Files.readString(file));
+  }
+
+  @Test
+  void keyDefinedInAnyRuntimePropertiesFileIsNotAddedAgain() throws IOException {
+    Path configuration = root.resolve(ArtifactFiles.CONFIGURATION_PROPERTIES);
+    Files.createDirectories(configuration.getParent());
+    Files.writeString(configuration, "api.service.order.host=https://order.example\n");
+    Files.writeString(root.resolve("application.properties"), "root.only.key=ignored\n");
+
+    ArtifactFiles.PropertyMerge merge = ArtifactFiles.mergeProperties(root, ArtifactFiles.APPLICATION_PROPERTIES,
+        "api.service.order.host=https://other.example\nroot.only.key=value\n");
+
+    assertEquals(ArtifactFiles.APPLICATION_PROPERTIES, merge.path());
+    assertEquals(List.of("root.only.key"), merge.addedKeys());
+    assertEquals("root.only.key=value\n", Files.readString(root.resolve(ArtifactFiles.APPLICATION_PROPERTIES)));
+    assertEquals("root.only.key=ignored\n", Files.readString(root.resolve("application.properties")));
   }
 
   @Test

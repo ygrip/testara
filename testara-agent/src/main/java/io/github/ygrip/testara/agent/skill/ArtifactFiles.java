@@ -22,9 +22,12 @@ import java.util.Properties;
 final class ArtifactFiles {
 
   static final String OVERWRITE_OPTION = "overwrite";
+  /** Service config (connections, drivers, scan locations) the generated artifacts need. */
+  static final String CONFIGURATION_PROPERTIES = "src/test/resources/configuration.properties";
+  /** Environment values (endpoints, page URLs, test data) the generated artifacts reference. */
+  static final String APPLICATION_PROPERTIES = "src/test/resources/application.properties";
   /** Properties files the runtime loads from the test classpath, where generated config may live. */
-  private static final List<String> RUNTIME_PROPERTY_FILES =
-      List.of("src/test/resources/configuration.properties", "src/test/resources/application.properties");
+  static final List<String> RUNTIME_PROPERTY_FILES = List.of(CONFIGURATION_PROPERTIES, APPLICATION_PROPERTIES);
 
   enum Status {
     CREATED("created"), OVERWRITTEN("overwritten"), EXISTS("exists");
@@ -104,23 +107,23 @@ final class ArtifactFiles {
   }
 
   /**
-   * Appends the {@code key=value} lines of {@code block} whose key is not yet defined to the first
-   * existing candidate file (or creates the first candidate). Comment lines are kept only when at
-   * least one key is added. Returns the keys that were added; an empty list means nothing changed.
+   * Appends the {@code key=value} lines of {@code block} whose key is not yet defined in any
+   * {@link #RUNTIME_PROPERTY_FILES runtime properties file} to {@code relative} (created when
+   * missing). Comment lines are kept only when at least one key is added. Returns the keys that were
+   * added; an empty list means nothing changed.
    */
-  static PropertyMerge mergeProperties(Path root, List<String> candidates, String block) throws IOException {
-    String relative = candidates.get(0);
-    for (String candidate : candidates) {
-      if (Files.exists(resolve(root, candidate))) {
-        relative = candidate;
-        break;
-      }
-    }
+  static PropertyMerge mergeProperties(Path root, String relative, String block) throws IOException {
     Path target = resolve(root, relative);
     String existing = "";
     if (Files.exists(target)) existing = Files.readString(target, StandardCharsets.UTF_8);
     Properties defined = new Properties();
     defined.load(new StringReader(existing));
+    for (String candidate : RUNTIME_PROPERTY_FILES) {
+      Path file = resolve(root, candidate);
+      if (!file.equals(target) && Files.exists(file)) {
+        defined.load(new StringReader(Files.readString(file, StandardCharsets.UTF_8)));
+      }
+    }
 
     List<String> comments = new ArrayList<>();
     List<String> additions = new ArrayList<>();

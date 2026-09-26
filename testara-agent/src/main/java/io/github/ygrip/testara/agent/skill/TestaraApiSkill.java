@@ -18,11 +18,6 @@ import java.util.Locale;
  */
 public class TestaraApiSkill implements AgentSkill<TestaraApiSkill.Input, String> {
 
-  private static final List<String> CONFIGURATION_FILES =
-      List.of("src/test/resources/configuration.properties", "configuration.properties");
-  private static final List<String> APPLICATION_FILES =
-      List.of("src/test/resources/application.properties", "application.properties");
-
   public record Input(String mode, String domain, String flow, String method, String endpoint) {}
 
   @Override
@@ -183,8 +178,8 @@ public class TestaraApiSkill implements AgentSkill<TestaraApiSkill.Input, String
 
     if (write) {
       try {
-        ArtifactFiles.PropertyMerge config = ArtifactFiles.mergeProperties(projectRoot, CONFIGURATION_FILES, configBlock);
-        ArtifactFiles.PropertyMerge values = ArtifactFiles.mergeProperties(projectRoot, APPLICATION_FILES, applicationBlock);
+        ArtifactFiles.PropertyMerge config = ArtifactFiles.mergeProperties(projectRoot, ArtifactFiles.CONFIGURATION_PROPERTIES, configBlock);
+        ArtifactFiles.PropertyMerge values = ArtifactFiles.mergeProperties(projectRoot, ArtifactFiles.APPLICATION_PROPERTIES, applicationBlock);
         String changes = config.line() + "\n" + values.line();
         String scriptFolderWarning = ArtifactFiles.scriptFolderWarning(projectRoot);
         if (scriptFolderWarning != null) changes += "\n" + scriptFolderWarning;
