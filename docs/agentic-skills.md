@@ -18,6 +18,7 @@ Testara Agent is an AI-assisted CLI and MCP server that scaffolds, reviews, plan
   - [test-init](#test-init)
   - [test-plan](#test-plan)
   - [test-run](#test-run)
+    - [Async test runs (MCP)](#async-test-runs-mcp)
   - [test-command](#test-command)
   - [test-validation](#test-validation)
   - [test-overview](#test-overview)
@@ -199,7 +200,8 @@ When an AI agent uses Testara via MCP, it should follow this sequence:
 3. testara_property       → check/generate required properties
 4. testara_api / testara_ui / testara_db  → generate slice config if needed
 5. testara_plan           → generate the feature
-6. testara_run            → execute tests
+6. testara_run            → start tests (returns run_started: <runId>)
+7. testara_run_status     → poll with waitSeconds=30 until the state is final, then report
 ```
 
 ---
@@ -338,15 +340,46 @@ was launched outside the project, pass `projectRoot` so the tool can index the
 features before resolving natural language.
 
 **Verdict:** `FAILED` when the build exits non-zero or the parsed report has failures, `TIMEOUT` when
-the timeout is hit (always wins), otherwise `PASSED`. Only a `cucumber.json`/JUnit XML report written
+the timeout is hit, `CANCELLED` when an MCP run is cancelled (both always win), otherwise `PASSED`. Only a `cucumber.json`/JUnit XML report written
 *by this run* is used — an older report on disk is ignored and the result shows `report missing`.
 Before/after hooks, background steps, and ambiguous/undefined/pending steps all fail the scenario.
 
-**Exit code** (CLI): `0` passed or plan-only; `1` failed, timed out, or preflight matched 0 scenarios;
+**Exit code** (CLI): `0` passed or plan-only; `1` failed, timed out, cancelled, or preflight matched 0 scenarios;
 `2` invalid/missing input or execution blocked (e.g. `TESTARA_AGENT_RUN_ENABLED=false`).
 
 **MCP tool:** `testara_run` (options: `dryRun`, `execute` — default `true` for this tool — `rerunFailed`,
-`module`, `timeoutMinutes`, `gradleTask`, `format`)
+`module`, `timeoutMinutes`, `gradleTask`, `format`, `wait`)
+
+#### Async test runs (MCP)
+
+A build can take longer than an MCP client waits for one call, so an executed `testara_run` does not
+block: it launches the build and returns at once. Plans, dry runs, preflight failures and blocked
+runs still answer synchronously.
+
+| Tool | Arguments | Returns |
+|---|---|---|
+| `testara_run` | `input`*, run options above, `wait` (default `false`) | `run_started: <runId>` with `state: RUNNING`, the command and log path; `wait=true` blocks and returns the final result |
+| `testara_run_status` | `runId`*, `waitSeconds` (0–60, default 0), `format` (`markdown`/`json`), `projectRoot` | `RUNNING` with elapsed time and the last 30 log lines, or `PASSED`/`FAILED`/`TIMEOUT`/`CANCELLED` with the full final result |
+| `testara_run_cancel` | `runId`*, `format`, `projectRoot` | kills the build process tree and returns the `CANCELLED` state; a finished run returns its final state |
+
+Flow:
+
+1. `testara_run {"input":"@smoke"}` → `run_started: <runId>`.
+2. `testara_run_status {"runId":"<runId>","waitSeconds":30}` → repeat while the state is `RUNNING`
+   (each call waits up to 30 s, so a client never polls tightly).
+3. Report the final result returned once the state is `PASSED`, `FAILED`, `TIMEOUT` or `CANCELLED`.
+4. `testara_run_cancel {"runId":"<runId>"}` stops a run early.
+
+Only one run is active per project root: a second `testara_run` answers
+`run_in_progress: <runId>` (not an error) until the first one finishes. An unknown `runId` is an
+`isError` result `unknown_run: <runId>`. Each run's metadata (`runId`, `command`, `logFile`,
+`startedAt`, `state`, `finishedAt`, `exitCode`) is written to `.testara-agent/runs/<runId>.json` on
+start and completion, so `testara_run_status` still reports the recorded state and log path after a
+server restart. The server keeps the last 20 finished runs in memory, answers `ping` and `tools/list`
+while tool calls run on a small worker pool, cancels a `wait=true` run (or ends a status long-poll)
+when the client sends `notifications/cancelled`, and cancels every active run when stdin closes or
+the JVM shuts down. `CANCELLED` counts as a failure (CLI exit code `1`); the CLI `test-run` stays
+synchronous.
 
 ---
 

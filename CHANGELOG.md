@@ -15,6 +15,13 @@ All notable changes to Testara are documented in this file.
 - Added `overwrite` and `compile` options to `test-plan`/`testara_plan`, `testara-ui`/`testara_ui`,
   and `testara_bootstrap`: existing files are reported as `exists: <path> (pass overwrite=true to
   replace)` instead of silently replaced, and `compile` runs the `mvn test-compile` gate after writing.
+- Added async MCP test runs: an executed `testara_run` now starts the build in the background and
+  returns `run_started: <runId>` at once; the new `testara_run_status` (long-poll with
+  `waitSeconds` 0–60, last log lines while running, full result when done) and `testara_run_cancel`
+  (kills the build process tree, `CANCELLED` verdict) tools follow it. One active run per project,
+  run metadata under `.testara-agent/runs/<runId>.json`, and `wait=true` keeps the blocking
+  behaviour. The MCP server now answers `ping`/`tools/list` while tool calls run on a worker pool,
+  honours `notifications/cancelled`, and cancels active runs on stdin EOF or JVM shutdown.
 
 ### Changed
 
