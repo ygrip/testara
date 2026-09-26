@@ -2,6 +2,9 @@ package io.github.ygrip.testara.agent.safety;
 
 import io.github.ygrip.testara.agent.index.FeatureIndex;
 import io.github.ygrip.testara.agent.index.ScenarioIndex;
+import io.cucumber.gherkin.GherkinParser;
+import io.cucumber.messages.types.Envelope;
+import java.nio.charset.StandardCharsets;
 
 import java.util.*;
 import java.util.stream.Collectors;
@@ -49,15 +52,29 @@ public final class FeaturePlacementGuard {
     return errors.isEmpty() ? GuardResult.ok() : GuardResult.fail(errors.toArray(new String[0]));
   }
 
-  /** Check for basic Gherkin validity markers. */
+  /** Parse generated Gherkin with Cucumber's grammar before it is written. */
   public static GuardResult validateGherkin(String featureContent) {
-    List<String> errors = new ArrayList<>();
-    if (!featureContent.contains("Feature:")) {
-      errors.add("Missing 'Feature:' header");
+    if (featureContent == null || featureContent.isBlank()) {
+      return GuardResult.fail("Empty feature content");
     }
-    if (!featureContent.contains("Scenario:") && !featureContent.contains("Scenario Outline:")) {
-      errors.add("Missing scenario definition");
+    try (var envelopes = GherkinParser.builder()
+        .includeSource(false)
+        .includePickles(false)
+        .build()
+        .parse("generated.feature", featureContent.getBytes(StandardCharsets.UTF_8))) {
+      List<Envelope> parsed = envelopes.toList();
+      List<String> errors = parsed.stream()
+          .flatMap(envelope -> envelope.getParseError().stream())
+          .map(error -> error.getMessage())
+          .toList();
+      boolean hasFeature = parsed.stream()
+          .flatMap(envelope -> envelope.getGherkinDocument().stream())
+          .anyMatch(document -> document.getFeature().isPresent());
+      if (!errors.isEmpty()) return GuardResult.fail(errors.toArray(new String[0]));
+      if (!hasFeature) return GuardResult.fail("No Gherkin Feature found");
+      return GuardResult.ok();
+    } catch (RuntimeException e) {
+      return GuardResult.fail("Invalid Gherkin: " + e.getMessage());
     }
-    return errors.isEmpty() ? GuardResult.ok() : GuardResult.fail(errors.toArray(new String[0]));
   }
 }

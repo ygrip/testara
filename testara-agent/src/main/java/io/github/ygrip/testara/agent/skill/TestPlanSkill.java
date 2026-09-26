@@ -3,11 +3,15 @@ package io.github.ygrip.testara.agent.skill;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.ygrip.testara.agent.catalog.GenerationGuard;
-import io.github.ygrip.testara.agent.catalog.PropertyRuleEngine;
 import io.github.ygrip.testara.agent.catalog.StepLinker;
 import io.github.ygrip.testara.agent.flavor.FlavorEntry;
+import io.github.ygrip.testara.agent.index.FeatureIndex;
+import io.github.ygrip.testara.agent.index.ScenarioIndex;
+import io.github.ygrip.testara.agent.index.ScenarioType;
 import io.github.ygrip.testara.agent.index.TestaraProjectProfile;
 import io.github.ygrip.testara.agent.knowledge.FrameworkKnowledgeStore;
+import io.github.ygrip.testara.agent.safety.FeaturePlacementGuard;
+import io.github.ygrip.testara.agent.validation.TestCompileGate;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -15,6 +19,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
 import java.util.logging.Logger;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 /**
@@ -25,11 +31,46 @@ import java.util.stream.Collectors;
  *   2. Project-specific steps (from profile.stepDefinitions)
  *   3. Generate extension artifact (command, validation, request spec)
  *   4. Mark as MISSING only as last resort
+ *
+ * <p>Steps are rendered from each built-in step's Cucumber Expression with typed values; a feature
+ * whose steps do not all link to a step definition is never written. A written plan also writes the
+ * request specs it references and merges the service config / test data properties it needs.
  */
 public class TestPlanSkill implements AgentSkill<TestPlanSkill.Input, String> {
 
   private static final Logger LOG = Logger.getLogger(TestPlanSkill.class.getName());
   private static final ObjectMapper MAPPER = new ObjectMapper();
+  private static final Pattern ACTION_ANNOTATION =
+      Pattern.compile("@Action\\s*\\(\\s*(?:value\\s*=\\s*)?\"([^\"]+)\"");
+  private static final Pattern PROPERTY_REFERENCE = Pattern.compile("properties\\(([^)]+)\\)");
+  private static final Pattern NON_WORD = Pattern.compile("[^a-z0-9]+");
+  // Output markers read by exitCode(String); keep them in sync with the messages that use them.
+  private static final String NEEDS_INPUT = "needs_input: ";
+  private static final String WRITE_BLOCKED = "write blocked: ";
+  private static final String WRITE_FAILED = "write failed: ";
+
+  private static final String API_ACTOR = "[api]";
+  private static final String KAFKA_ACTOR = "[kafka]";
+  private static final String USING_SERVICE = "{actor} using service with alias {word}";
+  private static final String PATH_PARAM = "{actor} prepare pathParam for {word} with value {string}";
+  private static final String QUERY_PARAM = "{actor} prepare queryParam {string} with value {string}";
+  private static final String PROCESS_REQUEST = "{actor} process request to {string}";
+  private static final String STATUS_CODE = "{actor} response statusCode should be {int}";
+  private static final String ASSIGN_RESPONSE = "{actor} assign previous response data to {word}";
+  private static final String SQL_CONNECT = "{sql} connect to database with name {word}";
+  private static final String SQL_QUERY = "{sql} prepare query with value :";
+  private static final String SQL_EXECUTE = "{sql} execute database query";
+  private static final String SQL_ASSIGN = "{sql} assign previous database response to {word}";
+  private static final String MONGO_CONNECT = "{mongo} connect to database with name {word}";
+  private static final String MONGO_COLLECTION = "{mongo} select collection with name {word}";
+  private static final String MONGO_SELECT = "{mongo} select data with query :";
+  private static final String MONGO_ASSIGN = "{mongo} assign previous database response to {word}";
+  private static final String KAFKA_START = "{actor} start kafka producer for {word}";
+  private static final String KAFKA_SEND = "{actor} send kafka message to topic {string} with key {string} and data {string}";
+  private static final String KAFKA_STOP = "{actor} stop kafka producer";
+  private static final String ELASTIC_CONNECT = "{elasticsearch} connect to elastic search with name {word}";
+  private static final String ELASTIC_SEARCH = "{elasticsearch} assign data {word} from index {word} with query :";
+  private static final String ELASTIC_ASSIGN = "{elasticsearch} assign previous elastic search response to {word}";
 
   public record Input(String intent, String slice, String domain, List<String> tags,
       String mode, String featureFiles, boolean createFiles, boolean useExistingActionCatalog) {
@@ -41,6 +82,22 @@ public class TestPlanSkill implements AgentSkill<TestPlanSkill.Input, String> {
   @Override
   public String name() { return "test-plan"; }
 
+  /**
+   * Process exit code for an {@link #execute} output, for command-line callers: {@code 0} when a plan
+   * was generated (and written, if requested), {@code 1} when the write was blocked by unlinked or
+   * MISSING steps, the write failed or the compile gate failed, {@code 2} when more input is needed.
+   */
+  public static int exitCode(String output) {
+    String text = output.stripLeading();
+    if (text.startsWith(NEEDS_INPUT)) {
+      return 2;
+    }
+    if (text.contains(WRITE_BLOCKED) || text.contains(WRITE_FAILED) || TestCompileGate.reportsFailure(text)) {
+      return 1;
+    }
+    return 0;
+  }
+
   @Override
   public String execute(Input input, AgentContext context) {
     if ("batch".equalsIgnoreCase(input.mode())) {
@@ -49,11 +106,17 @@ public class TestPlanSkill implements AgentSkill<TestPlanSkill.Input, String> {
 
     TestaraProjectProfile profile = context.profile();
     String slice  = input.slice() != null ? input.slice() : inferSlice(input.intent());
-    String domain = input.domain() != null ? input.domain() : inferDomain(input.intent());
+    String domain;
+    if (input.domain() != null) {
+      domain = sanitizeDomain(input.domain());
+    } else {
+      domain = inferDomain(input.intent());
+    }
     String clarification = clarificationPrompt(input.intent(), slice, input.domain() != null, profile);
     if (clarification != null) return clarification;
     List<String> tags = buildTags(input.tags(), slice, domain);
-    boolean write = "true".equals(context.options().get("write"));
+    boolean write = context.allowsWrite()
+        && ("true".equals(context.options().get("write")) || input.createFiles());
     boolean concise = "concise".equals(context.options().get("format"));
 
     // Use project-level catalog if available, otherwise fall back to bundled framework catalog
@@ -61,17 +124,43 @@ public class TestPlanSkill implements AgentSkill<TestPlanSkill.Input, String> {
     if (flavorSteps.isEmpty()) {
       flavorSteps = FrameworkKnowledgeStore.instance().flavorCatalogForSlice(slice);
     }
-    String featureContent = generateFlavorFeature(input.intent(), domain, tags, slice, flavorSteps, profile);
+    List<FlavorEntry> linkCatalog = linkCatalog(profile);
+    ApiFlow apiFlow = apiFlow(input.intent(), domain);
+    String featureContent = generateFlavorFeature(input.intent(), domain, tags, slice, flavorSteps, apiFlow);
     String placement = resolvePlacement(slice, domain);
     String fileName  = toFileName(input.intent());
 
+    var stepLinks = StepLinker.linkFeature(featureContent, linkCatalog, profile.stepDefinitions());
+    int builtInCount = (int) stepLinks.stream().filter(StepLinker.Link::matched).count();
+    int totalStepLines = stepLinks.size();
+    int missingCount = countMissing(featureContent);
+    int unlinkedCount = totalStepLines - builtInCount;
+    int score = 100;
+    if (totalStepLines > 0) {
+      score = builtInCount * 100 / totalStepLines;
+    }
+
     String writtenPath = null;
+    String writeProblem = null;
     List<String> generatedArtifacts = new ArrayList<>();
+    List<String> filesChanged = new ArrayList<>();
     if (write) {
-      writtenPath = writeFeatureFile(context.projectRoot(), placement, fileName, featureContent);
-      if ("api".equals(slice)) {
-        generatedArtifacts.addAll(generateRequestSpecs(context.projectRoot(), domain, input.intent()));
-      } else if ("ui".equals(slice)) {
+      if (unlinkedCount > 0 || missingCount > 0) {
+        writeProblem = WRITE_BLOCKED + unlinkedCount + " step(s) do not link to a step definition and "
+            + missingCount + " step(s) are MISSING — nothing was written";
+      } else {
+        try {
+          PlanWrite planWrite = writePlan(context, slice, domain, input.intent(), placement + fileName,
+              featureContent, apiFlow, profile);
+          writtenPath = planWrite.feature().path();
+          filesChanged.add(planWrite.feature().status().label() + " " + writtenPath);
+          generatedArtifacts.addAll(planWrite.artifacts());
+        } catch (IOException e) {
+          LOG.warning("Cannot write test plan: " + e.getMessage());
+          writeProblem = WRITE_FAILED + e.getMessage();
+        }
+      }
+      if ("ui".equals(slice)) {
         String pageName = inferUiPage(input.intent(), domain);
         String actionName = inferUiAction(input.intent(), domain);
         generatedArtifacts.add("suggested: testara_bootstrap artifact=page pageName=" + pageName);
@@ -79,13 +168,7 @@ public class TestPlanSkill implements AgentSkill<TestPlanSkill.Input, String> {
             + " actionName=\"" + actionName + "\" when this flow should be reusable");
       }
     }
-
-    var stepLinks = StepLinker.linkFeature(featureContent, flavorSteps, profile.stepDefinitions());
-    int builtInCount = (int) stepLinks.stream().filter(StepLinker.Link::matched).count();
-    int totalStepLines = stepLinks.size();
-    int missingCount = countMissing(featureContent);
-    int score = totalStepLines > 0 ? (builtInCount * 100 / totalStepLines) : 100;
-    int runtimeScore = computeRuntimeContextScore(featureContent, generatedArtifacts, slice);
+    int runtimeScore = computeRuntimeContextScore(featureContent, slice);
 
     List<String> scenarioNames = Arrays.stream(featureContent.split("\n"))
         .filter(l -> l.trim().startsWith("Scenario:"))
@@ -97,25 +180,34 @@ public class TestPlanSkill implements AgentSkill<TestPlanSkill.Input, String> {
         .filter(t -> t.startsWith("@") && !Set.of("@P1","@P2","@P3","@positive","@negative").contains(t))
         .distinct()
         .toList();
+    String scenarioSymbols = "";
+    if (!scenarioNames.isEmpty()) {
+      scenarioSymbols = "; scenarios:" + String.join(",", scenarioNames);
+    }
+    String tagSymbols = "";
+    if (!featureTags.isEmpty()) {
+      tagSymbols = "; tags:" + String.join(" ", featureTags);
+    }
+    String fileSymbols = " [feature:" + toFeatureName(input.intent()) + scenarioSymbols + tagSymbols + "]";
+    var violations = GenerationGuard.validateFeature(featureContent, linkCatalog, profile.stepDefinitions());
 
     if (concise) {
       StringBuilder sb = new StringBuilder();
       if (write) {
-        sb.append(writtenPath != null ? "written: " + writtenPath : "write failed");
+        if (writtenPath != null) sb.append("written: ").append(writtenPath);
+        else sb.append(writeProblem);
         generatedArtifacts.forEach(a -> sb.append("\ngenerated: ").append(a));
         if (writtenPath != null) {
-          String scenarioSymbols = scenarioNames.isEmpty() ? "" : "; scenarios:" + String.join(",", scenarioNames);
-          String tagSymbols = featureTags.isEmpty() ? "" : "; tags:" + String.join(" ", featureTags);
-          sb.append("\nfilesChanged:\n- created ").append(writtenPath)
-              .append(" [feature:").append(toFeatureName(input.intent()))
-              .append(scenarioSymbols).append(tagSymbols).append("]");
+          sb.append("\nfilesChanged:");
+          filesChanged.forEach(f -> sb.append("\n- ").append(f).append(fileSymbols));
+          String compile = ArtifactFiles.compileLine(context);
+          if (compile != null) sb.append("\n").append(compile);
         }
         sb.append("\n\n");
       }
       sb.append(featureContent);
       if (missingCount > 0) sb.append("\nmissing: ").append(missingCount).append(" steps need implementation");
       sb.append("\nflavor-score: ").append(score).append("% | runtime-context-score: ").append(runtimeScore).append("%");
-      var violations = GenerationGuard.validateFeature(featureContent, flavorSteps, profile.stepDefinitions());
       if (!violations.isEmpty()) {
         sb.append("\nguardrail-violations: ").append(violations.size()).append("\n");
         violations.forEach(v -> sb.append("  ").append(v.format()).append("\n"));
@@ -128,58 +220,141 @@ public class TestPlanSkill implements AgentSkill<TestPlanSkill.Input, String> {
     sb.append("**Slice:** ").append(slice).append("  **Domain:** ").append(domain).append("  \n");
     sb.append("**Placement:** `").append(placement).append(fileName).append("`\n\n");
     if (write) {
-      sb.append(writtenPath != null ? "> Written to `" + writtenPath + "`\n" : "> Warning: could not write.\n");
+      if (writtenPath != null) sb.append("> Written to `").append(writtenPath).append("`\n");
+      else sb.append("> Warning: ").append(writeProblem).append("\n");
       generatedArtifacts.forEach(a -> sb.append("> Generated: `").append(a).append("`\n"));
       if (writtenPath != null) {
-        String scenarioSymbols = scenarioNames.isEmpty() ? "" : "; scenarios:" + String.join(",", scenarioNames);
-        String tagSymbols = featureTags.isEmpty() ? "" : "; tags:" + String.join(" ", featureTags);
-        sb.append("> filesChanged: created ").append(writtenPath)
-            .append(" [feature:").append(toFeatureName(input.intent()))
-            .append(scenarioSymbols).append(tagSymbols).append("]\n");
+        filesChanged.forEach(f -> sb.append("> filesChanged: ").append(f).append(fileSymbols).append("\n"));
+        String compile = ArtifactFiles.compileLine(context);
+        if (compile != null) sb.append("> ").append(compile).append("\n");
       }
       sb.append("\n");
     }
     sb.append("```gherkin\n").append(featureContent).append("\n```\n\n");
     sb.append("**Testara Flavor Score: ").append(score).append("% | Runtime Context Score: ").append(runtimeScore).append("%**  \n");
     sb.append("Built-in steps: ").append(builtInCount).append("  | Missing: ").append(missingCount).append("\n");
-    if (write && writtenPath != null) {
+    if (writtenPath != null) {
       sb.append("\nNext: `testara-agent test-run '").append(input.intent()).append("' --execute`\n");
     }
-    // Guardrail check
-    var violations = GenerationGuard.validateFeature(featureContent, flavorSteps, profile.stepDefinitions());
     return GenerationGuard.annotate(sb.toString(), violations);
+  }
+
+  /** All indexed glue: Cucumber links a step to any loaded step definition, whatever its slice. */
+  private List<FlavorEntry> linkCatalog(TestaraProjectProfile profile) {
+    if (!profile.flavorSteps().isEmpty()) return profile.flavorSteps();
+    return FrameworkKnowledgeStore.instance().flavorCatalog();
+  }
+
+  private record PlanWrite(ArtifactFiles.Written feature, List<String> artifacts) {}
+
+  private PlanWrite writePlan(AgentContext context, String slice, String domain, String intent,
+      String featurePath, String featureContent, ApiFlow apiFlow, TestaraProjectProfile profile) throws IOException {
+    Path root = context.projectRoot();
+    boolean overwrite = ArtifactFiles.overwrite(context);
+    List<String> artifacts = new ArrayList<>();
+    ArtifactFiles.Written feature = ArtifactFiles.writeFeature(root, featurePath, featureContent + "\n", overwrite);
+    placementWarnings(root, feature.path(), featureContent, intent, profile)
+        .forEach(warning -> artifacts.add("placement-warning: " + warning));
+
+    StringBuilder references = new StringBuilder(featureContent);
+    if ("api".equals(slice)) {
+      for (Map.Entry<String, String> spec : requestSpecs(apiFlow).entrySet()) {
+        artifacts.add(ArtifactFiles.writeJson(root, spec.getKey(), spec.getValue(), overwrite).line());
+        references.append("\n").append(spec.getValue());
+      }
+    }
+    String serviceConfig = serviceConfigBlock(slice, domain);
+    if (serviceConfig != null) {
+      artifacts.add(ArtifactFiles.mergeProperties(root, ArtifactFiles.CONFIGURATION_PROPERTIES, serviceConfig).line());
+    }
+    if ("api".equals(slice)) {
+      String scriptFolderWarning = ArtifactFiles.scriptFolderWarning(root);
+      if (scriptFolderWarning != null) artifacts.add(scriptFolderWarning);
+    }
+    String applicationValues = applicationValuesBlock(slice, domain, intent, apiFlow, references.toString());
+    if (!applicationValues.isBlank()) {
+      artifacts.add(ArtifactFiles.mergeProperties(root, ArtifactFiles.APPLICATION_PROPERTIES, applicationValues).line());
+    }
+    return new PlanWrite(feature, List.copyOf(artifacts));
+  }
+
+  /** Scenario names that collide with other features in the target directory (never blocks the write). */
+  private List<String> placementWarnings(Path root, String featurePath, String featureContent, String intent,
+      TestaraProjectProfile profile) {
+    Path target = root.resolve(featurePath).toAbsolutePath().normalize();
+    List<FeatureIndex> siblings = profile.features().stream()
+        .filter(f -> {
+          Path path = root.resolve(f.path()).toAbsolutePath().normalize();
+          return !path.equals(target) && target.getParent().equals(path.getParent());
+        })
+        .toList();
+    List<ScenarioIndex> scenarios = Arrays.stream(featureContent.split("\n"))
+        .map(String::strip)
+        .filter(line -> line.startsWith("Scenario:"))
+        .map(line -> new ScenarioIndex(line.substring("Scenario:".length()).strip(), ScenarioType.SCENARIO,
+            List.of(), List.of(), List.of()))
+        .toList();
+    FeatureIndex generated = new FeatureIndex(target, toFeatureName(intent), List.of(), scenarios, List.of());
+    return FeaturePlacementGuard.validatePlacement(generated, siblings).errors();
   }
 
   private String executeBatch(Input input, AgentContext context) {
     List<FeatureBatchSpec> features = parseFeatureBatch(input);
     if (features.isEmpty()) {
-      return "needs_input: testara_plan_batch\n"
+      return NEEDS_INPUT + "testara_plan_batch\n"
           + "reason: featureFiles must be a JSON array with featureName/path/scenarios.\n";
     }
 
     List<String> createdFeatureFiles = new ArrayList<>();
+    List<String> blockedFeatureFiles = new ArrayList<>();
     List<String> usedActions = new ArrayList<>();
     List<String> unresolvedActions = new ArrayList<>();
     Set<String> tagIndex = new LinkedHashSet<>();
     List<String> fileSummaries = new ArrayList<>();
     StringBuilder preview = new StringBuilder();
     Map<String, String> actionCatalog = actionCatalog(context.projectRoot());
-    boolean write = input.createFiles() || "true".equals(context.options().get("write"));
+    boolean write = context.allowsWrite()
+        && (input.createFiles() || "true".equals(context.options().get("write")));
+    List<FlavorEntry> linkCatalog = linkCatalog(context.profile());
+    boolean overwrite = ArtifactFiles.overwrite(context);
 
     for (FeatureBatchSpec feature : features) {
-      String featureText = buildBatchFeature(feature, actionCatalog, usedActions, unresolvedActions, tagIndex);
+      boolean uiBackground = "ui".equalsIgnoreCase(batchSlice(input, feature));
+      String featureText = buildBatchFeature(feature, actionCatalog, usedActions, unresolvedActions, tagIndex,
+          uiBackground);
       preview.append("\n--- ").append(feature.path()).append(" ---\n").append(featureText).append("\n");
-      if (write) {
-        String written = writeFeatureAtPath(context.projectRoot(), feature.path(), featureText);
-        if (written != null) {
-          createdFeatureFiles.add(written);
-          String scenarioNames = feature.scenarios().stream()
-              .map(ScenarioBatchSpec::name)
-              .collect(Collectors.joining(","));
-          String tags = feature.tags().isEmpty() ? "" : "; tags:" + String.join(" ", feature.tags());
-          fileSummaries.add("created " + written + " [feature:" + feature.featureName()
-              + "; scenarios:" + scenarioNames + tags + "]");
+      List<String> unlinked = StepLinker.linkFeature(featureText, linkCatalog, context.profile().stepDefinitions())
+          .stream()
+          .filter(link -> !link.matched())
+          .map(link -> "line " + link.lineNumber() + ": " + link.stepLine())
+          .toList();
+      int missing = countMissing(featureText);
+      if (!unlinked.isEmpty() || missing > 0) {
+        String unlinkedSteps = "";
+        if (!unlinked.isEmpty()) {
+          unlinkedSteps = ": " + String.join("; ", unlinked);
         }
+        blockedFeatureFiles.add(feature.path() + " (" + unlinked.size() + " unlinked, " + missing + " missing"
+            + unlinkedSteps + ")");
+        continue;
+      }
+      if (!write) continue;
+      try {
+        ArtifactFiles.Written written = ArtifactFiles.writeFeature(context.projectRoot(), feature.path(),
+            featureText + "\n", overwrite);
+        if (written.changed()) createdFeatureFiles.add(written.path());
+        String scenarioNames = feature.scenarios().stream()
+            .map(ScenarioBatchSpec::name)
+            .collect(Collectors.joining(","));
+        String tags = "";
+        if (!feature.tags().isEmpty()) {
+          tags = "; tags:" + String.join(" ", feature.tags());
+        }
+        fileSummaries.add(written.status().label() + " " + written.path() + " [feature:" + feature.featureName()
+            + "; scenarios:" + scenarioNames + tags + "]");
+      } catch (IOException e) {
+        LOG.warning("Cannot write feature file " + feature.path() + ": " + e.getMessage());
+        blockedFeatureFiles.add(feature.path() + " (write failed: " + e.getMessage() + ")");
       }
     }
 
@@ -191,6 +366,9 @@ public class TestPlanSkill implements AgentSkill<TestPlanSkill.Input, String> {
     sb.append("createdFeatureFiles:\n");
     if (createdFeatureFiles.isEmpty()) sb.append("- none\n");
     else createdFeatureFiles.forEach(path -> sb.append("- ").append(path).append("\n"));
+    sb.append("blockedFeatureFiles:\n");
+    if (blockedFeatureFiles.isEmpty()) sb.append("- none\n");
+    else blockedFeatureFiles.forEach(path -> sb.append("- ").append(path).append("\n"));
     sb.append("usedActions:\n");
     if (usedActions.isEmpty()) sb.append("- none\n");
     else usedActions.stream().distinct().forEach(action -> sb.append("- ").append(action).append("\n"));
@@ -208,6 +386,25 @@ public class TestPlanSkill implements AgentSkill<TestPlanSkill.Input, String> {
       sb.append("\npreview:\n").append(preview);
     }
     return sb.toString();
+  }
+
+  /**
+   * The given slice, otherwise the one inferred from the feature: scenarios without steps get UI
+   * steps generated from their intent, so they make the feature a UI feature.
+   */
+  private String batchSlice(Input input, FeatureBatchSpec feature) {
+    if (input.slice() != null) {
+      return input.slice();
+    }
+    StringBuilder text = new StringBuilder(first(input.intent(), "")).append(' ').append(feature.featureName());
+    for (ScenarioBatchSpec scenario : feature.scenarios()) {
+      if (scenario.steps().isEmpty()) {
+        return "ui";
+      }
+      text.append(' ').append(scenario.name()).append(' ').append(scenario.intent());
+      scenario.steps().forEach(step -> text.append(' ').append(step));
+    }
+    return inferSlice(text.toString());
   }
 
   private List<FeatureBatchSpec> parseFeatureBatch(Input input) {
@@ -238,18 +435,21 @@ public class TestPlanSkill implements AgentSkill<TestPlanSkill.Input, String> {
       }
       return features;
     } catch (IOException e) {
+      LOG.warning("featureFiles is not valid JSON: " + e.getMessage());
       return List.of();
     }
   }
 
   private String buildBatchFeature(FeatureBatchSpec feature, Map<String, String> actionCatalog,
-      List<String> usedActions, List<String> unresolvedActions, Set<String> tagIndex) {
+      List<String> usedActions, List<String> unresolvedActions, Set<String> tagIndex, boolean uiBackground) {
     StringBuilder sb = new StringBuilder();
     sb.append("# Generated by Testara Agent — review before committing.\n\n");
     appendTags(sb, feature.tags(), tagIndex, false);
     sb.append("Feature: ").append(feature.featureName()).append("\n\n");
-    sb.append("  Background:\n");
-    sb.append("    Given user using chrome in desktop\n\n");
+    if (uiBackground) {
+      sb.append("  Background:\n");
+      sb.append("    Given user using chrome in desktop\n\n");
+    }
     for (ScenarioBatchSpec scenario : feature.scenarios()) {
       appendTags(sb, scenario.tags(), tagIndex, true);
       sb.append("  Scenario: ").append(scenario.name()).append("\n");
@@ -301,17 +501,17 @@ public class TestPlanSkill implements AgentSkill<TestPlanSkill.Input, String> {
           .filter(path -> !path.toString().contains("/target/"))
           .forEach(path -> {
             try {
-              String source = Files.readString(path, StandardCharsets.UTF_8);
-              var matcher = java.util.regex.Pattern.compile("@Action\\s*\\(\\s*(?:value\\s*=\\s*)?\"([^\"]+)\"")
-                  .matcher(source);
+              Matcher matcher = ACTION_ANNOTATION.matcher(Files.readString(path, StandardCharsets.UTF_8));
               while (matcher.find()) {
                 String action = matcher.group(1);
                 actions.put(action.toLowerCase(Locale.ROOT), action);
               }
-            } catch (IOException ignored) {
+            } catch (IOException e) {
+              LOG.warning("Cannot read " + path + " for @Action names: " + e.getMessage());
             }
           });
-    } catch (IOException ignored) {
+    } catch (IOException e) {
+      LOG.warning("Cannot scan " + root + " for @Action names: " + e.getMessage());
     }
     return actions;
   }
@@ -334,18 +534,6 @@ public class TestPlanSkill implements AgentSkill<TestPlanSkill.Input, String> {
       if (word.length() > 2 && leftWords.contains(word)) count++;
     }
     return count;
-  }
-
-  private String writeFeatureAtPath(Path root, String relative, String content) {
-    try {
-      Path target = root.resolve(relative);
-      Files.createDirectories(target.getParent());
-      Files.writeString(target, content + "\n", StandardCharsets.UTF_8);
-      return root.relativize(target).toString();
-    } catch (IOException e) {
-      LOG.warning("Cannot write feature file: " + e.getMessage());
-      return null;
-    }
   }
 
   private void appendTags(StringBuilder sb, List<String> tags, Set<String> tagIndex, boolean scenario) {
@@ -383,10 +571,10 @@ public class TestPlanSkill implements AgentSkill<TestPlanSkill.Input, String> {
   // ── Feature generation ────────────────────────────────────────────────────
 
   private String generateFlavorFeature(String intent, String domain, List<String> tags,
-      String slice, List<FlavorEntry> flavorSteps, TestaraProjectProfile profile) {
+      String slice, List<FlavorEntry> flavorSteps, ApiFlow apiFlow) {
     StringBuilder sb = new StringBuilder();
     sb.append("# Generated by Testara Agent — review before committing.\n\n");
-    sb.append(tags.stream().collect(Collectors.joining(" "))).append("\n");
+    sb.append(String.join(" ", tags)).append("\n");
     sb.append("Feature: ").append(toFeatureName(intent)).append("\n\n");
 
     if ("ui".equals(slice)) {
@@ -394,146 +582,147 @@ public class TestPlanSkill implements AgentSkill<TestPlanSkill.Input, String> {
       return sb.toString();
     }
 
-    // Background
-    String background = buildBackground(domain, slice, flavorSteps);
-    if (!background.isBlank()) {
+    if ("api".equals(slice)) {
+      StringBuilder background = new StringBuilder();
+      appendStep(background, "Given", flavorSteps, USING_SERVICE, API_ACTOR, apiFlow.alias());
       sb.append("  Background:\n").append(background).append("\n");
     }
 
     // Positive scenario
     sb.append("  @P1 @positive\n");
     sb.append("  Scenario: ").append(toFeatureName(intent)).append(" — happy path\n");
-    sb.append(buildScenarioSteps(intent, domain, slice, flavorSteps, profile, false));
+    sb.append(buildScenarioSteps(intent, domain, slice, flavorSteps, apiFlow, false));
     sb.append("\n");
 
     // Negative scenario
     sb.append("  @P2 @negative\n");
     sb.append("  Scenario: ").append(toFeatureName(intent)).append(" — failure case\n");
-    sb.append(buildScenarioSteps(intent, domain, slice, flavorSteps, profile, true));
+    sb.append(buildScenarioSteps(intent, domain, slice, flavorSteps, apiFlow, true));
 
     return sb.toString();
   }
 
-  private String buildBackground(String domain, String slice, List<FlavorEntry> flavorSteps) {
-    return switch (slice) {
-      case "api" -> {
-        String initStep = findExample(flavorSteps, "Given", "using service with alias");
-        if (initStep != null) {
-          String step = initStep.replace("{name}", domain + "-api");
-          yield "    Given " + step + "\n";
-        }
-        yield "";
-      }
-      case "ui" -> {
-        // Always include driver init — missing it causes session=null NPE on first open-page step
-        String sessionStep = findExample(flavorSteps, "Given", "using");
-        String step = sessionStep != null
-            ? sessionStep.replace("{name}", "chrome").replace("{param}", "desktop")
-            : "user using chrome in desktop";
-        yield "    Given " + step + "\n";
-      }
-      default -> "";
-    };
-  }
-
   private String buildScenarioSteps(String intent, String domain, String slice,
-      List<FlavorEntry> flavorSteps, TestaraProjectProfile profile, boolean negative) {
+      List<FlavorEntry> flavorSteps, ApiFlow apiFlow, boolean negative) {
     return switch (slice) {
-      case "api" -> buildApiSteps(intent, domain, flavorSteps, negative);
-      case "ui"  -> buildUiSteps(intent, domain, flavorSteps, negative);
-      case "sql" -> buildSqlSteps(domain, negative);
-      case "mongo" -> buildMongoSteps(domain, negative);
+      case "api" -> buildApiSteps(apiFlow, flavorSteps, negative);
+      case "sql", "database" -> buildSqlSteps(domain, flavorSteps, negative);
+      case "mongo" -> buildMongoSteps(domain, flavorSteps, negative);
+      case "kafka", "streaming" -> buildKafkaSteps(domain, flavorSteps, negative);
+      case "elastic" -> buildElasticSteps(domain, flavorSteps, negative);
       default    -> buildGenericSteps(intent, domain, negative);
     };
   }
 
+  /**
+   * Appends one built-in step rendered with typed values. When the step is not indexed, or a value
+   * does not fit its parameter type, a {@code # MISSING} comment line is emitted instead so the plan
+   * stays valid Gherkin and the write is blocked.
+   */
+  private void appendStep(StringBuilder sb, String keyword, List<FlavorEntry> catalog, String expression,
+      String actor, String... args) {
+    Optional<FlavorEntry> entry = FlavorStepFiller.find(catalog, expression);
+    if (entry.isEmpty()) {
+      sb.append("    # MISSING: no indexed step definition for \"").append(expression).append("\"\n");
+      return;
+    }
+    try {
+      String text = FlavorStepFiller.fill(entry.get(), actor, args);
+      sb.append("    ").append(keyword).append(" ").append(text).append("\n");
+    } catch (IllegalArgumentException e) {
+      sb.append("    # MISSING: ").append(e.getMessage()).append("\n");
+    }
+  }
+
   // ── API scenario steps ────────────────────────────────────────────────────
 
-  private String buildApiSteps(String intent, String domain, List<FlavorEntry> flavorSteps, boolean negative) {
-    StringBuilder sb = new StringBuilder();
+  /**
+   * One API flow derived from the intent: the service alias, HTTP method and the request spec(s)
+   * the feature references. Payload methods get a second spec with an invalid payload for the
+   * failure case, because a spec's payload replaces any body prepared by an earlier step.
+   */
+  private record ApiFlow(String domain, String alias, String method, String flow, boolean usesId, boolean usesQuery) {
+    boolean hasPayload() { return List.of("POST", "PUT", "PATCH").contains(method); }
+    String specPath() { return "files/" + domain + "/request/" + flow; }
+    String invalidSpecPath() { return specPath() + "-invalid"; }
+    int failureStatus() {
+      if (hasPayload()) return 400;
+      return 404;
+    }
+
+    String endpoint() {
+      if (usesId) return "/" + domain + "/{id}";
+      return "/" + domain;
+    }
+  }
+
+  private ApiFlow apiFlow(String intent, String domain) {
     String verb = extractVerb(intent);
-    String flow = domain + "/" + verb;
+    String method = switch (verb) {
+      case "get", "fetch", "search" -> "GET";
+      case "update" -> "PUT";
+      case "delete" -> "DELETE";
+      default -> "POST";
+    };
+    boolean usesQuery = "search".equals(verb);
+    boolean usesId = !"POST".equals(method) && !usesQuery;
+    return new ApiFlow(domain, PropertyKeys.apiAlias(domain), method, verb + "-" + domain, usesId, usesQuery);
+  }
 
-    // Use properties() for path param IDs — they're test data
-    String idProp = "properties(test." + domain + ".id)";
-    String pathParamStep = findExample(flavorSteps, "Given", "prepare pathParam");
-    if (pathParamStep != null) {
-      sb.append("    Given ").append(sub(pathParamStep, "id", idProp)).append("\n");
+  private String buildApiSteps(ApiFlow flow, List<FlavorEntry> flavorSteps, boolean negative) {
+    StringBuilder sb = new StringBuilder();
+    String domain = flow.domain();
+    if (flow.usesId()) {
+      String idField = "id";
+      if (negative && !flow.hasPayload()) {
+        idField = "invalid-id";
+      }
+      appendStep(sb, "Given", flavorSteps, PATH_PARAM, API_ACTOR, "id",
+          propertiesOf(PropertyKeys.testData(domain, idField)));
     }
-
+    if (flow.usesQuery()) {
+      String queryField = negative ? "invalid-query" : "query";
+      appendStep(sb, "Given", flavorSteps, QUERY_PARAM, API_ACTOR, "query",
+          propertiesOf(PropertyKeys.testData(domain, queryField)));
+    }
+    String spec = flow.specPath();
+    if (negative && flow.hasPayload()) {
+      spec = flow.invalidSpecPath();
+    }
+    appendStep(sb, "When", flavorSteps, PROCESS_REQUEST, API_ACTOR, spec);
     if (negative) {
-      String bodyStep = findExample(flavorSteps, "Given", "prepare body request");
-      if (bodyStep != null) {
-        // Payload path is a file path — not env-specific, OK as literal
-        sb.append("    Given ").append(sub(bodyStep,
-            "files/" + domain + "/payload/" + verb + "-invalid.json", null)).append("\n");
-      }
-    }
-
-    // Prefer request spec (files/{domain}/request/{flow}) over inline when possible
-    String requestStep = findExample(flavorSteps, "When", "process request");
-    if (requestStep != null) {
-      sb.append("    When ").append(sub(requestStep,
-          "files/" + domain + "/request/" + verb + "-" + domain, null)).append("\n");
+      appendStep(sb, "Then", flavorSteps, STATUS_CODE, API_ACTOR, String.valueOf(flow.failureStatus()));
     } else {
-      // Fallback: direct HTTP step — endpoint should come from properties
-      String httpStep = findExample(flavorSteps, "When", "try");
-      if (httpStep != null) {
-        sb.append("    When ").append(sub(httpStep,
-            "properties(api." + domain + ".endpoint)", null)).append("\n");
-      }
+      appendStep(sb, "Then", flavorSteps, STATUS_CODE, API_ACTOR, "200");
+      appendStep(sb, "Then", flavorSteps, ASSIGN_RESPONSE, API_ACTOR, camel(domain) + "Response");
     }
-
-    // Then: assert response
-    String statusStep = findExample(flavorSteps, "Then", "statusCode should be");
-    if (statusStep != null) {
-      sb.append("    Then ").append(statusStep
-          .replaceAll("\\{\\w+\\}", negative ? "400" : "200")).append("\n");
-    }
-
-    if (!negative) {
-      String successStep = findExample(flavorSteps, "Then", "response success should be");
-      if (successStep != null) {
-        sb.append("    Then ").append(successStep.replaceAll("\\{\\w+\\}", "true")).append("\n");
-      }
-      String assignStep = findExample(flavorSteps, "Then", "assign previous response data");
-      if (assignStep != null) {
-        sb.append("    Then ").append(assignStep.replaceAll("\\{\\w+\\}", domain + "Response")).append("\n");
-      }
-    } else {
-      String successStep = findExample(flavorSteps, "Then", "response success should be");
-      if (successStep != null) {
-        sb.append("    Then ").append(successStep.replaceAll("\\{\\w+\\}", "false")).append("\n");
-      }
-    }
-
     return sb.toString();
+  }
+
+  /** Request spec JSON files (relative path → content) the API feature references. */
+  private Map<String, String> requestSpecs(ApiFlow flow) {
+    Map<String, String> specs = new LinkedHashMap<>();
+    String base = "src/test/resources/" + flow.specPath();
+    specs.put(base + ".json", requestSpec(flow, "{\"field\": \"" + propertiesOf(PropertyKeys.testData(flow.domain(), "field")) + "\"}"));
+    if (flow.hasPayload()) {
+      specs.put(base + "-invalid.json", requestSpec(flow, "{\"field\": null}"));
+    }
+    return specs;
+  }
+
+  private String requestSpec(ApiFlow flow, String payload) {
+    StringBuilder json = new StringBuilder();
+    json.append("{\n");
+    json.append("  \"specification\": \"").append(flow.alias()).append("\",\n");
+    json.append("  \"httpMethod\": \"").append(flow.method()).append("\",\n");
+    json.append("  \"url\": \"").append(propertiesOf(PropertyKeys.apiEndpoint(flow.domain()))).append("\",\n");
+    json.append("  \"contentType\": \"application/json\"");
+    if (flow.hasPayload()) json.append(",\n  \"payload\": ").append(payload);
+    json.append("\n}\n");
+    return json.toString();
   }
 
   // ── UI scenario steps ─────────────────────────────────────────────────────
-
-  private String buildUiSteps(String intent, String domain, List<FlavorEntry> flavorSteps, boolean negative) {
-    StringBuilder sb = new StringBuilder();
-
-    // Open page always from base steps
-    String openStep = findExample(flavorSteps, "When", "open .* page");
-    if (openStep != null) {
-      sb.append("    When ").append(openStep.replace("{value}", domain)).append("\n");
-    }
-
-    if (!negative) {
-      appendUiBaseActionSteps(sb, domain, extractVerb(intent) + " " + domain, false);
-      String pageStep = findExample(flavorSteps, "Then", "is in .* page");
-      if (pageStep != null) sb.append("    Then ").append(pageStep.replace("{value}", domain + "-result")).append("\n");
-      String seeStep = findExample(flavorSteps, "Then", "should see .* is");
-      if (seeStep != null) sb.append("    Then ").append(seeStep.replace("{value}", "successMessage").replace("{param}", "displayed")).append("\n");
-    } else {
-      appendUiBaseActionSteps(sb, domain, extractVerb(intent) + " " + domain, true);
-      String seeStep = findExample(flavorSteps, "Then", "should see .* is");
-      if (seeStep != null) sb.append("    Then ").append(seeStep.replace("{value}", "errorMessage").replace("{param}", "displayed")).append("\n");
-    }
-    return sb.toString();
-  }
 
   private String buildStandardUiFeature(String intent, String domain) {
     String pageName = toPropertyKey(inferUiPage(intent, domain));
@@ -563,10 +752,6 @@ public class TestPlanSkill implements AgentSkill<TestPlanSkill.Input, String> {
         toFeatureName(actionName), pageName, pageName, uiBaseActionSteps(pageName, actionName, true));
   }
 
-  private void appendUiBaseActionSteps(StringBuilder sb, String pageName, String actionName, boolean invalid) {
-    sb.append(uiBaseActionSteps(pageName, actionName, invalid));
-  }
-
   private String uiBaseActionSteps(String pageName, String actionName, boolean invalid) {
     UiActionParameters params = uiActionParameters(pageName, actionName, invalid);
     // RULE 3: 3+ operations on same page → user do "action" in "page" page with parameter
@@ -577,33 +762,63 @@ public class TestPlanSkill implements AgentSkill<TestPlanSkill.Input, String> {
 
   // ── SQL scenario steps ────────────────────────────────────────────────────
 
-  private String buildSqlSteps(String domain, boolean negative) {
+  private String buildSqlSteps(String domain, List<FlavorEntry> flavorSteps, boolean negative) {
     StringBuilder sb = new StringBuilder();
-    sb.append("    Given [sql] connect to database with name ").append(domain).append("Db\n");
-    sb.append("    Given [sql] prepare query with value :\n");
+    String idField = negative ? "invalid-id" : "id";
+    appendStep(sb, "Given", flavorSteps, SQL_CONNECT, null, PropertyKeys.databaseAlias(domain));
+    appendStep(sb, "Given", flavorSteps, SQL_QUERY, null);
     sb.append("      \"\"\"\n");
     sb.append("      select *\n      from ").append(domain).append("\n");
     // Use properties() for test data values — IDs are test-specific
-    if (negative) sb.append("      where status = 'INVALID'\n");
-    else sb.append("      where id = 'properties(test.").append(domain).append(".id)'\n");
+    sb.append("      where id = '").append(propertiesOf(PropertyKeys.testData(domain, idField))).append("'\n");
     sb.append("      \"\"\"\n");
-    sb.append("    When [sql] execute database query\n");
-    sb.append("    Then [sql] assign previous database response to ").append(domain).append("Rows\n");
+    appendStep(sb, "When", flavorSteps, SQL_EXECUTE, null);
+    appendStep(sb, "Then", flavorSteps, SQL_ASSIGN, null, camel(domain) + "Rows");
     return sb.toString();
   }
 
   // ── Mongo scenario steps ──────────────────────────────────────────────────
 
-  private String buildMongoSteps(String domain, boolean negative) {
+  private String buildMongoSteps(String domain, List<FlavorEntry> flavorSteps, boolean negative) {
     StringBuilder sb = new StringBuilder();
-    sb.append("    Given [mongo] connect to database with name ").append(domain).append("Db\n");
-    sb.append("    Given [mongo] select collection with name ").append(domain).append("\n");
-    sb.append("    When [mongo] select data with query :\n");
-    // Use properties() for query values — test data
-    if (negative) sb.append("      | query | {\"status\":\"INVALID\"} |\n");
-    else sb.append("      | query | {\"_id\":\"properties(test.").append(domain).append(".id)\"} |\n");
+    String idField = negative ? "invalid-id" : "id";
+    appendStep(sb, "Given", flavorSteps, MONGO_CONNECT, null, PropertyKeys.databaseAlias(domain));
+    appendStep(sb, "Given", flavorSteps, MONGO_COLLECTION, null, domain);
+    appendStep(sb, "When", flavorSteps, MONGO_SELECT, null);
+    // The query DataTable is read as a map, so it needs the | key | value | header row.
+    sb.append("      | key   | value |\n");
+    sb.append("      | query | {\"_id\":\"").append(propertiesOf(PropertyKeys.testData(domain, idField))).append("\"} |\n");
     sb.append("      | limit | 1 |\n");
-    sb.append("    Then [mongo] assign previous database response to ").append(domain).append("Rows\n");
+    appendStep(sb, "Then", flavorSteps, MONGO_ASSIGN, null, camel(domain) + "Rows");
+    return sb.toString();
+  }
+
+  // ── Kafka scenario steps ──────────────────────────────────────────────────
+
+  private String buildKafkaSteps(String domain, List<FlavorEntry> flavorSteps, boolean negative) {
+    StringBuilder sb = new StringBuilder();
+    String payloadField = negative ? "invalid-payload" : "payload";
+    appendStep(sb, "Given", flavorSteps, KAFKA_START, KAFKA_ACTOR, PropertyKeys.kafkaAlias(domain));
+    appendStep(sb, "When", flavorSteps, KAFKA_SEND, KAFKA_ACTOR, PropertyKeys.kafkaTopicAlias(domain),
+        propertiesOf(PropertyKeys.testData(domain, "id")), propertiesOf(PropertyKeys.testData(domain, payloadField)));
+    appendStep(sb, "Then", flavorSteps, KAFKA_STOP, KAFKA_ACTOR);
+    return sb.toString();
+  }
+
+  // ── Elastic scenario steps ────────────────────────────────────────────────
+
+  private String buildElasticSteps(String domain, List<FlavorEntry> flavorSteps, boolean negative) {
+    StringBuilder sb = new StringBuilder();
+    String idField = negative ? "invalid-id" : "id";
+    String alias = camel(domain) + "Results";
+    appendStep(sb, "Given", flavorSteps, ELASTIC_CONNECT, null, domain);
+    appendStep(sb, "When", flavorSteps, ELASTIC_SEARCH, null, alias, domain);
+    // The query DataTable is read as a map, so it needs the | key | value | header row.
+    sb.append("      | key         | value |\n");
+    sb.append("      | luceneQuery | {\"term\":{\"id\":\"").append(propertiesOf(PropertyKeys.testData(domain, idField)))
+        .append("\"}} |\n");
+    sb.append("      | size        | 10 |\n");
+    appendStep(sb, "Then", flavorSteps, ELASTIC_ASSIGN, null, alias);
     return sb.toString();
   }
 
@@ -612,92 +827,103 @@ public class TestPlanSkill implements AgentSkill<TestPlanSkill.Input, String> {
   private String buildGenericSteps(String intent, String domain, boolean negative) {
     String verb = extractVerb(intent);
     StringBuilder sb = new StringBuilder();
-    sb.append("    Given the system is ready for ").append(domain).append(" # MISSING\n");
-    sb.append("    When the ").append(verb).append(" operation is performed on ").append(domain).append(" # MISSING\n");
-    sb.append("    Then the result should be ").append(negative ? "an error" : "success").append(" # MISSING\n");
+    // Comments on their own line: an inline "# MISSING" would become part of the step text.
+    sb.append("    # MISSING: no Testara built-in step prepares ").append(domain).append("\n");
+    sb.append("    # MISSING: no Testara built-in step performs the ").append(verb).append(" operation on ")
+        .append(domain).append("\n");
+    String outcome = "success";
+    if (negative) {
+      outcome = "an error";
+    }
+    sb.append("    # MISSING: no Testara built-in step asserts ").append(outcome).append("\n");
+    return sb.toString();
+  }
+
+  // ── Properties the plan needs ─────────────────────────────────────────────
+
+  /** Service config the plan's steps connect to (written to configuration.properties). */
+  private String serviceConfigBlock(String slice, String domain) {
+    return switch (slice) {
+      case "api" -> TestaraApiSkill.serviceConfigBlock(domain);
+      case "sql", "database" -> TestaraDbSkill.sqlConfigBlock(domain);
+      case "mongo" -> TestaraDbSkill.mongoConfigBlock(domain);
+      case "kafka", "streaming" -> TestaraDbSkill.kafkaConfigBlock(domain);
+      case "elastic" -> TestaraDbSkill.elasticConfigBlock(domain);
+      default -> null;
+    };
+  }
+
+  /**
+   * Application values (application.properties): known defaults for the slice plus an env
+   * placeholder for every other {@code properties(key)} the feature or its request specs reference.
+   */
+  private String applicationValuesBlock(String slice, String domain, String intent, ApiFlow apiFlow,
+      String references) {
+    Map<String, String> values = new LinkedHashMap<>();
+    if ("api".equals(slice)) {
+      values.put(PropertyKeys.apiEndpoint(domain), apiFlow.endpoint());
+      values.put(PropertyKeys.testData(domain, "field"), "sample-value");
+      values.put(PropertyKeys.testData(domain, "query"), "sample");
+      values.put(PropertyKeys.testData(domain, "invalid-query"), "invalid");
+    }
+    if ("ui".equals(slice)) {
+      String pageName = toPropertyKey(inferUiPage(intent, domain));
+      String successPage = toPropertyKey(inferUiSuccessPage(intent, domain, pageName));
+      for (String page : new LinkedHashSet<>(List.of(pageName, successPage))) {
+        TestaraUiSkill.pageUrlEntries(page).forEach(entry -> {
+          int separator = entry.indexOf('=');
+          values.put(entry.substring(0, separator), entry.substring(separator + 1));
+        });
+      }
+    }
+    values.put(PropertyKeys.testData(domain, "id"), "00000000-0000-0000-0000-000000000001");
+    values.put(PropertyKeys.testData(domain, "invalid-id"), "00000000-0000-0000-0000-000000000000");
+    values.put(PropertyKeys.testData(domain, "payload"), "{\"id\":\"00000000-0000-0000-0000-000000000001\"}");
+    values.put(PropertyKeys.testData(domain, "invalid-payload"), "{\"id\":null}");
+
+    Set<String> referenced = new LinkedHashSet<>();
+    Matcher matcher = PROPERTY_REFERENCE.matcher(references);
+    while (matcher.find()) referenced.add(matcher.group(1).strip());
+
+    StringBuilder block = new StringBuilder();
+    for (String key : referenced) {
+      String value = values.get(key);
+      if (value == null) value = PropertyKeys.envValue(key, "");
+      block.append(key).append("=").append(value).append("\n");
+    }
+    if ("ui".equals(slice)) {
+      values.entrySet().stream()
+          .filter(entry -> entry.getKey().startsWith("web.page."))
+          .forEach(entry -> block.append(entry.getKey()).append("=").append(entry.getValue()).append("\n"));
+    }
+    if (block.isEmpty()) return "";
+    return "# Values referenced by the " + domain + " " + slice + " test plan\n" + block;
+  }
+
+  private static String propertiesOf(String key) {
+    return "properties(" + key + ")";
+  }
+
+  /** Lower camel case of a domain slug, for {word} data aliases such as {@code orderResponse}. */
+  private static String camel(String value) {
+    String[] parts = value.split("[^A-Za-z0-9]+");
+    StringBuilder sb = new StringBuilder();
+    for (String part : parts) {
+      if (part.isEmpty()) continue;
+      if (sb.isEmpty()) {
+        sb.append(Character.toLowerCase(part.charAt(0))).append(part.substring(1));
+      } else {
+        sb.append(Character.toUpperCase(part.charAt(0))).append(part.substring(1));
+      }
+    }
+    if (sb.isEmpty()) return "generated";
     return sb.toString();
   }
 
   // ── Utilities ─────────────────────────────────────────────────────────────
 
-  /** Substitutes first and optionally second {placeholder} in an example step. */
-  private String sub(String example, String first, String second) {
-    String s = example.replaceFirst("\\{\\w+\\}", first != null ? first : "");
-    if (second != null) s = s.replaceFirst("\\{\\w+\\}", second);
-    return s;
-  }
-
-  /** Find the first flavor step whose example matches a key phrase (supports simple regex). */
-  private String findExample(List<FlavorEntry> steps, String keyword, String phrasePattern) {
-    return steps.stream()
-        .filter(e -> e.keyword().equalsIgnoreCase(keyword))
-        .filter(e -> e.example().matches(".*" + phrasePattern + ".*")
-            || e.expression().matches(".*" + phrasePattern.replace(".*", "\\S*") + ".*"))
-        .map(FlavorEntry::example)
-        .findFirst()
-        .orElse(null);
-  }
-
-  /** Generates request spec and payload JSON files for API flows. */
-  private List<String> generateRequestSpecs(Path projectRoot, String domain, String intent) {
-    List<String> generated = new ArrayList<>();
-    String verb = extractVerb(intent);
-    String flowName = verb + "-" + domain;
-
-    // Request spec
-    String requestDir = "src/test/resources/files/" + domain + "/request";
-    String requestFile = requestDir + "/" + flowName + ".json";
-    // Use properties() for URL and test data — not hardcoded values
-    String requestSpec = """
-        {
-          "specification": "%s-api",
-          "httpMethod": "POST",
-          "url": "properties(api.%s.endpoint)",
-          "contentType": "application/json",
-          "pathParameters": {
-            "id": "properties(test.%s.id)"
-          }
-        }
-        """.formatted(domain, domain, domain);
-    writeJsonIfAbsent(projectRoot, requestFile, requestSpec, generated);
-
-    // Payload stubs — values should come from properties() in production tests
-    String payloadDir = "src/test/resources/files/" + domain + "/payload";
-    writeJsonIfAbsent(projectRoot, payloadDir + "/" + flowName + "-success.json",
-        "{\n  \"field\": \"properties(test." + domain + ".field)\"\n}\n", generated);
-    writeJsonIfAbsent(projectRoot, payloadDir + "/" + flowName + "-invalid.json",
-        "{\n  \"field\": null\n}\n", generated);
-
-    return generated;
-  }
-
-  private void writeJsonIfAbsent(Path root, String relative, String content, List<String> generated) {
-    try {
-      Path target = root.resolve(relative);
-      if (Files.exists(target)) return;
-      Files.createDirectories(target.getParent());
-      Files.writeString(target, content, StandardCharsets.UTF_8);
-      generated.add(relative);
-    } catch (IOException e) {
-      LOG.fine("Cannot write " + relative + ": " + e.getMessage());
-    }
-  }
-
-  private String writeFeatureFile(Path projectRoot, String placement, String fileName, String content) {
-    try {
-      Path dir = projectRoot.resolve(placement);
-      Files.createDirectories(dir);
-      Path file = dir.resolve(fileName);
-      Files.writeString(file, content, StandardCharsets.UTF_8);
-      return projectRoot.relativize(file).toString();
-    } catch (IOException e) {
-      LOG.warning("Cannot write feature file: " + e.getMessage());
-      return null;
-    }
-  }
-
   /** Runtime Context Score: measures correct use of properties(), request specs, UserAction. */
-  private int computeRuntimeContextScore(String feature, List<String> artifacts, String slice) {
+  private int computeRuntimeContextScore(String feature, String slice) {
     int points = 0, total = 0;
 
     // 1. properties() usage for non-status-code quoted values
@@ -729,9 +955,6 @@ public class TestPlanSkill implements AgentSkill<TestPlanSkill.Input, String> {
       points += (usesAction || usesBuiltInUi) ? 20 : 0;
     }
 
-    // 4. Generated support artifacts (request spec, action files)
-    if (!artifacts.isEmpty()) { total += 20; points += 20; }
-
     return total == 0 ? 100 : (points * 100 / total);
   }
 
@@ -754,22 +977,28 @@ public class TestPlanSkill implements AgentSkill<TestPlanSkill.Input, String> {
 
   private String toFileName(String intent) {
     String slug = intent.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]+", "-").replaceAll("^-|-$", "");
+    if (slug.isEmpty()) slug = "generated-feature";
     return slug.substring(0, Math.min(50, slug.length())) + ".feature";
   }
 
-  private String inferSlice(String intent) {
-    String lower = intent.toLowerCase(Locale.ROOT);
-    if (lower.contains("sql") || lower.contains("database") || lower.contains("db")
-        || lower.contains("query") || lower.contains("table") || lower.contains("settlement")
-        || lower.contains("row")) return "sql";
-    if (lower.contains("mongo") || lower.contains("collection") || lower.contains("document")) return "mongo";
-    if (lower.contains("kafka") || lower.contains("topic") || lower.contains("consumer")
-        || lower.contains("producer") || lower.contains("streaming")) return "kafka";
-    if (lower.contains("ui") || lower.contains("page") || lower.contains("click")
-        || lower.contains("button") || lower.contains("login") || lower.contains("browser")
-        || lower.contains("selenium") || lower.contains("playwright")
-        || lower.contains("appium") || lower.contains("vibium")) return "ui";
+
+  /** Infers the slice from whole words of the intent ("row" never matches "browser"). */
+  static String inferSlice(String intent) {
+    Set<String> words = new HashSet<>(Arrays.asList(NON_WORD.split(intent.toLowerCase(Locale.ROOT))));
+    if (hasWord(words, "sql", "database", "db", "query", "queries", "table", "settlement", "row")) return "sql";
+    if (hasWord(words, "mongo", "mongodb", "collection", "document")) return "mongo";
+    if (hasWord(words, "kafka", "topic", "consumer", "producer", "streaming")) return "kafka";
+    if (hasWord(words, "ui", "page", "click", "button", "login", "browser", "selenium", "playwright", "appium",
+        "vibium")) return "ui";
     return "api"; // default
+  }
+
+  /** True when {@code words} holds one of the keywords or its plural ({@code -s}). */
+  private static boolean hasWord(Set<String> words, String... keywords) {
+    for (String keyword : keywords) {
+      if (words.contains(keyword) || words.contains(keyword + "s")) return true;
+    }
+    return false;
   }
 
   private String inferUiPage(String intent, String domain) {
@@ -896,8 +1125,19 @@ public class TestPlanSkill implements AgentSkill<TestPlanSkill.Input, String> {
         "transaction","account","customer","report","approval","validation"}) {
       if (lower.contains(word)) return word;
     }
-    return intent.replaceAll("[^a-zA-Z0-9]+", "-").toLowerCase(Locale.ROOT)
-        .replaceAll("^-|-$", "").substring(0, Math.min(20, intent.length()));
+    String slug = intent.replaceAll("[^a-zA-Z0-9]+", "-").toLowerCase(Locale.ROOT)
+        .replaceAll("^-|-$", "");
+    // Truncate on the slug's own length — the slug is shorter than the intent once punctuation is removed.
+    slug = slug.substring(0, Math.min(20, slug.length())).replaceAll("-$", "");
+    if (slug.isEmpty()) return "generated";
+    return slug;
+  }
+
+  /** Keeps a caller-supplied domain usable as a tag, path segment and {word} step value. */
+  private String sanitizeDomain(String domain) {
+    String slug = domain.strip().replaceAll("[^A-Za-z0-9_]+", "-").replaceAll("^-|-$", "");
+    if (slug.isEmpty()) return "generated";
+    return slug;
   }
 
   private String clarificationPrompt(String intent, String slice, boolean explicitDomain,
@@ -962,7 +1202,7 @@ public class TestPlanSkill implements AgentSkill<TestPlanSkill.Input, String> {
 
   private String clarification(String key, String reason, List<String> questions, String available) {
     StringBuilder sb = new StringBuilder();
-    sb.append("needs_input: ").append(key).append("\n");
+    sb.append(NEEDS_INPUT).append(key).append("\n");
     sb.append("reason: ").append(reason).append("\n");
     sb.append("ask_user:\n");
     questions.forEach(q -> sb.append("  - ").append(q).append("\n"));

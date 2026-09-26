@@ -1,0 +1,14 @@
+{
+  "specification": "sample",
+  "httpMethod": "GET",
+  "url": "properties(sample.health.path)",
+  "contentType": "application/json",
+  "queryParameters": {},
+  "formParameters": {},
+  "headers": {"Accept": "application/json"},
+  "pathParameters": {},
+  "multiPartData": {},
+  "payload": null,
+  "requestLog": ["METHOD", "PATH"],
+  "responseLog": ["STATUS", "BODY"]
+}

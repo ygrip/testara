@@ -2,6 +2,7 @@ package io.github.ygrip.testara.agent.index;
 
 import io.github.ygrip.testara.agent.catalog.RuntimeCatalogEntry;
 import io.github.ygrip.testara.agent.catalog.RuntimeCatalogIndexer;
+import io.github.ygrip.testara.agent.config.AgentYamlConfig;
 import io.github.ygrip.testara.agent.flavor.FlavorEntry;
 import io.github.ygrip.testara.agent.flavor.TestaraFlavorIndexer;
 import io.github.ygrip.testara.agent.parser.FeatureParser;
@@ -29,12 +30,17 @@ public class ProjectIndexer {
       "<module>\\s*([^<]+?)\\s*</module>");
   private static final Pattern JAVA_VERSION_PATTERN = Pattern.compile(
       "<java\\.version>\\s*([^<]+?)\\s*</java\\.version>");
+  // Escape-aware: the annotation value may contain \" and \\ Java escapes.
   private static final Pattern STEP_ANNOTATION = Pattern.compile(
-      "@(Given|When|Then|And|But)\\(\"(.*?)\"\\)");
-  private static final Pattern COMMAND_TAG = Pattern.compile(
-      "@CommandTag\\([^)]*command\\s*=\\s*\"([^\"]+)\"[^)]*(?:alias\\s*=\\s*\\{([^}]*)\\})?[^)]*(?:cacheable\\s*=\\s*(true|false))?");
-  private static final Pattern VALIDATION_TAG = Pattern.compile(
-      "@ValidationTag\\([^)]*command\\s*=\\s*\"([^\"]+)\"[^)]*(?:alias\\s*=\\s*\\{([^}]*)\\})?[^)]*(?:cacheable\\s*=\\s*(true|false))?");
+      "@(Given|When|Then|And|But)\\s*\\(\\s*\"((?:[^\"\\\\]|\\\\.)*)\"");
+  // Capture the whole annotation body; attributes are extracted separately so their order does not matter.
+  private static final Pattern COMMAND_TAG = Pattern.compile("@CommandTag\\s*\\(([^)]*)\\)");
+  private static final Pattern VALIDATION_TAG = Pattern.compile("@ValidationTag\\s*\\(([^)]*)\\)");
+  private static final Pattern TAG_COMMAND = Pattern.compile("\\bcommand\\s*=\\s*\"([^\"]+)\"");
+  private static final Pattern TAG_ALIAS = Pattern.compile("\\balias\\s*=\\s*(?:\\{([^}]*)}|(\"[^\"]*\"))");
+  private static final Pattern TAG_CACHEABLE = Pattern.compile("\\bcacheable\\s*=\\s*(true|false)");
+  private static final Pattern COMMAND_LOGIC = Pattern.compile("\\bCommandLogic\\s*<");
+  private static final Pattern VALIDATOR_LOGIC = Pattern.compile("\\bValidatorLogic\\s*<");
   private static final Pattern DRIVER_METADATA = Pattern.compile(
       "@DriverMetadata\\(([^)]+)\\)");
   private static final Pattern DRIVER_NAME = Pattern.compile(
@@ -48,8 +54,21 @@ public class ProjectIndexer {
   private static final Pattern CLASS_NAME = Pattern.compile(
       "(?:public\\s+)?(?:class|interface)\\s+(\\w+)");
 
-  private static final Pattern SCAN_LOCATIONS_PATTERN = Pattern.compile(
-      "(?:command|validator)\\.executor\\.scan-locations\\s*=\\s*(.+)");
+  // Keys bound to CommandExecutorProperties / ValidatorProperties.scanLocations (list or indexed form).
+  private static final Pattern COMMAND_SCAN_KEY = Pattern.compile(
+      "command\\.executor\\.(?:scan-locations|scanLocations)(?:\\[\\d+])?");
+  private static final Pattern VALIDATOR_SCAN_KEY = Pattern.compile(
+      "validator\\.helper\\.(?:scan-locations|scanLocations)(?:\\[\\d+])?");
+  private static final String TESTARA_PACKAGE = "io.github.ygrip.testara";
+  private static final List<String> RESOURCE_DIRS = List.of("src/test/resources", "src/main/resources");
+  private static final Set<String> EXCLUDED_DIRECTORIES = Set.of(
+      "target", ".git", ".testara-agent", "node_modules", ".idea", ".gradle",
+      // Agent/editor tool dirs may hold full repo copies (e.g. .claude/worktrees).
+      ".claude", ".serena", ".vscode");
+
+  private record ScanPackages(Set<String> commands, Set<String> validations) {}
+
+  private record TagAttributes(String name, List<String> aliases, boolean cacheable) {}
 
   private final FeatureParser featureParser = new FeatureParser();
   private final TestaraFlavorIndexer flavorIndexer = new TestaraFlavorIndexer();
@@ -61,22 +80,26 @@ public class ProjectIndexer {
     List<String> modules = detectModules(projectRoot);
     String javaVersion = detectJavaVersion(projectRoot);
     BuildTool buildTool = Files.exists(projectRoot.resolve("pom.xml"))
-        ? BuildTool.MAVEN : BuildTool.GRADLE;
+        ? BuildTool.MAVEN
+        : (Files.exists(projectRoot.resolve("build.gradle"))
+            || Files.exists(projectRoot.resolve("build.gradle.kts")) ? BuildTool.GRADLE : null);
 
     // Collect all Java source roots: project root + all Maven module source dirs
     List<Path> javaSourceRoots = collectJavaSourceRoots(projectRoot, modules);
 
-    // Read configured scan packages from configuration.properties
-    Set<String> scanPackages = readScanPackages(projectRoot);
+    // Read configured scan packages from every classpath *.properties file
+    ScanPackages scanPackages = readScanPackages(projectRoot, modules);
 
-    List<Path> featureRoots = findFeatureRoots(projectRoot);
-    List<Path> requestSpecRoots = findResourceDirs(projectRoot, "files");
-    List<Path> validationRoots = findResourceDirs(projectRoot, "validations");
+    AgentYamlConfig.AgentConfig agentConfig = AgentYamlConfig.load(projectRoot);
+    List<Path> featureRoots = configuredRoots(projectRoot, agentConfig.featureRoots(), findFeatureRoots(projectRoot));
+    List<Path> requestSpecRoots = configuredRoots(projectRoot, agentConfig.requestSpecRoots(), findResourceDirs(projectRoot, "files"));
+    List<Path> validationRoots = configuredRoots(projectRoot, agentConfig.validationRoots(), findResourceDirs(projectRoot, "validations"));
 
-    List<FeatureIndex> features = parseFeatures(featureRoots);
+    List<String> parseErrors = new ArrayList<>();
+    List<FeatureIndex> features = parseFeatures(projectRoot, featureRoots, parseErrors);
     List<StepDefinitionIndex> stepDefs = scanStepDefinitions(javaSourceRoots);
-    List<CommandIndex> commands = scanCommands(javaSourceRoots, scanPackages);
-    List<ValidationIndex> validations = scanValidations(javaSourceRoots, scanPackages);
+    List<CommandIndex> commands = scanCommands(javaSourceRoots, scanPackages.commands());
+    List<ValidationIndex> validations = scanValidations(javaSourceRoots, scanPackages.validations());
     List<DriverIndex> drivers = scanDrivers(javaSourceRoots);
     List<TagIndex> tags = buildTagIndex(features);
     List<FlavorEntry> flavorSteps = flavorIndexer.index(projectRoot, modules);
@@ -84,17 +107,25 @@ public class ProjectIndexer {
     LOG.info("Flavor index: " + flavorSteps.size() + " built-in steps, "
         + runtimeCatalog.size() + " config catalog entries");
 
+    Set<String> allScanPackages = new LinkedHashSet<>(scanPackages.commands());
+    allScanPackages.addAll(scanPackages.validations());
     return new TestaraProjectProfile(
         projectRoot, buildTool, javaVersion, modules,
         featureRoots, requestSpecRoots, validationRoots,
         features, stepDefs, commands, validations, drivers, tags,
-        Map.of("scanPackages", String.join(",", scanPackages)), Map.of(),
-        flavorSteps, runtimeCatalog);
+        Map.of("scanPackages", String.join(",", allScanPackages),
+            "commandScanPackages", String.join(",", scanPackages.commands()),
+            "validationScanPackages", String.join(",", scanPackages.validations())),
+        Map.of(), flavorSteps, runtimeCatalog, List.copyOf(parseErrors));
   }
 
   // ── Source root collection ────────────────────────────────────────
 
-  private List<Path> collectJavaSourceRoots(Path root, List<String> modules) {
+  /**
+   * Returns the directories whose subtrees hold the project's sources: the project root plus any
+   * declared module that lives outside it (e.g. {@code ../sibling-module}).
+   */
+  public static List<Path> collectJavaSourceRoots(Path root, List<String> modules) {
     // scanJavaFiles(root) already walks the entire subtree under root, so a module directory only
     // needs its own entry here if it's NOT nested under root (e.g. a "../sibling-module" reference)
     // - otherwise every file under it would be visited twice: once via root, once via its own entry.
@@ -112,46 +143,68 @@ public class ProjectIndexer {
 
   // ── Scan package config ───────────────────────────────────────────
 
-  private Set<String> readScanPackages(Path root) {
-    // Default: testara built-in package (same as CommandExecutorProperties default)
-    Set<String> defaults = new LinkedHashSet<>(List.of("io.github.ygrip.testara"));
-    Path config = findConfigProperties(root);
-    if (config == null) return defaults;
-    try {
-      String content = Files.readString(config, StandardCharsets.UTF_8);
-      Matcher m = SCAN_LOCATIONS_PATTERN.matcher(content);
-      if (m.find()) {
-        String[] parts = m.group(1).trim().split(",");
-        Set<String> locations = new LinkedHashSet<>();
-        for (String p : parts) {
-          String pkg = p.strip();
-          if (!pkg.isBlank()) locations.add(pkg);
-        }
-        if (!locations.isEmpty()) {
-          locations.addAll(defaults); // always include testara built-ins
-          return locations;
+  /**
+   * The runtime loads every {@code classpath:*.properties} file, so scan locations may live in any
+   * top-level properties file of a resources dir. Commands and validators have separate keys.
+   */
+  private ScanPackages readScanPackages(Path root, List<String> modules) {
+    Set<String> commands = new LinkedHashSet<>();
+    Set<String> validations = new LinkedHashSet<>();
+    for (Path file : classpathPropertyFiles(root, modules)) {
+      Properties properties = new Properties();
+      try (var reader = Files.newBufferedReader(file, StandardCharsets.UTF_8)) {
+        properties.load(reader);
+      } catch (IOException | IllegalArgumentException e) {
+        LOG.warning("Cannot read " + file + " for scan locations: " + e.getMessage());
+        continue;
+      }
+      for (String key : properties.stringPropertyNames()) {
+        if (COMMAND_SCAN_KEY.matcher(key).matches()) {
+          commands.addAll(splitPackages(properties.getProperty(key)));
+        } else if (VALIDATOR_SCAN_KEY.matcher(key).matches()) {
+          validations.addAll(splitPackages(properties.getProperty(key)));
         }
       }
-    } catch (IOException e) {
-      LOG.fine("Cannot read config for scan packages: " + e.getMessage());
     }
-    return defaults;
+    // Always include testara built-ins (the runtime default for both properties)
+    commands.add(TESTARA_PACKAGE);
+    validations.add(TESTARA_PACKAGE);
+    return new ScanPackages(commands, validations);
   }
 
-  private Path findConfigProperties(Path root) {
-    for (String candidate : List.of(
-        "src/test/resources/configuration.properties",
-        "configuration.properties",
-        "src/main/resources/configuration.properties")) {
-      Path p = root.resolve(candidate);
-      if (Files.exists(p)) return p;
+  private List<Path> classpathPropertyFiles(Path root, List<String> modules) {
+    Set<Path> moduleDirs = new LinkedHashSet<>();
+    moduleDirs.add(root);
+    modules.forEach(module -> moduleDirs.add(root.resolve(module).normalize()));
+    List<Path> files = new ArrayList<>();
+    for (Path moduleDir : moduleDirs) {
+      for (String resourceDir : RESOURCE_DIRS) {
+        Path dir = moduleDir.resolve(resourceDir);
+        if (!Files.isDirectory(dir)) continue;
+        try (Stream<Path> listing = Files.list(dir)) {
+          listing.filter(p -> p.getFileName().toString().endsWith(".properties"))
+              .filter(Files::isRegularFile)
+              .sorted()
+              .forEach(files::add);
+        } catch (IOException e) {
+          LOG.warning("Cannot list " + dir + ": " + e.getMessage());
+        }
+      }
     }
-    return null;
+    return files;
+  }
+
+  private List<String> splitPackages(String value) {
+    return Arrays.stream(value.split(","))
+        .map(String::strip)
+        .filter(pkg -> !pkg.isBlank())
+        .toList();
   }
 
   // ── Module detection ──────────────────────────────────────────────
 
-  private List<String> detectModules(Path root) {
+  /** Reads {@code <module>} entries from the root {@code pom.xml}; empty when absent or unreadable. */
+  public static List<String> detectModules(Path root) {
     Path pom = root.resolve("pom.xml");
     if (!Files.exists(pom)) return List.of();
     try {
@@ -180,15 +233,31 @@ public class ProjectIndexer {
 
   // ── Feature root detection ────────────────────────────────────────
 
+  private List<Path> configuredRoots(Path root, List<String> configured, List<Path> discovered) {
+    if (configured == null || configured.isEmpty()) return discovered;
+    Path normalizedRoot = root.toAbsolutePath().normalize();
+    List<Path> roots = configured.stream()
+        .map(normalizedRoot::resolve)
+        .map(Path::normalize)
+        .filter(path -> path.startsWith(normalizedRoot))
+        .filter(Files::isDirectory)
+        .distinct()
+        .toList();
+    return roots.isEmpty() ? discovered : roots;
+  }
+
   private List<Path> findFeatureRoots(Path root) {
     List<Path> roots = new ArrayList<>();
     try {
-      Files.walkFileTree(root, Set.of(), 6, new SimpleFileVisitor<>() {
+      Files.walkFileTree(root, new SimpleFileVisitor<>() {
         @Override
         public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
-          String name = dir.getFileName() == null ? "" : dir.getFileName().toString();
-          if (name.equals("target")) return FileVisitResult.SKIP_SUBTREE;
-          if (name.equals("features")) roots.add(dir);
+          if (isExcludedDirectory(dir)) return FileVisitResult.SKIP_SUBTREE;
+          if (dir.endsWith("features")) {
+            roots.add(dir);
+            // parseFeatures walks this subtree; do not discover nested "features" roots again.
+            return FileVisitResult.SKIP_SUBTREE;
+          }
           return FileVisitResult.CONTINUE;
         }
         @Override
@@ -206,12 +275,14 @@ public class ProjectIndexer {
   private List<Path> findResourceDirs(Path root, String dirName) {
     List<Path> dirs = new ArrayList<>();
     try {
-      Files.walkFileTree(root, Set.of(), 6, new SimpleFileVisitor<>() {
+      Files.walkFileTree(root, new SimpleFileVisitor<>() {
         @Override
         public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
-          String name = dir.getFileName() == null ? "" : dir.getFileName().toString();
-          if (name.equals("target")) return FileVisitResult.SKIP_SUBTREE;
-          if (name.equals(dirName)) dirs.add(dir);
+          if (isExcludedDirectory(dir)) return FileVisitResult.SKIP_SUBTREE;
+          if (dir.endsWith(dirName)) {
+            dirs.add(dir);
+            return FileVisitResult.SKIP_SUBTREE;
+          }
           return FileVisitResult.CONTINUE;
         }
         @Override
@@ -228,23 +299,52 @@ public class ProjectIndexer {
 
   // ── Feature parsing ───────────────────────────────────────────────
 
-  private List<FeatureIndex> parseFeatures(List<Path> featureRoots) {
+  private List<FeatureIndex> parseFeatures(Path projectRoot, List<Path> featureRoots, List<String> parseErrors) {
     List<FeatureIndex> features = new ArrayList<>();
+    // Overlapping roots (e.g. "." and "src") must not parse the same file twice.
+    Set<Path> parsed = new HashSet<>();
     for (Path root : featureRoots) {
-      try (Stream<Path> walk = Files.walk(root)) {
-        walk.filter(p -> p.toString().endsWith(".feature"))
-            .forEach(p -> {
-              try {
-                features.add(featureParser.parse(p));
-              } catch (IOException e) {
-                LOG.warning("Cannot parse feature " + p + ": " + e.getMessage());
+      try {
+        Files.walkFileTree(root, new SimpleFileVisitor<>() {
+          @Override
+          public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
+            if (isExcludedDirectory(dir)) return FileVisitResult.SKIP_SUBTREE;
+            return FileVisitResult.CONTINUE;
+          }
+          @Override
+          public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
+            if (!file.toString().endsWith(".feature")) return FileVisitResult.CONTINUE;
+            try {
+              if (parsed.add(file.toRealPath())) {
+                features.add(featureParser.parse(file));
               }
-            });
+            } catch (IOException | RuntimeException e) {
+              recordParseError(projectRoot, file, e, parseErrors);
+            }
+            return FileVisitResult.CONTINUE;
+          }
+          @Override
+          public FileVisitResult visitFileFailed(Path file, IOException exc) {
+            recordParseError(projectRoot, file, exc, parseErrors);
+            return FileVisitResult.CONTINUE;
+          }
+        });
       } catch (IOException e) {
-        LOG.warning("Error walking feature root " + root + ": " + e.getMessage());
+        recordParseError(projectRoot, root, e, parseErrors);
       }
     }
     return List.copyOf(features);
+  }
+
+  private void recordParseError(Path projectRoot, Path file, Exception e, List<String> parseErrors) {
+    Path absoluteRoot = projectRoot.toAbsolutePath().normalize();
+    Path absoluteFile = file.toAbsolutePath().normalize();
+    String location = absoluteFile.toString();
+    if (absoluteFile.startsWith(absoluteRoot)) {
+      location = absoluteRoot.relativize(absoluteFile).toString().replace('\\', '/');
+    }
+    LOG.warning("Cannot parse feature " + location + ": " + e.getMessage());
+    parseErrors.add(location + ": " + e.getMessage());
   }
 
   // ── Step definition scanning ──────────────────────────────────────
@@ -259,8 +359,10 @@ public class ProjectIndexer {
           String className = extractClassName(content);
           Matcher m = STEP_ANNOTATION.matcher(content);
           while (m.find()) {
-            if (seen.add(javaFile + ":" + m.group(2))) {
-              defs.add(new StepDefinitionIndex(m.group(1), m.group(2), javaFile, className, ""));
+            // Store the runtime expression, not its Java-escaped source form (\\d+ -> \d+).
+            String expression = TestaraFlavorIndexer.unescapeAnnotation(m.group(2));
+            if (seen.add(javaFile + ":" + expression)) {
+              defs.add(new StepDefinitionIndex(m.group(1), expression, javaFile, className, ""));
             }
           }
         } catch (IOException e) {
@@ -284,13 +386,12 @@ public class ProjectIndexer {
           if (!content.contains("@CommandTag")) continue;
           Matcher m = COMMAND_TAG.matcher(content);
           while (m.find()) {
-            String name = m.group(1);
-            if (seen.add(name)) {
-              List<String> aliases = parseStringArray(m.group(2));
-              boolean cacheable = "true".equals(m.group(3));
-              String returnType = extractReturnType(content);
+            Optional<TagAttributes> tag = parseTagAttributes(m.group(1));
+            if (tag.isPresent() && seen.add(tag.get().name())) {
+              String returnType = genericArgument(content, COMMAND_LOGIC, 0);
               String className = extractClassName(content);
-              commands.add(new CommandIndex(name, aliases, returnType, cacheable, javaFile, className));
+              commands.add(new CommandIndex(tag.get().name(), tag.get().aliases(), returnType,
+                  tag.get().cacheable(), javaFile, className));
             }
           }
         } catch (IOException e) {
@@ -314,14 +415,13 @@ public class ProjectIndexer {
           if (!content.contains("@ValidationTag")) continue;
           Matcher m = VALIDATION_TAG.matcher(content);
           while (m.find()) {
-            String name = m.group(1);
-            if (seen.add(name)) {
-              List<String> aliases = parseStringArray(m.group(2));
-              boolean cacheable = "true".equals(m.group(3));
-              String actualType = extractGenericType(content, "ValidatorLogic", 0);
-              String expectedType = extractGenericType(content, "ValidatorLogic", 1);
+            Optional<TagAttributes> tag = parseTagAttributes(m.group(1));
+            if (tag.isPresent() && seen.add(tag.get().name())) {
+              String actualType = genericArgument(content, VALIDATOR_LOGIC, 0);
+              String expectedType = genericArgument(content, VALIDATOR_LOGIC, 1);
               String className = extractClassName(content);
-              validations.add(new ValidationIndex(name, aliases, actualType, expectedType, cacheable, javaFile, className));
+              validations.add(new ValidationIndex(tag.get().name(), tag.get().aliases(), actualType,
+                  expectedType, tag.get().cacheable(), javaFile, className));
             }
           }
         } catch (IOException e) {
@@ -371,30 +471,57 @@ public class ProjectIndexer {
   // ── Tag index ─────────────────────────────────────────────────────
 
   private List<TagIndex> buildTagIndex(List<FeatureIndex> features) {
-    Map<String, List<Path>> tagFeatures = new TreeMap<>();
-    Map<String, Integer> tagScenarios = new TreeMap<>();
-    Map<String, List<String>> tagScenarioNames = new TreeMap<>();
+    Map<String, Set<Path>> tagFeatures = new TreeMap<>();
+    Map<String, Set<String>> tagScenarioKeys = new TreeMap<>();
+    Map<String, LinkedHashSet<String>> tagScenarioNames = new TreeMap<>();
+    Map<String, Integer> tagCases = new TreeMap<>();
 
     for (FeatureIndex feature : features) {
+      // Keep feature-only tags visible even when a feature currently has no scenarios.
       for (String tag : feature.tags()) {
-        tagFeatures.computeIfAbsent(tag, k -> new ArrayList<>()).add(feature.path());
+        tagFeatures.computeIfAbsent(tag, k -> new LinkedHashSet<>()).add(feature.path());
       }
-      for (ScenarioIndex scenario : feature.scenarios()) {
-        for (String tag : scenario.tags()) {
-          tagFeatures.computeIfAbsent(tag, k -> new ArrayList<>()).add(feature.path());
-          tagScenarios.merge(tag, 1, Integer::sum);
-          tagScenarioNames.computeIfAbsent(tag, k -> new ArrayList<>()).add(scenario.name());
+
+      for (int ordinal = 0; ordinal < feature.scenarios().size(); ordinal++) {
+        ScenarioIndex scenario = feature.scenarios().get(ordinal);
+        Set<String> baseTags = new LinkedHashSet<>(feature.tags());
+        baseTags.addAll(scenario.tags());
+
+        Set<String> definitionTags = new LinkedHashSet<>(baseTags);
+        scenario.examples().forEach(ex -> definitionTags.addAll(ex.tags()));
+
+        // Keyed by position: two scenarios may share a name and still count separately.
+        String scenarioKey = feature.path() + "\u0000" + ordinal;
+        for (String tag : definitionTags) {
+          tagFeatures.computeIfAbsent(tag, k -> new LinkedHashSet<>()).add(feature.path());
+          tagScenarioKeys.computeIfAbsent(tag, k -> new LinkedHashSet<>()).add(scenarioKey);
+          tagScenarioNames.computeIfAbsent(tag, k -> new LinkedHashSet<>()).add(scenario.name());
+        }
+
+        if (scenario.type() == ScenarioType.SCENARIO_OUTLINE) {
+          for (ExamplesIndex examples : scenario.examples()) {
+            Set<String> caseTags = new LinkedHashSet<>(baseTags);
+            caseTags.addAll(examples.tags());
+            for (String tag : caseTags) {
+              tagCases.merge(tag, examples.rowCount(), Integer::sum);
+            }
+          }
+        } else {
+          for (String tag : baseTags) {
+            tagCases.merge(tag, 1, Integer::sum);
+          }
         }
       }
     }
 
     return tagFeatures.keySet().stream().map(tag -> new TagIndex(
         tag,
-        (int) tagFeatures.getOrDefault(tag, List.of()).stream().distinct().count(),
-        tagScenarios.getOrDefault(tag, 0),
-        tagFeatures.getOrDefault(tag, List.of()).stream().distinct().toList(),
-        tagScenarioNames.getOrDefault(tag, List.of())
-    )).collect(Collectors.toList());
+        tagFeatures.getOrDefault(tag, Set.of()).size(),
+        tagScenarioKeys.getOrDefault(tag, Set.of()).size(),
+        tagCases.getOrDefault(tag, 0),
+        List.copyOf(tagFeatures.getOrDefault(tag, Set.of())),
+        List.copyOf(tagScenarioNames.getOrDefault(tag, new LinkedHashSet<>()))
+    )).toList();
   }
 
   // ── Utilities ─────────────────────────────────────────────────────
@@ -405,8 +532,8 @@ public class ProjectIndexer {
       Files.walkFileTree(root, new SimpleFileVisitor<>() {
         @Override
         public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
-          String name = dir.getFileName() == null ? "" : dir.getFileName().toString();
-          return name.equals("target") ? FileVisitResult.SKIP_SUBTREE : FileVisitResult.CONTINUE;
+          if (isExcludedDirectory(dir)) return FileVisitResult.SKIP_SUBTREE;
+          return FileVisitResult.CONTINUE;
         }
         @Override
         public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
@@ -425,26 +552,69 @@ public class ProjectIndexer {
     return files;
   }
 
+  /**
+   * True for build output, VCS and tool directories that must never be indexed or fingerprinted.
+   * {@code build} is only excluded next to a Gradle build script, so a {@code build} package survives.
+   */
+  public static boolean isExcludedDirectory(Path dir) {
+    Path fileName = dir.getFileName();
+    if (fileName == null) return false;
+    String name = fileName.toString();
+    if (EXCLUDED_DIRECTORIES.contains(name)) return true;
+    if (!"build".equals(name)) return false;
+    return Files.exists(dir.resolveSibling("build.gradle"))
+        || Files.exists(dir.resolveSibling("build.gradle.kts"));
+  }
+
   private String extractClassName(String source) {
     Matcher m = CLASS_NAME.matcher(source);
     return m.find() ? m.group(1) : "";
   }
 
-  private String extractReturnType(String source) {
-    // e.g. "implements CommandLogic<String>" → "String"
-    Pattern p = Pattern.compile("implements\\s+CommandLogic\\s*<\\s*([^>]+)\\s*>");
-    Matcher m = p.matcher(source);
-    return m.find() ? m.group(1).strip() : "Object";
+  private Optional<TagAttributes> parseTagAttributes(String body) {
+    Matcher command = TAG_COMMAND.matcher(body);
+    if (!command.find()) return Optional.empty();
+    List<String> aliases = List.of();
+    Matcher alias = TAG_ALIAS.matcher(body);
+    if (alias.find()) {
+      if (alias.group(1) != null) {
+        aliases = parseStringArray(alias.group(1));
+      } else {
+        aliases = parseStringArray(alias.group(2));
+      }
+    }
+    Matcher cacheable = TAG_CACHEABLE.matcher(body);
+    boolean isCacheable = cacheable.find() && "true".equals(cacheable.group(1));
+    return Optional.of(new TagAttributes(command.group(1), aliases, isCacheable));
   }
 
-  private String extractGenericType(String source, String baseClass, int index) {
-    Pattern p = Pattern.compile("extends\\s+" + baseClass + "\\s*<\\s*([^,>]+)(?:,\\s*([^>]+))?\\s*>");
-    Matcher m = p.matcher(source);
-    if (m.find()) {
-      String type = index == 0 ? m.group(1) : m.group(2);
-      return type != null ? type.strip() : "Object";
+  /**
+   * Returns the {@code index}-th type argument of the first {@code Base<...>} occurrence, keeping
+   * nested generics intact (e.g. {@code CommandLogic<Map<String, List<Integer>>>}).
+   */
+  private String genericArgument(String source, Pattern baseType, int index) {
+    Matcher m = baseType.matcher(source);
+    if (!m.find()) return "Object";
+    List<String> arguments = new ArrayList<>();
+    StringBuilder current = new StringBuilder();
+    int depth = 1;
+    for (int i = m.end(); i < source.length() && depth > 0; i++) {
+      char c = source.charAt(i);
+      if (c == '<') {
+        depth++;
+      } else if (c == '>') {
+        depth--;
+      } else if (c == ',' && depth == 1) {
+        arguments.add(current.toString().strip());
+        current.setLength(0);
+        continue;
+      }
+      if (depth > 0) current.append(c);
     }
-    return "Object";
+    if (depth > 0) return "Object";
+    arguments.add(current.toString().strip());
+    if (index >= arguments.size() || arguments.get(index).isBlank()) return "Object";
+    return arguments.get(index);
   }
 
   private boolean matchesScanPackage(Path javaFile, Set<String> scanPackages) {

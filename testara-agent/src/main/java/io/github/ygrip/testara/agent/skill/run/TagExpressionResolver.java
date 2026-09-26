@@ -1,9 +1,15 @@
 package io.github.ygrip.testara.agent.skill.run;
 
+import io.github.ygrip.testara.agent.index.ExamplesIndex;
+import io.github.ygrip.testara.agent.index.FeatureIndex;
+import io.github.ygrip.testara.agent.index.ScenarioIndex;
 import io.github.ygrip.testara.agent.index.TagIndex;
 import io.github.ygrip.testara.agent.index.TestaraProjectProfile;
+import io.cucumber.tagexpressions.Expression;
+import io.cucumber.tagexpressions.TagExpressionParser;
 
 import java.util.*;
+import java.util.logging.Logger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -13,6 +19,8 @@ import java.util.stream.Collectors;
  * Priority: explicit tags → known aliases → indexed project tags → domain inference.
  */
 public class TagExpressionResolver {
+
+  private static final Logger LOG = Logger.getLogger(TagExpressionResolver.class.getName());
 
   private static final Map<String, String> DEFAULT_ALIASES = Map.of(
       "smoke",      "@smoke",
@@ -28,7 +36,10 @@ public class TagExpressionResolver {
   );
 
   private static final Pattern EXPLICIT_TAG = Pattern.compile("@(\\w[\\w-]*)");
-  private static final Pattern NOT_CLAUSE   = Pattern.compile("\\b(?:not|except|exclude)\\s+(\\w+)");
+  private static final Pattern EXCLUSION    = Pattern.compile("(?i)\\b(?:not|except|exclude)\\s+");
+  private static final Pattern NL_EXCLUSION = Pattern.compile("(?i)\\b(?:except|exclude)\\b");
+  private static final Pattern SINGLE_TAG   = Pattern.compile("^@[^\\s()]+$");
+  private static final Set<String> EXCLUSION_WORDS = Set.of("not", "except", "exclude", "or");
 
   private final Map<String, String> aliases;
 
@@ -36,82 +47,147 @@ public class TagExpressionResolver {
     this(Map.of());
   }
 
+  /** Multi-token alias values are parenthesized so splicing them never changes precedence. */
   public TagExpressionResolver(Map<String, String> customAliases) {
     Map<String, String> merged = new HashMap<>(DEFAULT_ALIASES);
-    merged.putAll(customAliases);
+    customAliases.forEach((alias, expression) -> merged.put(alias, grouped(expression.strip())));
     this.aliases = Collections.unmodifiableMap(merged);
   }
 
   public String resolve(String input, TestaraProjectProfile profile) {
     if (input == null || input.isBlank()) return "";
-    String lower = input.toLowerCase(Locale.ROOT);
+    String trimmed = input.strip();
 
-    // 1. Collect explicit @tags from input
+    // Preserve an explicit Cucumber expression exactly; do not rebuild its precedence.
+    if (looksLikeExplicitExpression(trimmed) && !NL_EXCLUSION.matcher(trimmed).find()
+        && isValidExpression(trimmed)) {
+      return trimmed;
+    }
+
+    // 1. Everything after the first not/except/exclude is the excluded sub-expression, negated as a
+    //    whole: "@smoke except @slow or @flaky" → "@smoke and not (@slow or @flaky)".
+    Set<String> indexedTags = profile.tags().stream().map(TagIndex::tag).collect(Collectors.toSet());
+    Matcher exclusion = EXCLUSION.matcher(trimmed);
+    String positiveInput = trimmed;
+    List<String> negativeTerms = new ArrayList<>();
+    if (exclusion.find()) {
+      positiveInput = trimmed.substring(0, exclusion.start());
+      negativeTerms = negativeTerms(trimmed.substring(exclusion.end()), indexedTags);
+    }
+    String negativeExpr = negativeExpression(negativeTerms);
+    List<String> negativeTags = tagsIn(negativeTerms);
+    String lower = positiveInput.toLowerCase(Locale.ROOT);
+
+    // 2. Collect explicit @tags from the positive part, excluding tags identified as negative.
     List<String> positiveTags = new ArrayList<>();
-    List<String> negativeTags = new ArrayList<>();
-
-    Matcher explicit = EXPLICIT_TAG.matcher(input);
-    while (explicit.find()) positiveTags.add(explicit.group(0));
-
-    // 2. Collect NOT clauses
-    Matcher not = NOT_CLAUSE.matcher(lower);
-    while (not.find()) {
-      String word = not.group(1);
-      String resolved = aliases.getOrDefault(word, "@" + word);
-      negativeTags.add(resolved);
+    Matcher explicit = EXPLICIT_TAG.matcher(positiveInput);
+    while (explicit.find()) {
+      String tag = explicit.group(0);
+      if (!negativeTags.contains(tag)) positiveTags.add(tag);
     }
 
     // 3. Map natural language words to aliases / indexed tags
     if (positiveTags.isEmpty()) {
-      Set<String> indexed = profile.tags().stream()
-          .map(TagIndex::tag).collect(Collectors.toSet());
-
       for (String word : lower.split("[\\s,;]+")) {
         word = word.replaceAll("[^a-z0-9_-]", "");
         if (word.isBlank()) continue;
         if (aliases.containsKey(word)) {
           String alias = aliases.get(word);
           if (!negativeTags.contains(alias)) positiveTags.add(alias);
-        } else if (indexed.contains("@" + word)) {
+        } else if (indexedTags.contains("@" + word)) {
           if (!negativeTags.contains("@" + word)) positiveTags.add("@" + word);
         }
       }
       if (positiveTags.isEmpty()) {
         String specific = inferSpecificExpressionFromFeatureAndScenarioText(lower, profile, negativeTags);
-        if (!specific.isBlank()) return appendNegative(specific, negativeTags);
+        if (!specific.isBlank()) return appendNegative(specific, negativeExpr);
         positiveTags.addAll(inferFromFeatureAndScenarioText(lower, profile, negativeTags));
       }
     }
 
     // 4. Handle OR groups: "payment or order tests" → "(payment or order)"
-    if (positiveTags.isEmpty() && !lower.contains(" or ")) return negativeTags.isEmpty() ? "" :
-        negativeTags.stream().distinct().map(t -> "not " + t).collect(Collectors.joining(" and "));
+    if (positiveTags.isEmpty() && !lower.contains(" or ")) return negativeExpr;
 
     if (positiveTags.isEmpty() && lower.contains(" or ")) {
       String[] orParts = lower.split("\\s+or\\s+");
       List<String> orTags = new ArrayList<>();
-      Set<String> indexed = profile.tags().stream().map(TagIndex::tag).collect(Collectors.toSet());
       for (String part : orParts) {
         for (String word : part.split("[\\s,;]+")) {
           word = word.replaceAll("[^a-z0-9_-]", "");
           if (word.isBlank()) continue;
           if (aliases.containsKey(word)) { orTags.add(aliases.get(word)); break; }
-          else if (indexed.contains("@" + word)) { orTags.add("@" + word); break; }
+          else if (indexedTags.contains("@" + word)) { orTags.add("@" + word); break; }
         }
       }
       if (!orTags.isEmpty()) positiveTags.addAll(orTags);
     }
 
-    if (positiveTags.isEmpty() && negativeTags.isEmpty()) return "";
+    return appendNegative(formatPositiveTags(positiveTags, lower), negativeExpr);
+  }
 
-    String positive = formatPositiveTags(positiveTags, lower);
-    String negative = negativeTags.stream().distinct()
-        .map(t -> "not " + t)
-        .collect(Collectors.joining(" and "));
+  /**
+   * Terms of the excluded sub-expression: the text itself when it is an explicit Cucumber
+   * expression, else its explicit {@code @tags} (case kept as typed), else aliases/indexed tags for
+   * its words, else the first word as a tag.
+   */
+  private List<String> negativeTerms(String excluded, Set<String> indexedTags) {
+    String text = excluded.strip();
+    if (looksLikeExplicitExpression(text) && isValidExpression(text)) {
+      return List.of(grouped(text));
+    }
+    List<String> terms = new ArrayList<>();
+    Matcher explicit = EXPLICIT_TAG.matcher(text);
+    while (explicit.find()) terms.add(explicit.group(0));
+    if (!terms.isEmpty()) return terms;
 
-    if (positive.isBlank()) return negative;
-    if (negative.isBlank()) return positive;
-    return positive + " and " + negative;
+    String firstWord = null;
+    for (String word : text.toLowerCase(Locale.ROOT).split("[\\s,;]+")) {
+      word = word.replaceAll("[^a-z0-9_-]", "");
+      if (word.isBlank() || STOP_WORDS.contains(word) || EXCLUSION_WORDS.contains(word)) continue;
+      if (firstWord == null) firstWord = word;
+      if (aliases.containsKey(word)) terms.add(aliases.get(word));
+      else if (indexedTags.contains("@" + word)) terms.add("@" + word);
+    }
+    if (terms.isEmpty() && firstWord != null) terms.add("@" + firstWord);
+    return terms;
+  }
+
+  private String negativeExpression(List<String> terms) {
+    List<String> distinct = terms.stream().distinct().toList();
+    if (distinct.isEmpty()) return "";
+    if (distinct.size() == 1) return "not " + distinct.get(0);
+    return "not (" + String.join(" or ", distinct) + ")";
+  }
+
+  private List<String> tagsIn(List<String> terms) {
+    List<String> tags = new ArrayList<>();
+    for (String term : terms) {
+      Matcher matcher = EXPLICIT_TAG.matcher(term);
+      while (matcher.find()) tags.add(matcher.group(0));
+    }
+    return tags;
+  }
+
+  /** A single tag or an already fully parenthesized expression as-is; anything else in parentheses. */
+  private static String grouped(String expression) {
+    if (SINGLE_TAG.matcher(expression).matches() || isFullyParenthesized(expression)) return expression;
+    return "(" + expression + ")";
+  }
+
+  private static boolean isFullyParenthesized(String expression) {
+    if (!expression.startsWith("(") || !expression.endsWith(")")) return false;
+    int depth = 0;
+    for (int i = 0; i < expression.length(); i++) {
+      char c = expression.charAt(i);
+      if (c == '(') depth++;
+      if (c == ')') depth--;
+      if (depth == 0 && i < expression.length() - 1) return false;
+    }
+    return depth == 0;
+  }
+
+  private boolean isValidExpression(String expression) {
+    return parseOrNull(expression) != null;
   }
 
   private String formatPositiveTags(List<String> positiveTags, String lower) {
@@ -121,11 +197,10 @@ public class TagExpressionResolver {
     return String.join(" and ", distinct);
   }
 
-  private String appendNegative(String positive, List<String> negativeTags) {
-    String negative = negativeTags.stream().distinct()
-        .map(t -> "not " + t)
-        .collect(Collectors.joining(" and "));
-    return negative.isBlank() ? positive : positive + " and " + negative;
+  private String appendNegative(String positive, String negative) {
+    if (positive.isBlank()) return negative;
+    if (negative.isBlank()) return positive;
+    return positive + " and " + negative;
   }
 
   private String inferSpecificExpressionFromFeatureAndScenarioText(String lower, TestaraProjectProfile profile,
@@ -151,7 +226,7 @@ public class TagExpressionResolver {
         }
       }
     }
-    if (best == null || (tie && best.tags().isEmpty())) return "";
+    if (best == null || tie) return "";
     List<String> significant = best.tags().stream()
         .filter(t -> !negativeTags.contains(t))
         .filter(t -> !t.matches("@P\\d+") && !Set.of("@positive", "@negative", "@manual").contains(t))
@@ -254,39 +329,54 @@ public class TagExpressionResolver {
     return tags;
   }
 
-  /** Count scenarios matching the resolved expression (simple tag set match). */
+  /** Count scenarios (or Scenario Outlines with at least one matching Examples block) matching the expression. */
   public int countMatching(String tagExpression, TestaraProjectProfile profile) {
     if (tagExpression.isBlank()) return profile.totalScenarios();
+    Expression expression = parseOrNull(tagExpression);
+    if (expression == null) return 0;
     return (int) profile.features().stream()
-        .flatMap(f -> f.scenarios().stream().map(s -> Map.entry(f, s)))
-        .filter(entry -> {
-          Set<String> scenarioTags = new HashSet<>(entry.getKey().tags());
-          scenarioTags.addAll(entry.getValue().tags());
-          return matchesExpression(tagExpression, scenarioTags);
-        })
+        .flatMap(f -> f.scenarios().stream().filter(s -> matches(expression, f, s)))
         .count();
   }
 
-  /** Very simple expression evaluator: handles `and`, `not`, single tags. */
-  private boolean matchesExpression(String expr, Set<String> tags) {
-    String[] parts = expr.split("\\s+and\\s+");
-    for (String part : parts) {
-      part = part.strip();
-      if (part.startsWith("(") && part.endsWith(")") && part.contains(" or ")) {
-        String inside = part.substring(1, part.length() - 1);
-        boolean any = Arrays.stream(inside.split("\\s+or\\s+"))
-            .map(String::strip)
-            .anyMatch(tags::contains);
-        if (!any) return false;
-        continue;
-      }
-      if (part.startsWith("not ")) {
-        String negTag = part.substring(4).strip();
-        if (tags.contains(negTag)) return false;
-      } else if (!tags.contains(part)) {
-        return false;
-      }
+  /**
+   * Whether Cucumber would run {@code scenario} for {@code tagExpression}: pickles inherit feature
+   * and scenario tags, and a Scenario Outline's pickles additionally carry the tags of the Examples
+   * block they come from, so an outline matches when any of its Examples blocks does.
+   */
+  public boolean matches(String tagExpression, FeatureIndex feature, ScenarioIndex scenario) {
+    Expression expression = parseOrNull(tagExpression);
+    return expression != null && matches(expression, feature, scenario);
+  }
+
+  private boolean matches(Expression expression, FeatureIndex feature, ScenarioIndex scenario) {
+    List<String> baseTags = new ArrayList<>(feature.tags());
+    baseTags.addAll(scenario.tags());
+    if (scenario.examples() == null || scenario.examples().isEmpty()) {
+      return expression.evaluate(baseTags);
     }
-    return true;
+    for (ExamplesIndex examples : scenario.examples()) {
+      List<String> pickleTags = new ArrayList<>(baseTags);
+      if (examples.tags() != null) pickleTags.addAll(examples.tags());
+      if (expression.evaluate(pickleTags)) return true;
+    }
+    return false;
+  }
+
+  private Expression parseOrNull(String tagExpression) {
+    try {
+      return TagExpressionParser.parse(tagExpression);
+    } catch (RuntimeException e) {
+      LOG.fine("Not a valid Cucumber tag expression: " + tagExpression + " (" + e.getMessage() + ")");
+      return null;
+    }
+  }
+
+  private boolean looksLikeExplicitExpression(String input) {
+    String lower = input.toLowerCase(Locale.ROOT);
+    return input.startsWith("@")
+        || input.startsWith("(")
+        || lower.startsWith("not @")
+        || lower.startsWith("not (");
   }
 }

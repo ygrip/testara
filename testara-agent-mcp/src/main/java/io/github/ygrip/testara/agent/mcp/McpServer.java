@@ -2,29 +2,50 @@ package io.github.ygrip.testara.agent.mcp;
 
 import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.io.OutputStream;
 import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Properties;
+import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.function.Function;
+import java.util.logging.Level;
 import java.util.logging.Logger;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import io.github.ygrip.testara.agent.AgentMode;
+import io.github.ygrip.testara.agent.config.AgentYamlConfig;
 import io.github.ygrip.testara.agent.index.TestaraProjectProfile;
 import io.github.ygrip.testara.agent.knowledge.JsonlKnowledgeStore;
 import io.github.ygrip.testara.agent.llm.DisabledLlmClient;
 import io.github.ygrip.testara.agent.llm.LlmClient;
 import io.github.ygrip.testara.agent.llm.LlmConfig;
+import io.github.ygrip.testara.agent.llm.LocalLlmClient;
 import io.github.ygrip.testara.agent.llm.OpenAiLlmClient;
 import io.github.ygrip.testara.agent.skill.AgentContext;
 import io.github.ygrip.testara.agent.skill.ListCommandsSkill;
@@ -56,18 +77,52 @@ import io.github.ygrip.testara.agent.skill.run.TagExpressionResolver;
  * Start: java -jar testara-agent-mcp.jar [project-root]
  * <p>
  * Defaults:
- * - File writes enabled by default (set TESTARA_AGENT_WRITE_ENABLED=false to disable)
+ * - File writes enabled by default; TESTARA_AGENT_WRITE_ENABLED=false or write.enabled: false in the
+ *   project's testara-agent.yaml turns them off for every call (see {@link WriteGate})
  * - Test execution enabled by default (set TESTARA_AGENT_RUN_ENABLED=false to disable)
  * - test_run defaults to execute=true and dryRun=false
+ * <p>
+ * Protocol: messages without an {@code id} are notifications and never get a response. A tool that
+ * fails returns a result with {@code isError: true}; an unknown tool is a {@code -32602} error.
+ * <p>
+ * Threading ({@link #run()}): {@code tools/call} requests run on a small worker pool while
+ * {@code initialize}, {@code ping}, {@code tools/list}, {@code prompts/*} and notifications are
+ * answered on the reader thread, so a long call never blocks a ping. Every response goes through one
+ * {@link LineWriter}. {@code notifications/cancelled} cancels a waiting {@code testara_run}
+ * ({@code wait=true}) or ends a {@code testara_run_status} long-poll, and suppresses its response.
+ * An executed {@code testara_run} starts in the background ({@link RunRegistry}); on stdin EOF or JVM
+ * shutdown every active run is cancelled.
  */
 public class McpServer {
 
   private static final Logger LOG = Logger.getLogger(McpServer.class.getName());
 
   private static final String SERVER_NAME = "testara";
+  private static final String VERSION_RESOURCE = "/testara-agent-mcp-version.properties";
   private static final String SERVER_VERSION = readVersion();
+  private static final int PARSE_ERROR = -32700;
+  private static final int INVALID_REQUEST = -32600;
+  private static final int METHOD_NOT_FOUND = -32601;
+  private static final int INVALID_PARAMS = -32602;
+  private static final int INTERNAL_ERROR = -32603;
+  private static final String OVERWRITE_DESCRIPTION =
+      "Replace files that already exist. Default false: existing files are reported as exists and left untouched.";
+  private static final String COMPILE_DESCRIPTION =
+      "Run the test-compile gate after writing files. Default false.";
+  private static final String RUN_ID_DESCRIPTION = "Run id returned by testara_run (run_started: <runId>)";
+  private static final String RUN_STATUS_TOOL = "testara_run_status";
+  private static final String RUN_CANCEL_TOOL = "testara_run_cancel";
+  private static final int WORKER_THREADS = 4;
+  private static final long WORKER_SHUTDOWN_SECONDS = 5;
+  private static final int MAX_WAIT_SECONDS = 60;
+  private static final int LOG_TAIL_LINES = 30;
   private final Path projectRoot;
   private final ObjectMapper mapper = new ObjectMapper();
+  private final RunRegistry registry = new RunRegistry(mapper);
+  /** Cancellation signals of in-flight {@code tools/call} requests, keyed by JSON request id. */
+  private final Map<String, CompletableFuture<Void>> cancellations = new ConcurrentHashMap<>();
+  private final ArrayNode tools = toolDefinitions();
+  private final Set<String> toolNames = toolNames(tools);
   // Skills
   private final TestSummarySkill summarySkill = new TestSummarySkill();
   private final TestOverviewSkill overviewSkill = new TestOverviewSkill();
@@ -95,92 +150,176 @@ public class McpServer {
       .normalize();
   }
 
-  private static String readVersion() {
-    try (java.io.InputStream is = McpServer.class.getResourceAsStream(
-      "/META-INF/maven/io.github.ygrip/testara-agent-cli/pom.properties")) {
+  /** This module's build version, then the jar manifest's Implementation-Version, else "unknown". */
+  static String readVersion() {
+    try (InputStream is = McpServer.class.getResourceAsStream(VERSION_RESOURCE)) {
       if (is != null) {
-        java.util.Properties p = new java.util.Properties();
+        Properties p = new Properties();
         p.load(is);
-        return p.getProperty("version", "unknown");
+        String version = p.getProperty("version");
+        if (version != null && !version.isBlank()) return version;
       }
-    } catch (Exception ignored) {
+    } catch (IOException e) {
+      LOG.warning("Cannot read " + VERSION_RESOURCE + ": " + e.getMessage());
     }
+    String implementationVersion = McpServer.class.getPackage().getImplementationVersion();
+    if (implementationVersion != null) return implementationVersion;
     return "unknown";
   }
 
   public void run() throws IOException {
-    BufferedReader in = new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8));
-    PrintWriter out = new PrintWriter(new OutputStreamWriter(System.out, StandardCharsets.UTF_8), true);
+    run(System.in, System.out);
+  }
+
+  /** Serves JSON-RPC lines from {@code input} until EOF, then cancels active runs and stops workers. */
+  void run(InputStream input, OutputStream output) throws IOException {
+    BufferedReader in = new BufferedReader(new InputStreamReader(input, StandardCharsets.UTF_8));
+    LineWriter out = new LineWriter(new PrintWriter(new OutputStreamWriter(output, StandardCharsets.UTF_8), true));
 
     // Index only when the root looks like a real project — skip when launched from home dir or
     // a non-project directory (e.g. VS Code global MCP config with "." as CWD)
-    if (Files.exists(projectRoot.resolve("pom.xml")) || Files.exists(projectRoot.resolve("build.gradle"))) {
+    if (isProjectRoot(projectRoot)) {
       LOG.info("Indexing project at " + projectRoot);
       profile = JsonlKnowledgeStore.loadProfile(projectRoot);
       LOG.info("Index complete: " + profile.features()
         .size() + " features, " + profile.totalScenarios() + " scenarios");
     } else {
-      LOG.warning("No pom.xml or build.gradle found at " + projectRoot
+      LOG.warning("No pom.xml, build.gradle, or build.gradle.kts found at " + projectRoot
         + " — starting without project index. Pass the project path as the mcp argument.");
-      profile = new TestaraProjectProfile(
-        projectRoot,
-        null,
-        "unknown",
-        List.of(),
-        List.of(),
-        List.of(),
-        List.of(),
-        List.of(),
-        List.of(),
-        List.of(),
-        List.of(),
-        List.of(),
-        List.of(),
-        Map.of(),
-        Map.of(),
-        List.of(),
-        List.of()
-      );
+      profile = emptyProfile(projectRoot);
     }
 
-    String line;
-    while ((line = in.readLine()) != null) {
-      line = line.strip();
-      if (line.isEmpty())
-        continue;
-      try {
-        JsonNode request = mapper.readTree(line);
-        JsonNode response = handle(request);
+    Runtime.getRuntime().addShutdownHook(new Thread(registry::cancelAll, "testara-mcp-shutdown"));
+    ExecutorService workers = Executors.newFixedThreadPool(WORKER_THREADS, runnable -> {
+      Thread thread = new Thread(runnable, "testara-mcp-worker");
+      thread.setDaemon(true);
+      return thread;
+    });
+    try {
+      String line;
+      while ((line = in.readLine()) != null) {
+        line = line.strip();
+        if (line.isEmpty())
+          continue;
+        String response = handleLine(line, request -> dispatch(request, workers, out));
         if (response != null)
-          out.println(mapper.writeValueAsString(response));
-      } catch (Exception e) {
-        LOG.warning("Error handling request: " + e.getMessage());
-        out.println(errorResponse(null, -32700, "Parse error: " + e.getMessage()));
+          out.write(response);
       }
+    } finally {
+      registry.cancelAll();
+      shutdown(workers);
     }
   }
 
+  private static void shutdown(ExecutorService workers) {
+    workers.shutdownNow();
+    try {
+      if (!workers.awaitTermination(WORKER_SHUTDOWN_SECONDS, TimeUnit.SECONDS)) {
+        LOG.warning("MCP worker threads did not stop within " + WORKER_SHUTDOWN_SECONDS + "s");
+      }
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      LOG.warning("Interrupted while stopping MCP worker threads");
+    }
+  }
+
+  /**
+   * Answers a parsed request on the reader thread, except {@code tools/call}, which is queued on the
+   * worker pool and written when done (unless the client cancelled it); returns the line to write now.
+   */
+  private String dispatch(JsonNode request, ExecutorService workers, LineWriter out) {
+    String method = request.path("method").asText();
+    if ("notifications/cancelled".equals(method)) {
+      cancelRequest(request.path("params").path("requestId"));
+      return null;
+    }
+    if (!"tools/call".equals(method) || !request.has("id")) {
+      return respond(request, new CompletableFuture<>());
+    }
+    String key = request.get("id").toString();
+    CompletableFuture<Void> cancelled = new CompletableFuture<>();
+    cancellations.put(key, cancelled);
+    workers.execute(() -> {
+      try {
+        String response = respond(request, cancelled);
+        if (response != null && !cancelled.isDone()) {
+          out.write(response);
+        }
+      } finally {
+        cancellations.remove(key, cancelled);
+      }
+    });
+    return null;
+  }
+
+  private void cancelRequest(JsonNode requestId) {
+    if (requestId.isMissingNode() || requestId.isNull()) {
+      LOG.fine("notifications/cancelled without a requestId");
+      return;
+    }
+    CompletableFuture<Void> cancelled = cancellations.get(requestId.toString());
+    if (cancelled == null) {
+      LOG.fine("notifications/cancelled for request " + requestId + " that is not in flight");
+      return;
+    }
+    cancelled.complete(null);
+  }
+
+  /** Handles one stdio line; returns the response line, or null when nothing must be written. */
+  String handleLine(String line) {
+    return handleLine(line, request -> respond(request, new CompletableFuture<>()));
+  }
+
+  private String handleLine(String line, Function<JsonNode, String> responder) {
+    JsonNode request;
+    try {
+      request = mapper.readTree(line);
+    } catch (JsonProcessingException e) {
+      LOG.warning("Cannot parse request: " + e.getOriginalMessage());
+      return error(null, PARSE_ERROR, "Parse error: " + e.getOriginalMessage()).toString();
+    }
+    if (request == null || !request.isObject()) {
+      return error(null, INVALID_REQUEST, "Invalid Request: expected a JSON-RPC object").toString();
+    }
+    return responder.apply(request);
+  }
+
+  /** {@code cancelled} completes when the client cancels this request. */
+  private String respond(JsonNode request, CompletableFuture<Void> cancelled) {
+    try {
+      JsonNode response = handle(request, cancelled);
+      if (response == null) return null;
+      return response.toString();
+    } catch (RuntimeException e) {
+      LOG.log(Level.WARNING, "Internal error handling " + request.path("method").asText(), e);
+      if (!request.has("id")) return null;
+      return error(request.get("id"), INTERNAL_ERROR, "Internal error: " + describe(e)).toString();
+    }
+  }
+
+  /** Handles one JSON-RPC message; returns null for notifications (messages without an id). */
   JsonNode handle(JsonNode req) {
-    JsonNode id = req.has("id") ? req.get("id") : null;
+    return handle(req, new CompletableFuture<>());
+  }
+
+  private JsonNode handle(JsonNode req, CompletableFuture<Void> cancelled) {
     String method = req.path("method")
       .asText();
+    if (!req.has("id")) {
+      LOG.fine("Notification " + method + " needs no response");
+      return null;
+    }
+    JsonNode id = req.get("id");
     JsonNode params = req.path("params");
 
     return switch (method) {
       case "initialize" -> initializeResponse(id);
+      case "ping" -> response(id, mapper.createObjectNode());
       case "tools/list" -> toolsListResponse(id);
-      case "tools/call" -> toolsCallResponse(id, params);
+      case "tools/call" -> toolsCallResponse(id, params, cancelled);
       case "prompts/list" -> promptsListResponse(id);
       case "prompts/get" -> promptsGetResponse(id, params);
-      // Notifications have no id and require no response — return null to skip output
-      case "notifications/initialized", "notifications/cancelled" -> null;
-      default -> {
-        try {
-          yield mapper.readTree(errorResponse(id, -32601, "Method not found: " + method));
-        } catch (Exception ex) {
-          yield mapper.createObjectNode();
-        }
-      }
+      default -> error(id, METHOD_NOT_FOUND, "Method not found: " + method);
     };
   }
 
@@ -198,6 +337,18 @@ public class McpServer {
   }
 
   private JsonNode toolsListResponse(JsonNode id) {
+    ObjectNode result = mapper.createObjectNode();
+    result.set("tools", tools.deepCopy());
+    return response(id, result);
+  }
+
+  private static Set<String> toolNames(ArrayNode tools) {
+    Set<String> names = new LinkedHashSet<>();
+    tools.forEach(tool -> names.add(tool.path("name").asText()));
+    return Set.copyOf(names);
+  }
+
+  private ArrayNode toolDefinitions() {
     ArrayNode tools = mapper.createArrayNode();
     tools.add(tool(
       "testara_summary",
@@ -221,15 +372,40 @@ public class McpServer {
     ));
     tools.add(tool(
       "testara_run",
-      "Run tests by explicit Cucumber tag expression. Agents should pass tags from user intent or testara_index, not vague natural language.",
-      requiredStr("input", "Explicit Cucumber tag expression to run, e.g. @smoke or @ui and @checkout"),
+      "Run tests by explicit Cucumber tag expression. Agents should pass tags from user intent or testara_index, not vague natural language. "
+        + "An executed run starts in the background and returns run_started: <runId> at once; then call "
+        + "testara_run_status {\"runId\":\"<runId>\",\"waitSeconds\":30} until state is not RUNNING and report its result. "
+        + "One run per project at a time. Plans (dryRun/execute=false) return immediately.",
+      requiredStr("input", "Explicit Cucumber tag expression to run, e.g. @smoke or @ui and @checkout. Ignored when rerunFailed=true."),
       optionalBool("dryRun", "Show plan only — default false"),
-      optionalBool("execute", "Actually execute Maven — default true"),
-      optionalStr("module", "Restrict to Maven module"),
+      optionalBool("execute", "Actually execute the build — default true"),
+      optionalBool("rerunFailed", "Re-run only the scenarios listed in the previous run's rerun file. Default false."),
+      optionalStr("module", "Restrict to a module: relative path (modules/api) or :artifactId"),
+      optionalInt("timeoutMinutes", "Kill the build after this many minutes (positive, default 15)."),
+      optionalBool("wait", "Block until the run finishes and return its final result instead of run_started. Default false."),
+      optionalStr("gradleTask", "Gradle projects only: test task to run (default test)"),
+      optionalStr("format", "json for a machine-readable report of an executed run; markdown otherwise"),
       optionalStr(
         "projectRoot",
         "Project root. Required when MCP server was launched outside the workspace (e.g. from home dir)."
       )
+    ));
+    tools.add(tool(
+      RUN_STATUS_TOOL,
+      "State of a testara_run: RUNNING (with elapsed time and the last log lines), or PASSED/FAILED/TIMEOUT/CANCELLED "
+        + "with the full final result. Long-polls up to waitSeconds for the run to finish.",
+      requiredStr("runId", RUN_ID_DESCRIPTION),
+      optionalInt("waitSeconds", "Wait up to this many seconds for the run to finish (0-60, default 0; larger values are capped at 60)."),
+      optionalStr("format", "markdown (default) or json"),
+      optionalStr("projectRoot", "Project root the run was started for. Used to read a run's recorded state after a server restart.")
+    ));
+    tools.add(tool(
+      RUN_CANCEL_TOOL,
+      "Cancel a testara_run started by this server: kills the build process tree and returns the CANCELLED state. "
+        + "A finished run is left as is and its final state is returned.",
+      requiredStr("runId", RUN_ID_DESCRIPTION),
+      optionalStr("format", "markdown (default) or json"),
+      optionalStr("projectRoot", "Project root the run was started for. Used to read a run's recorded state after a server restart.")
     ));
     tools.add(tool(
       "testara_index",
@@ -276,8 +452,10 @@ public class McpServer {
       optionalStr("featureFiles", "JSON array of feature files for batch mode"),
       optionalBool("createFiles", "Write generated feature files directly. Default false."),
       optionalBool("useExistingActionCatalog", "Prefer existing @Action values. Default true in batch mode."),
-      optionalStr("slice", "Layer: api, ui, database, streaming, fullstack"),
-      optionalStr("domain", "Domain name override")
+      optionalStr("slice", "Layer: api, ui, database, streaming, fullstack. Omit to infer from intent."),
+      optionalStr("domain", "Domain name override"),
+      optionalBool("overwrite", OVERWRITE_DESCRIPTION),
+      optionalBool("compile", COMPILE_DESCRIPTION)
     ));
     tools.add(tool(
       "testara_guide",
@@ -310,7 +488,13 @@ public class McpServer {
       optionalStr("domain", "Service/domain name"),
       optionalStr("flow", "Request spec flow name"),
       optionalStr("method", "HTTP method: GET, POST, PUT, PATCH, DELETE"),
-      optionalStr("endpoint", "Endpoint URL or path")
+      optionalStr("endpoint", "Endpoint URL or path"),
+      optionalStr(
+        "projectRoot",
+        "Project root. Required when writing files or when MCP server was launched outside the workspace."
+      ),
+      optionalBool("write", "Write the config properties or request spec to disk. Default false."),
+      optionalBool("overwrite", OVERWRITE_DESCRIPTION)
     ));
     tools.add(tool(
       "testara_ui",
@@ -332,7 +516,9 @@ public class McpServer {
       optionalBool(
         "write",
         "Write the generated file to disk. Default false — returns structured artifact for manual creation."
-      )
+      ),
+      optionalBool("overwrite", OVERWRITE_DESCRIPTION),
+      optionalBool("compile", COMPILE_DESCRIPTION)
     ));
     tools.add(tool(
       "testara_bootstrap",
@@ -361,7 +547,9 @@ public class McpServer {
         "projectRoot",
         "Project root. Required when writing files or when MCP server was launched outside the workspace."
       ),
-      optionalBool("write", "Write generated artifact files to disk. Default false.")
+      optionalBool("write", "Write generated artifact files to disk. Default false."),
+      optionalBool("overwrite", OVERWRITE_DESCRIPTION),
+      optionalBool("compile", COMPILE_DESCRIPTION)
     ));
     tools.add(tool(
       "testara_db",
@@ -392,7 +580,9 @@ public class McpServer {
         "projectRoot",
         "Target workspace root. Required for writes when MCP server was launched outside the workspace."
       ),
-      optionalStr("type", "api | ui | all (full-stack). Also accepts: fullstack, database, streaming."),
+      optionalStr("type", "api | ui | all (full-stack). Also accepts: fullstack, database, streaming. Combined with slices when both are given."),
+      optionalEnumArray("slices", "Automation capabilities to include; clients may render this as checkboxes.",
+          "api", "ui", "sql", "mongo", "kafka", "elastic"),
       optionalStr(
         "groupId",
         "Maven groupId. OMIT on first call — the skill will prompt the user to provide it. Pass only after the user has explicitly answered."
@@ -418,40 +608,62 @@ public class McpServer {
       optionalBool("write", "Create files on disk. Default false."),
       optionalBool("compile", "Run test-compile after writing files. Default true.")
     ));
+    return tools;
+  }
 
+  private JsonNode toolsCallResponse(JsonNode id, JsonNode params, CompletableFuture<Void> cancelled) {
+    String toolName = params.path("name")
+      .asText();
+    if (!toolNames.contains(toolName)) {
+      return error(id, INVALID_PARAMS, "Unknown tool: " + toolName);
+    }
+    JsonNode args = params.path("arguments");
+
+    String content;
+    boolean failed = false;
+    try {
+      content = dispatchTool(toolName, args, cancelled);
+    } catch (ToolError e) {
+      LOG.fine("Tool " + toolName + " reported " + e.getMessage());
+      content = e.getMessage();
+      failed = true;
+    } catch (RuntimeException e) {
+      LOG.log(Level.WARNING, "Tool " + toolName + " failed", e);
+      content = "Tool execution error: " + describe(e);
+      failed = true;
+    }
     ObjectNode result = mapper.createObjectNode();
-    result.set("tools", tools);
+    ArrayNode contentArr = result.putArray("content");
+    contentArr.addObject()
+      .put("type", "text")
+      .put("text", content);
+    if (failed) result.put("isError", true);
     return response(id, result);
   }
 
-  private JsonNode toolsCallResponse(JsonNode id, JsonNode params) {
-    String toolName = params.path("name")
-      .asText();
-    JsonNode args = params.path("arguments");
-
-    try {
-      String content = dispatchTool(toolName, args);
-      ObjectNode result = mapper.createObjectNode();
-      ArrayNode contentArr = result.putArray("content");
-      contentArr.addObject()
-        .put("type", "text")
-        .put("text", content);
-      return response(id, result);
-    } catch (Exception e) {
-      try {
-        return mapper.readTree(errorResponse(id, -32000, "Tool execution error: " + e.getMessage()));
-      } catch (Exception ex) {
-        return mapper.createObjectNode();
-      }
-    }
+  private static String describe(Exception e) {
+    if (e.getMessage() == null) return e.getClass().getSimpleName();
+    return e.getMessage();
   }
 
-  private String dispatchTool(String name, JsonNode args) {
-    if (args.path("write")
-      .asBoolean(false) && !writeEnabled()) {
-      return writeDisabledMessage(name);
+  private String dispatchTool(String name, JsonNode args, CompletableFuture<Void> cancelled) {
+    Path effectiveRoot = resolveProjectRoot(args);
+    // Run tracking needs neither the project index nor an agent mode: it only touches runs this server started.
+    if (RUN_STATUS_TOOL.equals(name)) {
+      return runStatus(args, effectiveRoot, cancelled);
     }
-    AgentContext ctx = buildContext(name, args);
+    if (RUN_CANCEL_TOOL.equals(name)) {
+      return runCancel(args, effectiveRoot);
+    }
+    Map<String, String> opts = new LinkedHashMap<>();
+    AgentYamlConfig.load(effectiveRoot).apply(opts);
+    boolean writeRequested = args.path("write").asBoolean(false) || args.path("createFiles").asBoolean(false);
+    // Checked before any call argument is applied: a per-call write can never re-enable writes.
+    String writeDisabled = WriteGate.disabledMessage(name, opts);
+    if (writeRequested && writeDisabled != null) {
+      return writeDisabled;
+    }
+    AgentContext ctx = buildContext(name, args, effectiveRoot, opts, writeRequested);
     return switch (name) {
       case "testara_summary" -> summarySkill.execute(
         new TestSummarySkill.Input(
@@ -469,10 +681,7 @@ public class McpServer {
         Paths.get(args.path("path")
           .asText(".")), ctx
       );
-      case "testara_run" -> runSkill.execute(
-        args.path("input")
-          .asText(""), ctx
-      );
+      case "testara_run" -> runTests(args, ctx, cancelled);
       case "testara_index" -> indexSkill.execute(null, ctx);
       case "testara_command" -> commandSkill.execute(
         args.path("description")
@@ -512,7 +721,7 @@ public class McpServer {
       case "testara_init" -> initSkill.execute(
         new TestInitSkill.Input(
           args.path("type")
-            .asText("api"),
+            .asText(null),   // null → InitCapabilities combines slices without an implied api type
           args.path("basePackage")
             .asText(null),
           args.path("engine")
@@ -522,7 +731,8 @@ public class McpServer {
           args.path("groupId")
             .asText(null),
           args.path("artifactId")
-            .asText(null)
+            .asText(null),
+          stringList(args.path("slices"))
         ), ctx
       );
       case "testara_guide" -> guideSkill.execute(
@@ -633,110 +843,259 @@ public class McpServer {
     };
   }
 
-  private boolean writeEnabled() {
-    // Write is enabled by default — set TESTARA_AGENT_WRITE_ENABLED=false to disable
-    return !"false".equalsIgnoreCase(System.getenv()
-      .getOrDefault("TESTARA_AGENT_WRITE_ENABLED", "true"));
+  // ── Test runs ─────────────────────────────────────────────────────
+
+  /**
+   * An executed run is started in the background and answered with {@code run_started}; with
+   * {@code wait=true} the call blocks until the run finishes (cancelled when the client cancels the
+   * request). Plans, preflight failures and blocked runs are answered synchronously as before.
+   */
+  private String runTests(JsonNode args, AgentContext ctx, CompletableFuture<Void> cancelled) {
+    String input = args.path("input").asText("");
+    if (!ctx.allowsExecution()) {
+      return runSkill.execute(input, ctx);
+    }
+    RunRegistry.Started started = registry.start(ctx.projectRoot(), () -> runSkill.start(input, ctx));
+    if (started.activeRunId() != null) {
+      return "run_in_progress: " + started.activeRunId() + "\n"
+          + "reason: a test run is already active for this project; only one run per project at a time.\n"
+          + nextStep(started.activeRunId());
+    }
+    if (started.run() == null) {
+      return started.handle().result().join();
+    }
+    RunRegistry.Run run = started.run();
+    TestRunSkill.RunHandle handle = run.handle();
+    if (!args.path("wait").asBoolean(false)) {
+      return "run_started: " + handle.runId() + "\n"
+          + "state: " + TestRunSkill.RUNNING + "\n"
+          + "command: `" + handle.command() + "`\n"
+          + "log: " + handle.logFile() + "\n"
+          + nextStep(handle.runId());
+    }
+    awaitRun(run, cancelled, -1);
+    if (cancelled.isDone()) {
+      cancelRun(run);
+    }
+    if (!handle.result().isDone()) {
+      return runState(run, isJson(args));
+    }
+    return handle.result().join();
   }
 
-  private String writeDisabledMessage(String toolName) {
-    return """
-      write_disabled: TESTARA_AGENT_WRITE_ENABLED=false is set in the environment
-      capability_available: %s can preview artifacts — call with write=false to get file_path/source
-      next_step: remove TESTARA_AGENT_WRITE_ENABLED=false from env to re-enable writes
-      """.formatted(toolName);
+  private String runStatus(JsonNode args, Path root, CompletableFuture<Void> cancelled) {
+    String runId = requiredRunId(args);
+    boolean json = isJson(args);
+    RunRegistry.Run run = registry.find(runId);
+    if (run == null) {
+      return recordedRun(root, runId, json);
+    }
+    int waitSeconds = Math.min(Math.max(args.path("waitSeconds").asInt(0), 0), MAX_WAIT_SECONDS);
+    if (waitSeconds > 0 && run.active()) {
+      awaitRun(run, cancelled, waitSeconds);
+    }
+    return runState(run, json);
   }
 
-  private AgentContext buildContext(String toolName, JsonNode args) {
-    Map<String, String> opts = new LinkedHashMap<>();
-    Path effectiveRoot = resolveProjectRoot(args);
-    // testara_run executes by default; writes still require explicit write=true.
+  private String runCancel(JsonNode args, Path root) {
+    String runId = requiredRunId(args);
+    boolean json = isJson(args);
+    RunRegistry.Run run = registry.find(runId);
+    if (run == null) {
+      return recordedRun(root, runId, json);
+    }
+    cancelRun(run);
+    return runState(run, json);
+  }
+
+  private void cancelRun(RunRegistry.Run run) {
+    try {
+      registry.cancel(run);
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      LOG.warning("Interrupted while cancelling test run " + run.handle().runId());
+    }
+  }
+
+  /** Waits for the run's final state, the client's cancellation, or {@code timeoutSeconds} (negative: no limit). */
+  private void awaitRun(RunRegistry.Run run, CompletableFuture<Void> cancelled, long timeoutSeconds) {
+    CompletableFuture<Object> finishedOrCancelled = CompletableFuture.anyOf(run.done(), cancelled);
+    try {
+      if (timeoutSeconds < 0) {
+        finishedOrCancelled.get();
+      } else {
+        finishedOrCancelled.get(timeoutSeconds, TimeUnit.SECONDS);
+      }
+    } catch (TimeoutException e) {
+      LOG.fine("Test run " + run.handle().runId() + " still running after " + timeoutSeconds + "s");
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      LOG.fine("Stopped waiting for test run " + run.handle().runId() + ": interrupted");
+    } catch (ExecutionException e) {
+      throw new IllegalStateException("run and cancellation signals never complete exceptionally", e);
+    }
+  }
+
+  private String runState(RunRegistry.Run run, boolean json) {
+    TestRunSkill.RunHandle handle = run.handle();
+    RunRegistry.RunMetadata metadata = registry.metadata(run);
+    Instant end = run.finishedAt();
+    if (end == null) {
+      end = Instant.now();
+    }
+    long elapsedSeconds = Duration.between(handle.startedAt(), end).toSeconds();
+    boolean running = TestRunSkill.RUNNING.equals(metadata.state());
+    if (json) {
+      ObjectNode node = mapper.valueToTree(metadata);
+      node.put("elapsedSeconds", elapsedSeconds);
+      if (running) {
+        ArrayNode tail = node.putArray("logTail");
+        handle.logTail(LOG_TAIL_LINES).forEach(tail::add);
+      } else {
+        node.put("result", handle.result().join());
+      }
+      return node.toString();
+    }
+    StringBuilder sb = new StringBuilder();
+    sb.append("run_id: ").append(metadata.runId()).append("\n");
+    sb.append("state: ").append(metadata.state()).append("\n");
+    sb.append("elapsed: ").append(elapsedSeconds).append("s\n");
+    sb.append("command: `").append(metadata.command()).append("`\n");
+    sb.append("log: ").append(metadata.logFile()).append("\n");
+    if (running) {
+      sb.append(nextStep(metadata.runId()));
+      sb.append("\nlog-tail (last ").append(LOG_TAIL_LINES).append(" lines):\n");
+      handle.logTail(LOG_TAIL_LINES).forEach(line -> sb.append(line).append("\n"));
+      return sb.toString();
+    }
+    sb.append("exit-code: ").append(metadata.exitCode()).append("\n\n");
+    sb.append(handle.result().join());
+    return sb.toString();
+  }
+
+  /** A run this server does not track (e.g. after a restart): its recorded metadata, or unknown_run. */
+  private String recordedRun(Path root, String runId, boolean json) {
+    RunRegistry.RunMetadata metadata = registry.readMetadata(root, runId);
+    if (metadata == null) {
+      throw new ToolError("unknown_run: " + runId);
+    }
+    String note = "this server is not tracking the run (e.g. it was restarted); showing its recorded state.";
+    if (json) {
+      ObjectNode node = mapper.valueToTree(metadata);
+      node.put("note", note);
+      return node.toString();
+    }
+    return "run_id: " + metadata.runId() + "\n"
+        + "state: " + metadata.state() + "\n"
+        + "note: " + note + "\n"
+        + "command: `" + metadata.command() + "`\n"
+        + "log: " + metadata.logFile() + "\n"
+        + "started: " + metadata.startedAt() + "\n"
+        + "finished: " + metadata.finishedAt() + "\n"
+        + "exit-code: " + metadata.exitCode() + "\n";
+  }
+
+  private String nextStep(String runId) {
+    return "next-step: call " + RUN_STATUS_TOOL + " {\"runId\":\"" + runId + "\",\"waitSeconds\":30} until state is not "
+        + TestRunSkill.RUNNING + ", then report the result; " + RUN_CANCEL_TOOL + " {\"runId\":\"" + runId
+        + "\"} stops the run.\n";
+  }
+
+  private static String requiredRunId(JsonNode args) {
+    String runId = args.path("runId").asText("").strip();
+    if (runId.isEmpty()) {
+      throw new ToolError("invalid_arguments: runId is required");
+    }
+    return runId;
+  }
+
+  private static boolean isJson(JsonNode args) {
+    return "json".equalsIgnoreCase(args.path("format").asText(""));
+  }
+
+  /** A tool failure whose message is the whole {@code isError} result text. */
+  private static final class ToolError extends RuntimeException {
+    ToolError(String message) {
+      super(message);
+    }
+  }
+
+  /** Writes whole response lines; shared by the reader thread and the workers so lines never interleave. */
+  static final class LineWriter {
+
+    private final PrintWriter out;
+
+    LineWriter(PrintWriter out) {
+      this.out = out;
+    }
+
+    synchronized void write(String line) {
+      out.println(line);
+    }
+  }
+
+  /**
+   * Builds the skill context from the project's YAML options plus the call arguments. The YAML file
+   * never grants writes: {@code write} comes from the call only, and APPLY mode needs an explicit
+   * write/createFiles argument or an executed test run.
+   */
+  private AgentContext buildContext(String toolName, JsonNode args, Path effectiveRoot,
+      Map<String, String> opts, boolean writeRequested) {
+    opts.remove("write");
     boolean isRun = "testara_run".equals(toolName);
-    opts.put(
-      "dryRun",
-      Boolean.toString(args.path("dryRun")
-        .asBoolean(!isRun))
-    );
-    opts.put(
-      "execute",
-      Boolean.toString(args.path("execute")
-        .asBoolean(isRun))
-    );
-    // Default to concise for MCP — agents don't need decorative markdown
-    opts.put(
-      "format",
-      args.has("format") ?
-        args.path("format")
-        .asText() :
-        "concise"
-    );
-    if (args.has("mode"))
-      opts.put(
-        "mode",
-        args.path("mode")
-          .asText("auto")
-      );
-    if (args.has("package"))
-      opts.put(
-        "package",
-        args.path("package")
-          .asText()
-      );
-    if (args.has("returnType"))
-      opts.put(
-        "returnType",
-        args.path("returnType")
-          .asText("String")
-      );
-    if (args.has("module"))
-      opts.put(
-        "module",
-        args.path("module")
-          .asText()
-      );
-    if (args.has("detail"))
-      opts.put(
-        "detail",
-        args.path("detail")
-          .asText()
-      );
-    if (args.has("write"))
-      opts.put(
-        "write",
-        Boolean.toString(args.path("write")
-          .asBoolean(false))
-      );
-    if (args.has("compile"))
-      opts.put(
-        "compile",
-        Boolean.toString(args.path("compile")
-          .asBoolean(true))
-      );
+    boolean defaultDryRun = Boolean.parseBoolean(opts.getOrDefault("dryRun", Boolean.toString(!isRun)));
+    boolean defaultExecute = Boolean.parseBoolean(opts.getOrDefault("execute", Boolean.toString(isRun)));
+
+    opts.put("dryRun", Boolean.toString(args.has("dryRun")
+        ? args.path("dryRun").asBoolean(defaultDryRun) : defaultDryRun));
+    opts.put("execute", Boolean.toString(args.has("execute")
+        ? args.path("execute").asBoolean(defaultExecute) : defaultExecute));
+    opts.put("format", args.has("format")
+        ? args.path("format").asText()
+        : opts.getOrDefault("format", "concise"));
+
+    if (args.has("mode")) opts.put("mode", args.path("mode").asText("auto"));
+    if (args.has("package")) opts.put("package", args.path("package").asText());
+    if (args.has("returnType")) opts.put("returnType", args.path("returnType").asText("String"));
+    if (args.has("module")) opts.put("module", args.path("module").asText());
+    if (args.has("detail")) opts.put("detail", args.path("detail").asText());
+    if (args.has("write")) opts.put("write", Boolean.toString(args.path("write").asBoolean(false)));
+    if (args.has("overwrite")) opts.put("overwrite", Boolean.toString(args.path("overwrite").asBoolean(false)));
+    if (args.has("compile")) opts.put("compile", Boolean.toString(args.path("compile").asBoolean(true)));
+    if (args.has("rerunFailed")) opts.put("rerunFailed", Boolean.toString(args.path("rerunFailed").asBoolean(false)));
+    if (args.has("timeoutMinutes")) opts.put("timeoutMinutes", args.path("timeoutMinutes").asText());
+    if (args.has("gradleTask")) opts.put("gradleTask", args.path("gradleTask").asText());
     if (args.has("autoGenerateCoordinates")) {
-      opts.put(
-        "autoGenerateCoordinates",
-        Boolean.toString(args.path("autoGenerateCoordinates")
-          .asBoolean(false))
-      );
+      opts.put("autoGenerateCoordinates",
+          Boolean.toString(args.path("autoGenerateCoordinates").asBoolean(false)));
     }
     if (args.has("includeExamples")) {
-      opts.put(
-        "includeExamples",
-        Boolean.toString(args.path("includeExamples")
-          .asBoolean(false))
-      );
+      opts.put("includeExamples", Boolean.toString(args.path("includeExamples").asBoolean(false)));
     }
-    if (args.has("projectRoot"))
-      opts.put("projectRootExplicit", "true");
-    // engine is provided → user confirmed the choice, no engine prompt needed
-    // engineConfirmed is kept for backward compat but no longer used — prompt only fires when engine=null
+    if (args.has("projectRoot")) opts.put("projectRootExplicit", "true");
 
-    AgentMode mode = toolName.equals("testara_run") ? AgentMode.PLAN : AgentMode.READ_ONLY;
+    boolean dryRun = Boolean.parseBoolean(opts.getOrDefault("dryRun", "false"));
+    boolean execute = Boolean.parseBoolean(opts.getOrDefault("execute", "false"));
+    AgentMode mode;
+    if (writeRequested || (isRun && execute && !dryRun)) {
+      mode = AgentMode.APPLY;
+    } else if (isRun) {
+      mode = AgentMode.PLAN;
+    } else {
+      mode = AgentMode.READ_ONLY;
+    }
 
-    LlmConfig cfg = LlmConfig.fromEnv();
-    var llm = cfg.hasApiKey() ?
-      new OpenAiLlmClient(cfg) :
-      (LlmClient) new DisabledLlmClient();
+    LlmConfig cfg = LlmConfig.fromEnv(opts);
+    String provider = "";
+    if (cfg.provider() != null) provider = cfg.provider().toLowerCase(Locale.ROOT);
+    LlmClient llm;
+    if ("local".equals(provider) || "ollama".equals(provider)) {
+      llm = new LocalLlmClient(cfg);
+    } else if (cfg.hasApiKey()) {
+      llm = new OpenAiLlmClient(cfg);
+    } else {
+      llm = new DisabledLlmClient();
+    }
     return new AgentContext(effectiveRoot, refreshedProfile(effectiveRoot), mode, llm, opts);
   }
 
@@ -754,18 +1113,30 @@ public class McpServer {
   }
 
   private TestaraProjectProfile refreshedProfile(Path root) {
-    if (!Files.exists(root.resolve("pom.xml")) && !Files.exists(root.resolve("build.gradle"))) {
-      return profile;
+    if (!isProjectRoot(root)) {
+      return root.equals(projectRoot) ? profile : emptyProfile(root);
     }
     try {
       TestaraProjectProfile refreshed = JsonlKnowledgeStore.loadProfile(root);
-      if (root.equals(projectRoot))
-        profile = refreshed;
+      if (root.equals(projectRoot)) profile = refreshed;
       return refreshed;
     } catch (Exception e) {
       LOG.fine("Cannot refresh project index: " + e.getMessage());
+      return root.equals(projectRoot) ? profile : emptyProfile(root);
     }
-    return profile;
+  }
+
+  private boolean isProjectRoot(Path root) {
+    return Files.exists(root.resolve("pom.xml"))
+        || Files.exists(root.resolve("build.gradle"))
+        || Files.exists(root.resolve("build.gradle.kts"));
+  }
+
+  private TestaraProjectProfile emptyProfile(Path root) {
+    return new TestaraProjectProfile(
+        root, null, "unknown", List.of(), List.of(), List.of(), List.of(),
+        List.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
+        Map.of(), Map.of(), List.of(), List.of());
   }
 
   // ── MCP helpers ───────────────────────────────────────────────────
@@ -819,28 +1190,56 @@ public class McpServer {
     return n;
   }
 
+  private ObjectNode optionalInt(String name, String desc) {
+    ObjectNode n = mapper.createObjectNode();
+    n.put("_name", name);
+    n.put("_required", false);
+    n.put("type", "integer");
+    n.put("description", desc);
+    return n;
+  }
+
+  private ObjectNode optionalEnumArray(String name, String desc, String... values) {
+    ObjectNode n = mapper.createObjectNode();
+    n.put("_name", name);
+    n.put("_required", false);
+    n.put("type", "array");
+    n.put("description", desc);
+    ObjectNode items = n.putObject("items");
+    items.put("type", "string");
+    ArrayNode choices = items.putArray("enum");
+    for (String value : values) choices.add(value);
+    n.put("uniqueItems", true);
+    return n;
+  }
+
+  private List<String> stringList(JsonNode node) {
+    List<String> values = new ArrayList<>();
+    if (node.isArray()) node.forEach(value -> values.add(value.asText()));
+    return values;
+  }
+
   private ObjectNode response(JsonNode id, JsonNode result) {
     ObjectNode r = mapper.createObjectNode();
     r.put("jsonrpc", "2.0");
-    if (id != null)
-      r.set("id", id);
+    r.set("id", id);
     r.set("result", result);
     return r;
   }
 
-  private String errorResponse(JsonNode id, int code, String message) {
-    try {
-      ObjectNode r = mapper.createObjectNode();
-      r.put("jsonrpc", "2.0");
-      if (id != null)
-        r.set("id", id);
-      ObjectNode err = r.putObject("error");
-      err.put("code", code);
-      err.put("message", message);
-      return mapper.writeValueAsString(r);
-    } catch (Exception e) {
-      return "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32700,\"message\":\"Internal error\"}}";
+  /** JSON-RPC error; a null id (unparseable or invalid request) is written as {@code "id": null}. */
+  private ObjectNode error(JsonNode id, int code, String message) {
+    ObjectNode r = mapper.createObjectNode();
+    r.put("jsonrpc", "2.0");
+    if (id == null) {
+      r.putNull("id");
+    } else {
+      r.set("id", id);
     }
+    ObjectNode err = r.putObject("error");
+    err.put("code", code);
+    err.put("message", message);
+    return r;
   }
 
   // ── Prompts ───────────────────────────────────────────────────────

@@ -1,16 +1,16 @@
 package io.github.ygrip.testara.agent.init;
 
-import java.io.BufferedReader;
 import java.io.IOException;
-import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
-import java.util.concurrent.TimeUnit;
 import java.util.logging.Logger;
+
+import io.github.ygrip.testara.agent.skill.run.ProcessRunner;
 
 /**
  * Runs mvn archetype:generate to scaffold a Testara project from a local or remote archetype.
@@ -48,28 +48,27 @@ public class ArchetypeInvoker {
 
     LOG.info("Invoking archetype: " + String.join(" ", cmd));
 
-    List<String> output = new ArrayList<>();
+    List<String> output;
     int exitCode;
+    Path logFile = null;
     try {
-      ProcessBuilder pb = new ProcessBuilder(cmd)
-          .directory(req.outputDir().toFile())
-          .redirectErrorStream(true);
-      Process proc = pb.start();
-      try (BufferedReader br = new BufferedReader(
-          new InputStreamReader(proc.getInputStream(), StandardCharsets.UTF_8))) {
-        String line;
-        while ((line = br.readLine()) != null) output.add(line);
-      }
-      boolean finished = proc.waitFor(TIMEOUT_SECONDS, TimeUnit.SECONDS);
-      if (!finished) {
-        proc.destroyForcibly();
+      logFile = Files.createTempFile("testara-archetype-", ".log");
+      ProcessRunner.Outcome outcome = ProcessRunner.run(cmd, req.outputDir(), logFile,
+          Duration.ofSeconds(TIMEOUT_SECONDS));
+      if (outcome.timedOut()) {
         return new ArchetypeResult(false, archetypeArtifactId, null,
             List.of("Archetype generation timed out after " + TIMEOUT_SECONDS + "s"));
       }
-      exitCode = proc.exitValue();
-    } catch (IOException | InterruptedException e) {
-      if (e instanceof InterruptedException) Thread.currentThread().interrupt();
-      return new ArchetypeResult(false, archetypeArtifactId, null, List.of(e.getMessage()));
+      exitCode = outcome.exitCode();
+      output = ProcessRunner.readLogLines(logFile);
+    } catch (IOException e) {
+      return new ArchetypeResult(false, archetypeArtifactId, null, List.of(String.valueOf(e.getMessage())));
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      return new ArchetypeResult(false, archetypeArtifactId, null,
+          List.of("Archetype generation interrupted; Maven process terminated"));
+    } finally {
+      deleteLog(logFile);
     }
 
     if (exitCode != 0) {
@@ -90,6 +89,15 @@ public class ArchetypeInvoker {
     return new ArchetypeResult(true, archetypeArtifactId, generated, List.of());
   }
 
+  private void deleteLog(Path logFile) {
+    if (logFile == null) return;
+    try {
+      Files.deleteIfExists(logFile);
+    } catch (IOException e) {
+      LOG.warning("Could not delete archetype log " + logFile + ": " + e.getMessage());
+    }
+  }
+
   private void fixEscapedMavenProperties(Path pom) {
     if (!Files.exists(pom)) return;
     try {
@@ -103,7 +111,7 @@ public class ArchetypeInvoker {
   }
 
   private List<String> buildCommand(ArchetypeRequest req, String archetypeArtifactId) {
-    String mvn = resolveMvn(req.outputDir());
+    String mvn = ProcessRunner.mavenLauncher(req.outputDir());
     List<String> cmd = new ArrayList<>(List.of(
         mvn,
         "archetype:generate",
@@ -130,11 +138,6 @@ public class ArchetypeInvoker {
     }
 
     return cmd;
-  }
-
-  private String resolveMvn(Path dir) {
-    Path mvnw = dir.resolve("mvnw");
-    return Files.exists(mvnw) ? mvnw.toAbsolutePath().toString() : "mvn";
   }
 
   static String resolveArchetypeArtifactId(String flavor) {

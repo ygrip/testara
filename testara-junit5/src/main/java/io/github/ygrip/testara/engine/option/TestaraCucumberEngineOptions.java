@@ -121,13 +121,13 @@ public class TestaraCucumberEngineOptions
         .orElse(configurationParameters.get(PLUGIN_PUBLISH_TOKEN_PROPERTY_NAME).isPresent());
   }
 
+  /** True when the scenario tags match {@code cucumber.filter.tags}; without a filter every scenario runs. */
   public boolean isValidTags(List<String> tags) {
-    boolean isValid = false;
-    Optional<Boolean> validTags = tagFilter().map((expression -> expression.evaluate(tags)));
-    if (validTags.isPresent()) {
-      isValid = validTags.get();
+    Optional<Expression> filter = tagFilter();
+    if (filter.isEmpty()) {
+      return true;
     }
-    return isValid;
+    return filter.get().evaluate(tags);
   }
 
   public boolean isValidTags(String tagFilter, List<String> tags) {

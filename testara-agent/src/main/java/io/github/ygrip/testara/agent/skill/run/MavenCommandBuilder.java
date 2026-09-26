@@ -3,17 +3,12 @@ package io.github.ygrip.testara.agent.skill.run;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.regex.Pattern;
 
 /**
  * Builds safe, template-based Maven commands for Cucumber test execution.
  * Rejects any input that could lead to shell injection.
  */
 public class MavenCommandBuilder {
-
-  private static final Pattern SAFE_TAG_EXPR = Pattern.compile(
-      "^[@\\w\\s()\\-and not]*$");
-  private static final Pattern SAFE_MODULE   = Pattern.compile("^[\\w-]+$");
 
   /** Build `mvn verify -Dcucumber.filter.tags="expr"` for Failsafe-based Testara runners. */
   public String build(String tagExpression) {
@@ -49,7 +44,7 @@ public class MavenCommandBuilder {
    * {@code :}/{@code /}/{@code .} characters every rerun-file line contains.
    */
   public List<String> buildRerunArgv(Path rerunFile, String module, boolean useVerify) {
-    validateModule(module);
+    RunArguments.requireValidModule(module);
     List<String> argv = new ArrayList<>();
     argv.add(useVerify ? "verify" : "test");
     addModule(argv, module);
@@ -57,23 +52,34 @@ public class MavenCommandBuilder {
     return List.copyOf(argv);
   }
 
+  /** Executable tag-filtered run for {@code projectRoot}: wrapper or {@code mvn}, OS-aware. */
+  public BuildCommand command(Path projectRoot, String tagExpression, String module) {
+    List<String> args = buildArgv(tagExpression, module, true);
+    return new BuildCommand(withLauncher(projectRoot, args), build(tagExpression, module, true));
+  }
+
+  /** Executable rerun-file run for {@code projectRoot}: wrapper or {@code mvn}, OS-aware. */
+  public BuildCommand rerunCommand(Path projectRoot, Path rerunFile, String module) {
+    List<String> args = buildRerunArgv(rerunFile, module, true);
+    return new BuildCommand(withLauncher(projectRoot, args), "mvn " + String.join(" ", args));
+  }
+
+  private List<String> withLauncher(Path projectRoot, List<String> args) {
+    List<String> argv = new ArrayList<>();
+    argv.add(ProcessRunner.mavenLauncher(projectRoot));
+    argv.addAll(args);
+    return argv;
+  }
+
   private void addModule(List<String> argv, String module) {
     if (module != null && !module.isBlank()) {
       argv.add("-pl");
-      argv.add(module);
+      argv.add(module.strip());
     }
   }
 
   private void validate(String tagExpression, String module) {
-    if (tagExpression == null || tagExpression.isBlank())
-      throw new IllegalArgumentException("Tag expression must not be blank");
-    if (!SAFE_TAG_EXPR.matcher(tagExpression).matches())
-      throw new IllegalArgumentException("Tag expression contains unsafe characters: " + tagExpression);
-    validateModule(module);
-  }
-
-  private void validateModule(String module) {
-    if (module != null && !module.isBlank() && !SAFE_MODULE.matcher(module).matches())
-      throw new IllegalArgumentException("Module name contains unsafe characters: " + module);
+    RunArguments.requireValidTagExpression(tagExpression);
+    RunArguments.requireValidModule(module);
   }
 }

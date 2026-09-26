@@ -1,209 +1,153 @@
 package io.github.ygrip.testara.agent.parser;
 
-import io.github.ygrip.testara.agent.index.*;
+import io.cucumber.gherkin.GherkinDialectProvider;
+import io.cucumber.gherkin.GherkinParser;
+import io.cucumber.messages.types.Background;
+import io.cucumber.messages.types.DataTable;
+import io.cucumber.messages.types.Envelope;
+import io.cucumber.messages.types.Examples;
+import io.cucumber.messages.types.Feature;
+import io.cucumber.messages.types.FeatureChild;
+import io.cucumber.messages.types.Rule;
+import io.cucumber.messages.types.RuleChild;
+import io.cucumber.messages.types.Scenario;
+import io.cucumber.messages.types.Step;
+import io.cucumber.messages.types.TableRow;
+import io.cucumber.messages.types.Tag;
+import io.github.ygrip.testara.agent.index.ExamplesIndex;
+import io.github.ygrip.testara.agent.index.FeatureIndex;
+import io.github.ygrip.testara.agent.index.ScenarioIndex;
+import io.github.ygrip.testara.agent.index.ScenarioType;
+import io.github.ygrip.testara.agent.index.StepIndex;
 
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
+import java.util.Set;
 
 /**
- * Line-based parser for Gherkin .feature files.
- * Handles Feature, Background, Scenario, Scenario Outline, Examples, and tags.
+ * Parses Gherkin feature files through Cucumber's parser and adapts the AST
+ * into Testara's lightweight index model.
  */
 public class FeatureParser {
 
-  private static final Pattern TAG_LINE = Pattern.compile("(@\\w[\\w-]*)");
-  private static final Pattern STEP_LINE = Pattern.compile(
-      "^\\s*(Given|When|Then|And|But)\\s+(.+)$");
-  private static final Pattern EXAMPLES_HEADER = Pattern.compile("^\\s*\\|(.+)\\|\\s*$");
+  private static final GherkinDialectProvider DIALECTS = new GherkinDialectProvider();
+
+  private final GherkinParser parser = GherkinParser.builder()
+      .includeSource(false)
+      .includePickles(false)
+      .build();
 
   public FeatureIndex parse(Path featurePath) throws IOException {
-    List<String> lines = Files.readAllLines(featurePath, StandardCharsets.UTF_8);
+    List<Envelope> envelopes;
+    try (var stream = parser.parse(featurePath)) {
+      envelopes = stream.toList();
+    }
 
-    String featureName = "";
-    List<String> featureTags = new ArrayList<>();
+    var parseError = envelopes.stream()
+        .flatMap(e -> e.getParseError().stream())
+        .findFirst();
+    if (parseError.isPresent()) {
+      throw new IOException("Invalid Gherkin in " + featurePath + ": " + parseError.get().getMessage());
+    }
+
+    Feature feature = envelopes.stream()
+        .flatMap(e -> e.getGherkinDocument().stream())
+        .flatMap(d -> d.getFeature().stream())
+        .findFirst()
+        .orElseThrow(() -> new IOException("No Feature found in " + featurePath));
+
     List<ScenarioIndex> scenarios = new ArrayList<>();
     List<StepIndex> backgroundSteps = new ArrayList<>();
+    List<String> outlineKeywords = outlineKeywords(feature.getLanguage());
 
-    List<String> pendingTags = new ArrayList<>();
-    String currentScenarioName = null;
-    ScenarioType currentType = null;
-    List<StepIndex> currentSteps = new ArrayList<>();
-    List<ExamplesIndex> currentExamples = new ArrayList<>();
-    boolean inBackground = false;
-    boolean inExamples = false;
-    boolean inStepTable = false;
-    List<List<String>> currentDataTable = new ArrayList<>();
-    List<String> exampleHeaders = new ArrayList<>();
-    int exampleRowCount = 0;
-
-    for (String raw : lines) {
-      String line = raw.strip();
-
-      if (line.isEmpty() || line.startsWith("#")) continue;
-
-      // Tag line
-      if (line.startsWith("@")) {
-        Matcher m = TAG_LINE.matcher(line);
-        while (m.find()) pendingTags.add(m.group(1));
-        continue;
-      }
-
-      // Feature header
-      if (line.startsWith("Feature:")) {
-        featureName = line.substring(8).strip();
-        featureTags.addAll(pendingTags);
-        pendingTags.clear();
-        inBackground = false;
-        continue;
-      }
-
-      // Background
-      if (line.startsWith("Background:")) {
-        flushScenario(currentScenarioName, currentType, pendingTags, currentSteps,
-            currentExamples, scenarios, backgroundSteps, inBackground);
-        currentScenarioName = "";
-        currentType = ScenarioType.BACKGROUND;
-        currentSteps = new ArrayList<>();
-        currentExamples = new ArrayList<>();
-        inBackground = true;
-        inExamples = false;
-        currentDataTable = new ArrayList<>();
-        inStepTable = false;
-        pendingTags = new ArrayList<>();
-        continue;
-      }
-
-      // Scenario
-      if (line.startsWith("Scenario Outline:") || line.startsWith("Scenario Template:")) {
-        flushScenario(currentScenarioName, currentType, pendingTags, currentSteps,
-            currentExamples, scenarios, backgroundSteps, inBackground);
-        currentScenarioName = line.contains(":") ? line.substring(line.indexOf(':') + 1).strip() : "";
-        currentType = ScenarioType.SCENARIO_OUTLINE;
-        currentSteps = new ArrayList<>();
-        currentExamples = new ArrayList<>();
-        inBackground = false;
-        inExamples = false;
-        currentDataTable = new ArrayList<>();
-        inStepTable = false;
-        pendingTags = new ArrayList<>();
-        continue;
-      }
-      if (line.startsWith("Scenario:") || line.startsWith("Example:")) {
-        flushScenario(currentScenarioName, currentType, pendingTags, currentSteps,
-            currentExamples, scenarios, backgroundSteps, inBackground);
-        currentScenarioName = line.substring(line.indexOf(':') + 1).strip();
-        currentType = ScenarioType.SCENARIO;
-        currentSteps = new ArrayList<>();
-        currentExamples = new ArrayList<>();
-        inBackground = false;
-        inExamples = false;
-        currentDataTable = new ArrayList<>();
-        inStepTable = false;
-        pendingTags = new ArrayList<>();
-        continue;
-      }
-
-      // Examples block
-      if (line.startsWith("Examples:") || line.startsWith("Scenarios:")) {
-        flushStepDataTable(currentSteps, currentDataTable);
-        inStepTable = false;
-        currentDataTable = new ArrayList<>();
-        inExamples = true;
-        exampleHeaders = new ArrayList<>();
-        exampleRowCount = 0;
-        continue;
-      }
-
-      // Table rows in examples
-      if (inExamples && line.startsWith("|")) {
-        Matcher m = EXAMPLES_HEADER.matcher(line);
-        if (m.matches()) {
-          if (exampleHeaders.isEmpty()) {
-            for (String cell : m.group(1).split("\\|")) {
-              exampleHeaders.add(cell.strip());
-            }
-          } else {
-            exampleRowCount++;
-          }
-        }
-        continue;
-      } else if (inExamples && !line.startsWith("|")) {
-        currentExamples.add(new ExamplesIndex(List.copyOf(exampleHeaders), exampleRowCount));
-        inExamples = false;
-      }
-
-      // Step data table rows (pipe line after a step, not in Examples)
-      if (!inExamples && line.startsWith("|")) {
-        Matcher m = EXAMPLES_HEADER.matcher(line);
-        if (m.matches()) {
-          List<String> cells = new ArrayList<>();
-          for (String cell : m.group(1).split("\\|")) {
-            cells.add(cell.strip());
-          }
-          currentDataTable.add(List.copyOf(cells));
-          inStepTable = true;
-          continue;
-        }
-      }
-
-      // Step lines
-      Matcher stepMatcher = STEP_LINE.matcher(line);
-      if (stepMatcher.matches()) {
-        // Flush any pending data table from previous step
-        flushStepDataTable(currentSteps, currentDataTable);
-        inStepTable = false;
-        currentDataTable = new ArrayList<>();
-        currentSteps.add(new StepIndex(stepMatcher.group(1), stepMatcher.group(2)));
-        continue;
-      }
-
-      // Non-table, non-step line — flush pending step data table
-      if (inStepTable) {
-        flushStepDataTable(currentSteps, currentDataTable);
-        inStepTable = false;
-        currentDataTable = new ArrayList<>();
-      }
+    for (FeatureChild child : feature.getChildren()) {
+      child.getBackground().ifPresent(bg -> backgroundSteps.addAll(toSteps(bg)));
+      child.getScenario().ifPresent(scenario ->
+          scenarios.add(toScenario(scenario, List.of(), List.of(), outlineKeywords)));
+      child.getRule().ifPresent(rule -> addRuleScenarios(rule, scenarios, outlineKeywords));
     }
 
-    // flush remaining data table and examples
-    flushStepDataTable(currentSteps, currentDataTable);
-    if (inExamples && !exampleHeaders.isEmpty()) {
-      currentExamples.add(new ExamplesIndex(List.copyOf(exampleHeaders), exampleRowCount));
-    }
-    flushScenario(currentScenarioName, currentType, pendingTags, currentSteps,
-        currentExamples, scenarios, backgroundSteps, inBackground);
-
-    return new FeatureIndex(featurePath, featureName, List.copyOf(featureTags),
-        List.copyOf(scenarios), List.copyOf(backgroundSteps));
+    return new FeatureIndex(
+        featurePath,
+        feature.getName(),
+        tags(feature.getTags()),
+        List.copyOf(scenarios),
+        List.copyOf(backgroundSteps));
   }
 
-  private void flushScenario(String name, ScenarioType type, List<String> tags,
-      List<StepIndex> steps, List<ExamplesIndex> examples,
-      List<ScenarioIndex> scenarios, List<StepIndex> backgroundSteps, boolean inBackground) {
-    if (type == null) return;
-    if (type == ScenarioType.BACKGROUND) {
-      backgroundSteps.addAll(steps);
-    } else {
-      scenarios.add(new ScenarioIndex(
-          name != null ? name : "",
-          type,
-          List.copyOf(tags),
-          List.copyOf(steps),
-          List.copyOf(examples)));
+  /** A Rule's Background applies only to that Rule's scenarios, so it stays on each of them. */
+  private void addRuleScenarios(Rule rule, List<ScenarioIndex> scenarios, List<String> outlineKeywords) {
+    List<String> ruleTags = tags(rule.getTags());
+    List<StepIndex> ruleBackground = new ArrayList<>();
+    for (RuleChild child : rule.getChildren()) {
+      child.getBackground().ifPresent(bg -> ruleBackground.addAll(toSteps(bg)));
+      child.getScenario().ifPresent(scenario ->
+          scenarios.add(toScenario(scenario, ruleTags, List.copyOf(ruleBackground), outlineKeywords)));
     }
   }
 
-  /** If the last step has a pending data table, rebuild the step with the table attached. */
-  private void flushStepDataTable(List<StepIndex> steps, List<List<String>> dataTable) {
-    if (dataTable.isEmpty() || steps.isEmpty()) return;
-    int lastIdx = steps.size() - 1;
-    StepIndex last = steps.get(lastIdx);
-    steps.set(lastIdx, new StepIndex(last.keyword(), last.text(), List.copyOf(dataTable)));
+  private ScenarioIndex toScenario(Scenario scenario, List<String> inheritedRuleTags,
+      List<StepIndex> ruleBackgroundSteps, List<String> outlineKeywords) {
+    Set<String> scenarioTags = new LinkedHashSet<>(inheritedRuleTags);
+    scenarioTags.addAll(tags(scenario.getTags()));
+
+    List<ExamplesIndex> examples = scenario.getExamples().stream()
+        .map(this::toExamples)
+        .toList();
+
+    // Examples make any scenario an outline; the dialect keyword covers outlines without Examples.
+    ScenarioType type = ScenarioType.SCENARIO;
+    if (!examples.isEmpty() || outlineKeywords.contains(scenario.getKeyword())) {
+      type = ScenarioType.SCENARIO_OUTLINE;
+    }
+
+    return new ScenarioIndex(
+        scenario.getName(),
+        type,
+        List.copyOf(scenarioTags),
+        scenario.getSteps().stream().map(this::toStep).toList(),
+        examples,
+        ruleBackgroundSteps);
+  }
+
+  private List<String> outlineKeywords(String language) {
+    return DIALECTS.getDialect(language)
+        .orElseGet(DIALECTS::getDefaultDialect)
+        .getScenarioOutlineKeywords();
+  }
+
+  private ExamplesIndex toExamples(Examples examples) {
+    List<String> headers = examples.getTableHeader()
+        .map(this::cells)
+        .orElse(List.of());
+    return new ExamplesIndex(
+        tags(examples.getTags()),
+        headers,
+        examples.getTableBody().size());
+  }
+
+  private List<StepIndex> toSteps(Background background) {
+    return background.getSteps().stream().map(this::toStep).toList();
+  }
+
+  private StepIndex toStep(Step step) {
+    List<List<String>> dataTable = step.getDataTable()
+        .map(DataTable::getRows)
+        .orElse(List.of())
+        .stream()
+        .map(this::cells)
+        .toList();
+    return new StepIndex(step.getKeyword().strip(), step.getText(), dataTable);
+  }
+
+  private List<String> cells(TableRow row) {
+    return row.getCells().stream().map(cell -> cell.getValue()).toList();
+  }
+
+  private List<String> tags(List<Tag> tags) {
+    return tags.stream().map(Tag::getName).distinct().toList();
   }
 }
