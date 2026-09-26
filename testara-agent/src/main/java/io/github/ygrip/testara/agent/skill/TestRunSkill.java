@@ -48,6 +48,7 @@ public class TestRunSkill implements AgentSkill<String, String> {
   private static final int MAX_LOG_FACTS = 20;
   private static final Pattern AFFECTED_LINE = Pattern.compile("([\\w./\\\\-]+\\.(?:java|feature|xml|properties)):(\\d+)");
   private static final Pattern ZERO_COUNT = Pattern.compile("\\b(?:failures|errors)\\s*:\\s*0\\b");
+  private static final String NO_SCENARIOS_EXECUTED = "no scenarios executed";
   // Output markers read by exitCode(String); keep them in sync with the messages that use them.
   private static final String INVALID_OPTION = "Invalid test-run option: ";
   private static final String NEEDS_INPUT = "needs_input: ";
@@ -132,7 +133,8 @@ public class TestRunSkill implements AgentSkill<String, String> {
       if (dryRun || !execute) return plan.toMarkdown();
       String blocked = executionBlocked(context);
       if (blocked != null) return plan.toMarkdown() + blocked;
-      String result = executeAndReport(command, "@" + rerunFile, context.projectRoot(), settings, json);
+      // The rerun file is not preflighted, so an empty report is not judged against a scenario count
+      String result = executeAndReport(command, "@" + rerunFile, context.projectRoot(), settings, json, 0);
       if (json) return result;
       return plan.toMarkdown() + "\n> **Rerun-failed** uses Cucumber's native rerun-file feature-path.\n\n" + result;
     }
@@ -159,7 +161,7 @@ public class TestRunSkill implements AgentSkill<String, String> {
     if (dryRun || !execute) return plan.toMarkdown();
     String blocked = executionBlocked(context);
     if (blocked != null) return plan.toMarkdown() + blocked;
-    return executeAndReport(command, tagExpr, context.projectRoot(), settings, json);
+    return executeAndReport(command, tagExpr, context.projectRoot(), settings, json, matched);
   }
 
   private TagExpressionResolver resolverFor(Map<String, String> options) {
@@ -274,8 +276,9 @@ public class TestRunSkill implements AgentSkill<String, String> {
     return sb.toString();
   }
 
+  /** {@code expectedScenarios} is the preflight match count ({@code 0} when the run was not preflighted). */
   private String executeAndReport(BuildCommand command, String tagExpr, Path projectRoot,
-      RunSettings settings, boolean json) {
+      RunSettings settings, boolean json, int expectedScenarios) {
     String guardError = TestExecutionGuard.validateArgv(command.argv());
     if (guardError != null) {
       return EXECUTION_BLOCKED + " by safety guard: " + guardError + "\n";
@@ -305,7 +308,8 @@ public class TestRunSkill implements AgentSkill<String, String> {
 
     Path executionRoot = RunArguments.moduleDirectory(projectRoot, settings.module());
     ParsedReport parsed = parseFreshReport(executionRoot, settings, runStart, tagExpr, outcome.durationMs());
-    String status = verdict(outcome, parsed.report());
+    boolean noScenariosExecuted = noScenariosExecuted(parsed.report(), expectedScenarios);
+    String status = verdict(outcome, parsed.report(), noScenariosExecuted);
     TestRunReport report;
     if (parsed.report() == null) {
       report = TestRunReport.withoutReport(status, outcome.durationMs(), tagExpr, logFile.toString());
@@ -316,6 +320,10 @@ public class TestRunSkill implements AgentSkill<String, String> {
 
     String summary = logSummary(String.join(" ", command.argv()), tagExpr, logFile, outcome, status,
         parsed.description(), settings);
+    if (noScenariosExecuted && !outcome.timedOut() && outcome.exitCode() == 0) {
+      summary += "\nreason: " + NO_SCENARIOS_EXECUTED + " — the fresh report has 0 scenarios but preflight matched "
+          + expectedScenarios + "; check the runner's glue, features path and tag filter.\n";
+    }
     if (outcome.timedOut()) {
       summary += "\nTest execution exceeded the " + settings.timeout().toMinutes()
           + "-minute limit; the build process tree was terminated.\n";
@@ -324,12 +332,21 @@ public class TestRunSkill implements AgentSkill<String, String> {
     return report.toMarkdown() + "\n\n" + summary;
   }
 
-  /** TIMEOUT and non-zero exit codes always win over a parsed report; a failed report fails a clean exit. */
-  private String verdict(ProcessRunner.Outcome outcome, TestRunReport report) {
+  /**
+   * TIMEOUT and non-zero exit codes always win over a parsed report; a failed report, or a report
+   * without scenarios when preflight matched some, fails a clean exit.
+   */
+  private String verdict(ProcessRunner.Outcome outcome, TestRunReport report, boolean noScenariosExecuted) {
     if (outcome.timedOut()) return "TIMEOUT";
     if (outcome.exitCode() != 0) return "FAILED";
     if (report != null && "FAILED".equals(report.status())) return "FAILED";
+    if (noScenariosExecuted) return "FAILED";
     return "PASSED";
+  }
+
+  /** A fresh report that ran no scenario although preflight matched some. */
+  private boolean noScenariosExecuted(TestRunReport report, int expectedScenarios) {
+    return report != null && report.total() == 0 && expectedScenarios > 0;
   }
 
   private record ParsedReport(TestRunReport report, Path file, String description) {}

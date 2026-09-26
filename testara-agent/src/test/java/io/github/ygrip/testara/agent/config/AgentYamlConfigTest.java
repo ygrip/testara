@@ -66,6 +66,18 @@ class AgentYamlConfigTest {
   }
 
   @Test
+  void scalarWriteFalseDisablesWritesLikeWriteEnabledFalse() {
+    var disabled = new LinkedHashMap<String, String>();
+    disabled.put("write", "true");
+    AgentYamlConfig.parse("write: false\n").apply(disabled);
+    var enabled = new LinkedHashMap<String, String>();
+    AgentYamlConfig.parse("write: true\n").apply(enabled);
+
+    assertEquals("false", disabled.get("write"));
+    assertNull(enabled.get("write"), "write: true must never enable writes by itself");
+  }
+
+  @Test
   void checkedInFileCannotGrantWritesThroughAnySection() {
     AgentYamlConfig.AgentConfig config = AgentYamlConfig.parse(
         "write: true\noverwrite: true\nrun:\n  write: true\n  dryRun: false\n");

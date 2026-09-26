@@ -179,6 +179,23 @@ class TestRunSkillTest {
   }
 
   @Test
+  void cleanExitWithAnEmptyFreshReportFailsWhenPreflightMatchedScenarios() throws IOException {
+    fakeLauncher("mvnw", """
+        mkdir -p target/destination
+        echo "[]" > target/destination/cucumber.json
+        exit 0
+        """);
+
+    String output = new TestRunSkill().execute("run @smoke", executeContext(profileWithSaucedemo()));
+
+    assertTrue(output.contains("- Total: 0"), output);
+    assertFalse(output.contains("**Status:** PASSED"), output);
+    assertTrue(output.contains("**Status:** FAILED"), output);
+    assertTrue(output.contains("no scenarios executed"), output);
+    assertEquals(1, TestRunSkill.exitCode(output));
+  }
+
+  @Test
   void jsonFormatReturnsMachineReadableReport() throws IOException {
     Path fixture = projectRoot.resolve("passing.json");
     Files.writeString(fixture, PASSING_REPORT);
@@ -216,7 +233,7 @@ class TestRunSkillTest {
 
     Path initScript = projectRoot.resolve(".testara-agent/gradle/testara-cucumber.init.gradle");
     assertTrue(Files.isRegularFile(initScript), output);
-    assertTrue(output.contains("test --console=plain --init-script " + initScript), output);
+    assertTrue(output.contains("test --console=plain --no-daemon --init-script " + initScript), output);
     assertTrue(output.contains("-Pcucumber.filter.tags=@smoke"), output);
     assertTrue(output.contains("**Status:** PASSED"), output);
     assertTrue(output.contains("- Passed: 1"), output);

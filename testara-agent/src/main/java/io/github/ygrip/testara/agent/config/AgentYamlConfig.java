@@ -19,8 +19,9 @@ import java.util.logging.Logger;
  * lists (or a single scalar) for list keys are read.
  *
  * <p>Config priority: CLI flags > env vars > testara-agent.yaml > properties > defaults.
- * {@code write.enabled} may only <em>disable</em> writes: enabling them requires an explicit tool
- * argument or CLI flag, and {@code TESTARA_AGENT_WRITE_ENABLED=false} always wins.
+ * {@code write.enabled} (or a scalar {@code write}) may only <em>disable</em> writes: enabling them
+ * requires an explicit tool argument or CLI flag, and {@code TESTARA_AGENT_WRITE_ENABLED=false}
+ * always wins.
  */
 public final class AgentYamlConfig {
 
@@ -122,6 +123,11 @@ public final class AgentYamlConfig {
     root.properties().forEach(section -> {
       String name = section.getKey();
       JsonNode value = section.getValue();
+      if (value.isValueNode() && "write".equals(name)) {
+        // Scalar "write: false" is the same off switch as "write.enabled: false"; "true" never enables
+        putScalar(write, "enabled", value);
+        return;
+      }
       if (value.isValueNode()) {
         putScalar(general, name, value);
         return;

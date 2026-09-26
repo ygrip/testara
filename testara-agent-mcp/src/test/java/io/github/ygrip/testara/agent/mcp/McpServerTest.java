@@ -179,6 +179,17 @@ class McpServerTest {
   }
 
   @Test
+  void yamlScalarWriteFalseBlocksExplicitWrite() throws Exception {
+    Files.writeString(projectRoot.resolve("testara-agent.yaml"), "write: false\n");
+
+    String text = new McpServer(projectRoot).handle(request("tools/call", uiActionCall(", \"write\": true")))
+        .at("/result/content/0/text").asText();
+
+    assertTrue(text.startsWith("write_disabled:"), text);
+    assertFalse(Files.exists(projectRoot.resolve("src/main/java/io/github/ygrip/automation/action/LoginActions.java")));
+  }
+
+  @Test
   void yamlNeverGrantsWritesWithoutExplicitArgument() throws Exception {
     Files.writeString(projectRoot.resolve("testara-agent.yaml"), "write: true\nrun:\n  write: true\n");
 

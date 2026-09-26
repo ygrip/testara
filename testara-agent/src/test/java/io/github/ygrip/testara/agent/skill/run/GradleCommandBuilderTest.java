@@ -34,9 +34,9 @@ class GradleCommandBuilderTest {
   void buildsTagRunWithInitScriptAndProjectProperty() {
     BuildCommand command = builder.build(projectRoot, "@smoke and not @slow", null, null);
 
-    assertEquals(List.of("gradle", "test", "--console=plain", "--init-script", initScript,
+    assertEquals(List.of("gradle", "test", "--console=plain", "--no-daemon", "--init-script", initScript,
         "-Pcucumber.filter.tags=@smoke and not @slow"), command.argv());
-    assertEquals("gradle test --console=plain --init-script " + initScript
+    assertEquals("gradle test --console=plain --no-daemon --init-script " + initScript
         + " -Pcucumber.filter.tags=\"@smoke and not @slow\"", command.display());
   }
 
@@ -62,7 +62,7 @@ class GradleCommandBuilderTest {
 
     BuildCommand command = builder.buildRerun(projectRoot, rerunFile, null, null);
 
-    assertEquals("-Pcucumber.features=@" + rerunFile, command.argv().get(5));
+    assertEquals("-Pcucumber.features=@" + rerunFile, command.argv().get(6));
     assertFalse(command.display().contains("cucumber.filter.tags"));
   }
 

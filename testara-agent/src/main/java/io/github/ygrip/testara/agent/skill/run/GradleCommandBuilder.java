@@ -85,8 +85,10 @@ public class GradleCommandBuilder {
     String taskPath = taskPath(module, task);
     String initScript = initScriptPath(projectRoot).toString();
     String launcher = ProcessRunner.gradleLauncher(projectRoot);
-    List<String> argv = List.of(launcher, taskPath, "--console=plain", "--init-script", initScript, property);
-    String display = Path.of(launcher).getFileName() + " " + taskPath + " --console=plain --init-script "
+    // --no-daemon: the tests run in this build's process tree, so a timeout kill stops them too
+    List<String> argv = List.of(launcher, taskPath, "--console=plain", "--no-daemon", "--init-script", initScript,
+        property);
+    String display = Path.of(launcher).getFileName() + " " + taskPath + " --console=plain --no-daemon --init-script "
         + initScript + " " + displayProperty;
     return new BuildCommand(argv, display);
   }
