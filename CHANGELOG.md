@@ -39,6 +39,10 @@ All notable changes to Testara are documented in this file.
 
 ### Fixed
 
+- Fixed the JUnit 5 engine dropping every tagged scenario when no `cucumber.filter.tags` is set, so
+  a plain `mvn verify -P junit5` ran zero tests.
+- Fixed the reporter turning a missing report directory into an empty `[]` file (e.g. when a run
+  wrote no Cucumber JSON), which then broke HTML report generation with `FileAlreadyExistsException`.
 - Fixed the MCP server's JSON-RPC handling (malformed requests, notifications without an `id`, unknown
   tools, `ping`) and made `TESTARA_AGENT_WRITE_ENABLED=false` / `write.enabled: false` a hard off switch
   that no per-call `write`/`overwrite`/`createFiles` argument or CLI flag can override.
