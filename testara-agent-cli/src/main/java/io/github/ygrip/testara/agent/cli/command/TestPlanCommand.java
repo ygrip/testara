@@ -69,8 +69,9 @@ public class TestPlanCommand implements Callable<Integer> {
     if (tags != null) {
       extraTags = tags;
     }
-    return CliSupport.print(new TestPlanSkill().execute(
+    String output = new TestPlanSkill().execute(
       new TestPlanSkill.Input(intent, slice, domain, extraTags), CliSupport.context(root, mode, opts)
-    ));
+    );
+    return CliSupport.print(output, TestPlanSkill::exitCode);
   }
 }

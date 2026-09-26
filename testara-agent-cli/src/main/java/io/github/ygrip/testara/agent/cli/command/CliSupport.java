@@ -4,6 +4,7 @@ import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.ToIntFunction;
 
 import io.github.ygrip.testara.agent.AgentMode;
 import io.github.ygrip.testara.agent.config.AgentYamlConfig;
@@ -17,7 +18,8 @@ import io.github.ygrip.testara.agent.skill.AgentContext;
  * exit codes.
  * <p>
  * Exit codes: {@value #OK} success, {@value #FAILED} test run failed, timed out or preflight failed,
- * {@value #BLOCKED} blocked (writes disabled, execution not allowed) or invalid/missing input.
+ * or init generation, a blocked plan write or the compile gate failed, {@value #BLOCKED} blocked
+ * (writes disabled, execution not allowed) or invalid, missing, unsupported or ambiguous input.
  */
 final class CliSupport {
 
@@ -74,8 +76,13 @@ final class CliSupport {
 
   /** Prints a skill output and returns its exit code. */
   static int print(String output) {
+    return print(output, CliSupport::exitCode);
+  }
+
+  /** Prints a skill output and returns the exit code the skill derives from it (e.g. {@code TestInitSkill::exitCode}). */
+  static int print(String output, ToIntFunction<String> exitCode) {
     System.out.println(output);
-    return exitCode(output);
+    return exitCode.applyAsInt(output);
   }
 
   static int exitCode(String output) {

@@ -10,6 +10,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import io.github.ygrip.testara.agent.skill.TestInitSkill;
 import io.github.ygrip.testara.agent.skill.TestRunSkill;
 import picocli.CommandLine;
 
@@ -79,6 +80,48 @@ class TestaraAgentCliCommandsTest {
   }
 
   @Test
+  void testInitExitCodesFollowTheInitOutcome() throws Exception {
+    Path ambiguous = Files.createDirectories(project.resolve("ambiguous"));
+    Files.writeString(ambiguous.resolve("notes.txt"), "not a build file");
+    Path gradle = Files.createDirectories(project.resolve("gradle"));
+    Files.writeString(gradle.resolve("build.gradle"), "plugins { id 'java' }");
+
+    Result unrecognised = run("test-init", "-y", "--type", "api", "--no-compile", "--project", ambiguous.toString());
+    Result unsupported = run("test-init", "-y", "--type", "api", "--no-compile", "--project", gradle.toString());
+
+    assertEquals(2, unrecognised.exitCode(), unrecognised.output());
+    assertTrue(unrecognised.output().startsWith("init_ambiguous:"), unrecognised.output());
+    assertEquals(2, unsupported.exitCode(), unsupported.output());
+    assertTrue(unsupported.output().startsWith("init_unsupported:"), unsupported.output());
+  }
+
+  @Test
+  void testInitExitCodeFailsOnInitAndCompileFailures() {
+    assertEquals(1, TestInitSkill.exitCode("init_failed: Archetype generation failed.\nerrors:\n  - boom\n"));
+    assertEquals(1, TestInitSkill.exitCode("init_error: Failed to write config files: denied\n"));
+    assertEquals(1, TestInitSkill.exitCode("Error creating project files: denied\n"));
+    assertEquals(1, TestInitSkill.exitCode("status: SUCCESS\ncompile: FAILED — 1 error(s) (2.0s)\n  - boom\n"));
+    assertEquals(1, TestInitSkill.exitCode("# Testara Init: API Project\n\n## Compile\n\ncompile: FAILED — 1 error(s)\n"));
+    assertEquals(2, TestInitSkill.exitCode("init_ambiguous: Directory is not empty\n"));
+    assertEquals(2, TestInitSkill.exitCode("init_unsupported: Gradle projects are not supported\n"));
+    assertEquals(2, TestInitSkill.exitCode("needs_input: testara_init_engine\n"));
+    assertEquals(0, TestInitSkill.exitCode("status: SUCCESS\ncompile: PASSED (2.0s)\n"));
+    assertEquals(0, TestInitSkill.exitCode("status: SUCCESS\ncompile: SKIPPED — blocked\n"));
+  }
+
+  @Test
+  void testPlanWriteBlockedByUnlinkedStepsFails() throws Exception {
+    Result blocked = run("test-plan", "process order over grpc", "--slice", "grpc", "--domain", "order", "--write",
+        "--project", project.toString());
+    Result preview = run("test-plan", "process order over grpc", "--slice", "grpc", "--domain", "order",
+        "--project", project.toString());
+
+    assertEquals(1, blocked.exitCode(), blocked.output());
+    assertTrue(blocked.output().contains("write blocked"), blocked.output());
+    assertEquals(0, preview.exitCode(), preview.output());
+  }
+
+  @Test
   void dryRunWinsOverExecute() throws Exception {
     Result both = run("test-run", "@smoke", "--execute", "--dry-run", "--project", project.toString());
     Result dryRunFalse = run("test-run", "@smoke", "--dry-run=false", "--project", project.toString());
@@ -108,6 +151,18 @@ class TestaraAgentCliCommandsTest {
 
     assertEquals(2, result.exitCode(), result.output());
     assertTrue(result.output().startsWith("write_disabled: write.enabled: false"), result.output());
+    assertFalse(Files.exists(project.resolve("src/test/resources/files")));
+  }
+
+  @Test
+  void yamlScalarWriteFalseBlocksTheWriteFlag() throws Exception {
+    Files.writeString(project.resolve("testara-agent.yaml"), "write: false\n");
+
+    Result result = run("testara-api", "--mode", "request-spec", "--domain", "refund", "--flow", "approve-refund",
+        "--method", "POST", "--endpoint", "/refunds", "--write", "--project", project.toString());
+
+    assertEquals(2, result.exitCode(), result.output());
+    assertTrue(result.output().startsWith("write_disabled:"), result.output());
     assertFalse(Files.exists(project.resolve("src/test/resources/files")));
   }
 

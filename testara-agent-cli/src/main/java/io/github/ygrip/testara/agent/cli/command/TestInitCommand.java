@@ -108,7 +108,7 @@ public class TestInitCommand implements Callable<Integer> {
       mode = AgentMode.PATCH;
     }
     // A null type lets the skill combine --slices without an implied api type.
-    return CliSupport.print(new TestInitSkill().execute(
+    String output = new TestInitSkill().execute(
       new TestInitSkill.Input(
         type,
         basePackage,
@@ -118,7 +118,8 @@ public class TestInitCommand implements Callable<Integer> {
         artifactId,
         slices
       ), CliSupport.context(root, mode, opts)
-    ));
+    );
+    return CliSupport.print(output, TestInitSkill::exitCode);
   }
 
   private void applyDefaults(Path root) {
