@@ -94,9 +94,7 @@ public class TestCommandSkill implements AgentSkill<String, String> {
       AgentContext context, boolean concise) {
     String commandName = toCommandName(description);
     String className   = toClassName(commandName) + "Command";
-    String basePackage = context.options().containsKey("package")
-        ? context.options().get("package")
-        : PackageInference.inferBasePackage(context.projectRoot()).orElse("io.github.ygrip.testara.command");
+    String basePackage = PackageInference.artifactPackage(context, "commandScanPackages", "command");
     String returnType  = context.options().getOrDefault("returnType", "String");
 
     StringBuilder sb = new StringBuilder();
@@ -122,12 +120,12 @@ public class TestCommandSkill implements AgentSkill<String, String> {
     sb.append("```\n\n");
 
     if (!concise) {
-      sb.append("### Placement\n\n```\nsrc/test/java/").append(basePackage.replace('.', '/'))
+      sb.append("### Placement\n\n```\nsrc/main/java/").append(basePackage.replace('.', '/'))
           .append("/").append(className).append(".java\n```\n\n");
       sb.append("### Scan config\n\n```properties\ncommand.executor.scan-locations=io.github.ygrip.testara,")
           .append(basePackage).append("\n```\n");
     } else {
-      sb.append("placement: src/test/java/").append(basePackage.replace('.', '/')).append("/").append(className).append(".java\n");
+      sb.append("placement: src/main/java/").append(basePackage.replace('.', '/')).append("/").append(className).append(".java\n");
       sb.append("scan-locations: io.github.ygrip.testara,").append(basePackage).append("\n");
     }
     return sb.toString();
@@ -171,6 +169,6 @@ public class TestCommandSkill implements AgentSkill<String, String> {
     StringBuilder sb = new StringBuilder();
     for (String p : commandName.split("[-_]"))
       if (!p.isBlank()) sb.append(Character.toUpperCase(p.charAt(0))).append(p.substring(1));
-    return sb.toString();
+    return ArtifactFiles.javaIdentifier(sb.toString(), "Custom");
   }
 }

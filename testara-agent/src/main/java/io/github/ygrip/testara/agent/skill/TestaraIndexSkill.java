@@ -94,6 +94,7 @@ public class TestaraIndexSkill implements AgentSkill<Void, String> {
           .sorted(Comparator.comparing(t -> t.tag().toLowerCase(Locale.ROOT)))
           .forEach(t -> sb.append("- ").append(t.tag())
               .append(" scenarios=").append(t.scenarioCount())
+              .append(" cases=").append(t.executableCaseCount())
               .append(" features=").append(t.featureCount()).append("\n"));
     }
 

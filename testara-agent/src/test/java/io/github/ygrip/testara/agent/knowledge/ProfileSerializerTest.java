@@ -1,5 +1,6 @@
 package io.github.ygrip.testara.agent.knowledge;
 
+import io.github.ygrip.testara.agent.flavor.FlavorEntry;
 import io.github.ygrip.testara.agent.index.BuildTool;
 import io.github.ygrip.testara.agent.index.DriverIndex;
 import io.github.ygrip.testara.agent.index.ExamplesIndex;
@@ -12,6 +13,7 @@ import io.github.ygrip.testara.agent.index.TestaraProjectProfile;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.io.IOException;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
@@ -30,13 +32,17 @@ class ProfileSerializerTest {
   Path projectRoot;
 
   @Test
-  void roundTripPreservesFeaturesTagsDriversRootsAndProjectRoot() {
+  void roundTripPreservesFeaturesTagsDriversRootsAndProjectRoot() throws IOException {
     Path cacheFile = projectRoot.resolve(".testara-agent/knowledge/profile-cache.json");
 
     Path featurePath = projectRoot.resolve("src/test/resources/features/login.feature");
     StepIndex step = new StepIndex("Given", "user opens the login page");
+    StepIndex ruleStep = new StepIndex("Given", "a signed-in user");
     ScenarioIndex scenario = new ScenarioIndex("successful login", ScenarioType.SCENARIO,
-        List.of("@smoke"), List.of(step), List.of(new ExamplesIndex(List.of("username"), 3)));
+        List.of("@smoke"), List.of(step), List.of(new ExamplesIndex(List.of("username"), 3)),
+        List.of(ruleStep));
+    FlavorEntry flavor = new FlavorEntry("ui", "Given", "{actor} opens {string}", "user opens \"x\"",
+        "opens", "testara-ui-cucumber", "UIBaseSteps", List.of("actor", "string"));
     FeatureIndex feature = new FeatureIndex(featurePath, "Login", List.of("@ui"),
         List.of(scenario), List.of());
     TagIndex tag = new TagIndex("@smoke", 1, 1, List.of(featurePath), List.of("successful login"));
@@ -49,7 +55,7 @@ class ProfileSerializerTest {
         List.of(projectRoot.resolve("validations")),
         List.of(feature), List.of(), List.of(), List.of(), List.of(driver), List.of(tag),
         Map.of("web.page.desktop.login.url", "https://example.test/login"), Map.of(),
-        List.of(), List.of());
+        List.of(flavor), List.of(), List.of("src/test/resources/features/broken.feature: bad"));
 
     ProfileSerializer.save(cacheFile, original);
     TestaraProjectProfile restored = ProfileSerializer.load(cacheFile);
@@ -67,5 +73,8 @@ class ProfileSerializerTest {
     assertEquals(1, restored.featureRoots().size(), "resource roots must survive the round-trip");
     assertEquals("https://example.test/login",
         restored.properties().get("web.page.desktop.login.url"));
+    assertEquals(List.of(ruleStep), restored.features().get(0).scenarios().get(0).ruleBackgroundSteps());
+    assertEquals(List.of("actor", "string"), restored.flavorSteps().get(0).parameterTypes());
+    assertEquals(original.parseErrors(), restored.parseErrors());
   }
 }

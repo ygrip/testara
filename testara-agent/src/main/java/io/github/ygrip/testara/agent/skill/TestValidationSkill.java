@@ -100,7 +100,7 @@ public class TestValidationSkill implements AgentSkill<String, String> {
   private String generateValidation(String description, List<ValidationIndex> validations,
       AgentContext context, boolean concise) {
     String mode = context.options().getOrDefault("mode", "auto");
-    String pkg  = context.options().getOrDefault("package", "io.github.ygrip.testara.validation");
+    String pkg  = PackageInference.artifactPackage(context, "validationScanPackages", "validation");
 
     StringBuilder sb = new StringBuilder();
 
@@ -143,14 +143,14 @@ public class TestValidationSkill implements AgentSkill<String, String> {
       if (concise) {
         sb.append("mode: java | class: ").append(className).append(" | package: ").append(pkg).append("\n\n");
         sb.append("```java\n").append(generateValidatorClass(className, description, pkg)).append("```\n");
-        sb.append("placement: src/test/java/").append(pkg.replace('.', '/')).append("/").append(className).append(".java\n");
+        sb.append("placement: src/main/java/").append(pkg.replace('.', '/')).append("/").append(className).append(".java\n");
       } else {
         sb.append("## Generated Validation\n\n**Description:** ").append(description).append("\n\n");
         sb.append("**Mode:** Java (custom ValidatorLogic)\n\n");
         sb.append("### ").append(className).append(".java\n\n```java\n");
         sb.append(generateValidatorClass(className, description, pkg));
         sb.append("```\n\n");
-        sb.append("**Placement:** `src/test/java/").append(pkg.replace('.', '/')).append("/")
+        sb.append("**Placement:** `src/main/java/").append(pkg.replace('.', '/')).append("/")
             .append(className).append(".java`\n");
       }
     }
@@ -196,10 +196,11 @@ public class TestValidationSkill implements AgentSkill<String, String> {
         """.formatted(pkg, description, toValidationName(description), className, className);
   }
 
+  /** UPPER_SNAKE like the built-in validations (EQUAL, NOT_EMPTY, IS_VISIBLE). */
   private String toValidationName(String description) {
-    String slug = description.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]+", "-")
-        .replaceAll("^-|-$", "");
-    return slug.substring(0, Math.min(40, slug.length()));
+    String slug = description.toUpperCase(Locale.ROOT).replaceAll("[^A-Z0-9]+", "_")
+        .replaceAll("^_|_$", "");
+    return slug.substring(0, Math.min(40, slug.length())).replaceAll("_$", "");
   }
 
   private String toClassName(String description) {
@@ -208,6 +209,6 @@ public class TestValidationSkill implements AgentSkill<String, String> {
     for (String p : parts) {
       if (!p.isBlank()) sb.append(Character.toUpperCase(p.charAt(0))).append(p.substring(1).toLowerCase(Locale.ROOT));
     }
-    return sb.toString();
+    return ArtifactFiles.javaIdentifier(sb.toString(), "Custom");
   }
 }

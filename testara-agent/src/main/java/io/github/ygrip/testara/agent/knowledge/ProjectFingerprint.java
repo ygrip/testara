@@ -1,8 +1,8 @@
 package io.github.ygrip.testara.agent.knowledge;
 
 import java.nio.file.Path;
-import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 public record ProjectFingerprint(
     Map<Path, FileFingerprint> fingerprints,
@@ -12,15 +12,16 @@ public record ProjectFingerprint(
     return new ProjectFingerprint(Map.copyOf(fps), hash);
   }
 
-  public boolean equals(ProjectFingerprint other) {
-    if (other == null) return false;
-    if (fingerprints.size() != other.fingerprints.size()) return false;
-    return fingerprints.entrySet().stream()
-        .allMatch(e -> {
-          var otherFp = other.fingerprints.get(e.getKey());
-          return otherFp != null
-              && otherFp.size() == e.getValue().size()
-              && otherFp.lastModifiedMillis() == e.getValue().lastModifiedMillis();
-        });
+  @Override
+  public boolean equals(Object other) {
+    if (this == other) return true;
+    if (!(other instanceof ProjectFingerprint that)) return false;
+    return Objects.equals(projectHash, that.projectHash)
+        && Objects.equals(fingerprints, that.fingerprints);
+  }
+
+  @Override
+  public int hashCode() {
+    return Objects.hash(fingerprints, projectHash);
   }
 }

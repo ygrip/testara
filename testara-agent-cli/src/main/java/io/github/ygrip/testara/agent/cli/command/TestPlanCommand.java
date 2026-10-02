@@ -1,14 +1,11 @@
 package io.github.ygrip.testara.agent.cli.command;
 
 import java.nio.file.Path;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.Callable;
 
 import io.github.ygrip.testara.agent.AgentMode;
-import io.github.ygrip.testara.agent.knowledge.JsonlKnowledgeStore;
-import io.github.ygrip.testara.agent.llm.DisabledLlmClient;
-import io.github.ygrip.testara.agent.skill.AgentContext;
 import io.github.ygrip.testara.agent.skill.TestPlanSkill;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
@@ -19,12 +16,14 @@ import picocli.CommandLine.Parameters;
   description = "Generate a Testara-compatible Cucumber feature from user intent",
   mixinStandardHelpOptions = true
 )
-public class TestPlanCommand implements Runnable {
+public class TestPlanCommand implements Callable<Integer> {
 
   @Parameters(index = "0", description = "Intent, e.g. 'Create tests for refund approval flow'")
   private String intent;
 
-  @Option(names = "--slice", defaultValue = "api", description = "Layer slice: api, ui, database, streaming, fullstack")
+  @Option(names = "--slice",
+    description = "Layer slice: api, ui, database, streaming, fullstack (inferred from the intent if not set)"
+  )
   private String slice;
 
   @Option(names = "--domain", description = "Domain name override (auto-inferred if not set)")
@@ -42,23 +41,37 @@ public class TestPlanCommand implements Runnable {
   )
   private boolean write;
 
-  @Override
-  public void run() {
-    Path root = projectRoot.toAbsolutePath()
-      .normalize();
-    Map<String, String> opts = new HashMap<>();
-    if (write)
-      opts.put("write", "true");
+  @Option(names = "--overwrite", defaultValue = "false", description = "Replace files that already exist")
+  private boolean overwrite;
 
-    AgentContext ctx =
-      new AgentContext(root, JsonlKnowledgeStore.loadProfile(root), AgentMode.PATCH, new DisabledLlmClient(), opts);
-    System.out.println(new TestPlanSkill().execute(
-      new TestPlanSkill.Input(
-        intent,
-        slice,
-        domain,
-        tags != null ? tags : List.of()
-      ), ctx
-    ));
+  @Option(names = "--compile", defaultValue = "false", description = "Run the test-compile gate after writing")
+  private boolean compile;
+
+  @Override
+  public Integer call() {
+    Path root = CliSupport.root(projectRoot);
+    Map<String, String> opts = CliSupport.projectOptions(root);
+    String blocked = CliSupport.requestWrite("test-plan", opts, write);
+    if (blocked != null) {
+      return CliSupport.print(blocked);
+    }
+    if (overwrite) {
+      opts.put("overwrite", "true");
+    }
+    if (compile) {
+      opts.put("compile", "true");
+    }
+    AgentMode mode = AgentMode.PATCH;
+    if (write) {
+      mode = AgentMode.APPLY;
+    }
+    List<String> extraTags = List.of();
+    if (tags != null) {
+      extraTags = tags;
+    }
+    String output = new TestPlanSkill().execute(
+      new TestPlanSkill.Input(intent, slice, domain, extraTags), CliSupport.context(root, mode, opts)
+    );
+    return CliSupport.print(output, TestPlanSkill::exitCode);
   }
 }

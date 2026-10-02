@@ -8,11 +8,14 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.logging.Logger;
 import java.util.regex.Pattern;
+import java.util.regex.PatternSyntaxException;
 
 /** Links generated Gherkin step lines to indexed Testara or project glue. */
 public final class StepLinker {
 
+  private static final Logger LOG = Logger.getLogger(StepLinker.class.getName());
   private static final Pattern STEP_LINE = Pattern.compile("^\\s*(Given|When|Then|And|But)\\s+(.+)$");
 
   public enum Source { BUILT_IN, PROJECT, UNMATCHED }
@@ -70,18 +73,23 @@ public final class StepLinker {
           Source.PROJECT, step.sourcePath() + ":" + step.className());
     }
 
+    /** Cucumber matches glue by text only; the Given/When/Then keyword never restricts a match. */
     boolean matches(String stepKeyword, String stepText) {
-      return keywordCompatible(stepKeyword, keyword) && pattern.matcher(stepText).matches();
+      return pattern != null && pattern.matcher(stepText).matches();
     }
   }
 
-  private static boolean keywordCompatible(String featureKeyword, String glueKeyword) {
-    if ("And".equalsIgnoreCase(featureKeyword) || "But".equalsIgnoreCase(featureKeyword)) return true;
-    if ("And".equalsIgnoreCase(glueKeyword) || "But".equalsIgnoreCase(glueKeyword)) return true;
-    return featureKeyword.equalsIgnoreCase(glueKeyword);
+  /** Returns null (never matches) for an expression that is not a valid regex, logging why. */
+  private static Pattern compile(String expression) {
+    try {
+      return compilePattern(expression);
+    } catch (PatternSyntaxException e) {
+      LOG.warning("Ignoring step expression that is not a valid pattern: " + expression + " (" + e.getDescription() + ")");
+      return null;
+    }
   }
 
-  private static Pattern compile(String expression) {
+  private static Pattern compilePattern(String expression) {
     String body = expression == null ? "" : expression.strip();
     if (body.startsWith("^") || body.endsWith("$")) {
       return Pattern.compile(body, Pattern.CASE_INSENSITIVE | Pattern.DOTALL);

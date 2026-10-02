@@ -5,9 +5,10 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Set;
 import java.util.regex.Pattern;
+import io.cucumber.tagexpressions.TagExpressionParser;
 
 /**
- * Safety checks before executing Maven test commands.
+ * Safety checks before executing Maven or Gradle test commands.
  *
  * <p>Validates project root, Maven availability, tag expression safety,
  * and rejects any shell injection patterns.
@@ -19,8 +20,13 @@ public final class TestExecutionGuard {
       "&&", "||", ";", "`", "$(", "${", ">", ">>", "<", "|", "&"
   );
 
-  private static final Pattern SAFE_TAG_EXPR = Pattern.compile(
-      "^[@\\w\\s()\\-]+$");
+  /** Build-tool launchers the agent may execute (Unix and Windows forms, wrapper or PATH). */
+  private static final Set<String> ALLOWED_EXECUTABLES = Set.of(
+      "mvn", "mvn.cmd", "mvnw", "mvnw.cmd", "gradle", "gradle.bat", "gradlew", "gradlew.bat"
+  );
+
+  /** Kill switch shared by test runs and compile gates: {@code TESTARA_AGENT_RUN_ENABLED=false}. */
+  public static final String RUN_ENABLED_ENV = "TESTARA_AGENT_RUN_ENABLED";
 
   private TestExecutionGuard() { /* utility */ }
 
@@ -57,10 +63,12 @@ public final class TestExecutionGuard {
     if (argv == null || argv.isEmpty()) {
       return "Command is blank";
     }
-    Path executable = Path.of(argv.get(0));
-    String exeName = executable.getFileName() == null ? argv.get(0) : executable.getFileName().toString();
-    if (!"mvn".equals(exeName) && !"mvnw".equals(exeName) && !"mvnw.cmd".equals(exeName)) {
-      return "Command must invoke 'mvn', 'mvnw', or 'mvnw.cmd', got: " + exeName;
+    // Match the file name for either separator, so a Windows wrapper path is recognised on any host.
+    String executable = argv.get(0);
+    String exeName = executable.substring(Math.max(executable.lastIndexOf('/'), executable.lastIndexOf('\\')) + 1);
+    if (!ALLOWED_EXECUTABLES.contains(exeName)) {
+      return "Command must invoke Maven or Gradle (mvn, mvnw, gradle, gradlew and their Windows "
+          + ".cmd/.bat forms), got: " + exeName;
     }
     String args = String.join(" ", argv.subList(1, argv.size()));
     for (String blocked : BLOCKED_PATTERNS) {
@@ -85,6 +93,11 @@ public final class TestExecutionGuard {
     return false;
   }
 
+  /** Whether agent-launched build processes are allowed (enabled unless the env var is {@code false}). */
+  public static boolean isRunEnabled() {
+    return !"false".equalsIgnoreCase(System.getenv(RUN_ENABLED_ENV));
+  }
+
   /** Check that the project root is valid and has a pom.xml. */
   public static boolean isValidProjectRoot(Path projectRoot) {
     return projectRoot != null
@@ -94,8 +107,14 @@ public final class TestExecutionGuard {
 
   /** Validate a tag expression for safe characters. */
   public static boolean isValidTagExpression(String tagExpression) {
-    return tagExpression != null
-        && !tagExpression.isBlank()
-        && SAFE_TAG_EXPR.matcher(tagExpression).matches();
+    if (tagExpression == null || tagExpression.isBlank()) return false;
+    if (tagExpression.indexOf('\n') >= 0 || tagExpression.indexOf('\r') >= 0
+        || tagExpression.indexOf('\0') >= 0) return false;
+    try {
+      TagExpressionParser.parse(tagExpression);
+      return true;
+    } catch (RuntimeException e) {
+      return false;
+    }
   }
 }

@@ -68,9 +68,16 @@ public class TestaraContextSkill implements AgentSkill<Void, String> {
     sb.append("modules: ").append(profile.mavenModules().size()).append("\n");
     sb.append("feature-files: ").append(profile.features().size()).append(" | scenarios: ")
         .append(profile.totalScenarios()).append("\n");
+    if (!profile.parseErrors().isEmpty()) {
+      sb.append("parse-errors: ").append(profile.parseErrors().size()).append(" | ")
+          .append(String.join(" | ", profile.parseErrors())).append("\n");
+    }
     if (!profile.tags().isEmpty()) {
-      sb.append("top-tags: ").append(profile.tags().stream().limit(12)
-          .map(t -> t.tag() + "(" + t.scenarioCount() + ")")
+      sb.append("top-tags: ").append(profile.tags().stream()
+          .sorted(java.util.Comparator.comparingInt(io.github.ygrip.testara.agent.index.TagIndex::executableCaseCount).reversed()
+              .thenComparing(io.github.ygrip.testara.agent.index.TagIndex::tag))
+          .limit(12)
+          .map(t -> t.tag() + "(scenarios=" + t.scenarioCount() + ",cases=" + t.executableCaseCount() + ")")
           .collect(Collectors.joining(", "))).append("\n");
     }
     sb.append("flavor-steps: ").append(flavorSteps.size()).append(" | ");
@@ -112,6 +119,13 @@ public class TestaraContextSkill implements AgentSkill<Void, String> {
       sb.append("\n> ⚠ `configuration.properties` found in `src/main/resources` — Testara reads from `src/test/resources`. Move the file.\n");
     }
     sb.append("\n");
+
+    if (!profile.parseErrors().isEmpty()) {
+      sb.append("## Parse Errors\n\n");
+      sb.append("These feature files could not be indexed and are missing from every count:\n\n");
+      profile.parseErrors().forEach(error -> sb.append("- ").append(error).append("\n"));
+      sb.append("\n");
+    }
 
     sb.append("## Active Slices\n\n");
     slices.forEach(s -> sb.append("- ").append(s).append("\n"));

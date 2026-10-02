@@ -3,11 +3,9 @@ package io.github.ygrip.testara.agent.cli.command;
 import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.Callable;
 
 import io.github.ygrip.testara.agent.AgentMode;
-import io.github.ygrip.testara.agent.knowledge.JsonlKnowledgeStore;
-import io.github.ygrip.testara.agent.llm.DisabledLlmClient;
-import io.github.ygrip.testara.agent.skill.AgentContext;
 import io.github.ygrip.testara.agent.skill.TestCommandSkill;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
@@ -18,7 +16,7 @@ import picocli.CommandLine.Parameters;
   description = "List project commands, show command detail, or generate a new CommandLogic<T> class",
   mixinStandardHelpOptions = true
 )
-public class TestCommandSkillCommand implements Runnable {
+public class TestCommandSkillCommand implements Callable<Integer> {
 
   @Parameters(index = "0",
     arity = "0..1",
@@ -33,8 +31,7 @@ public class TestCommandSkillCommand implements Runnable {
   private String detail;
 
   @Option(names = "--package",
-    defaultValue = "io.github.ygrip.testara.command",
-    description = "Target package for generated class"
+    description = "Target package for generated class (default: the project's command package)"
   )
   private String pkg;
 
@@ -45,19 +42,21 @@ public class TestCommandSkillCommand implements Runnable {
   private Path projectRoot;
 
   @Override
-  public void run() {
-    Path root = projectRoot.toAbsolutePath()
-      .normalize();
+  public Integer call() {
+    Path root = CliSupport.root(projectRoot);
     Map<String, String> opts = new HashMap<>();
-    opts.put("package", pkg);
+    if (pkg != null)
+      opts.put("package", pkg);
     opts.put("returnType", returnType);
     if (detail != null)
       opts.put("detail", detail);
 
-    AgentContext ctx =
-      new AgentContext(root, JsonlKnowledgeStore.loadProfile(root), AgentMode.PATCH, new DisabledLlmClient(), opts);
-
-    String input = list ? "--list" : (description != null ? description : "");
-    System.out.println(new TestCommandSkill().execute(input, ctx));
+    String input = "";
+    if (list) {
+      input = "--list";
+    } else if (description != null) {
+      input = description;
+    }
+    return CliSupport.print(new TestCommandSkill().execute(input, CliSupport.context(root, AgentMode.PATCH, opts)));
   }
 }

@@ -107,4 +107,15 @@ class SecretRedactionGuardTest {
     assertTrue(result.contains("my_secret_key"), "substrings of secret-key words should be preserved");
     assertTrue(result.contains("public_key"), "non-secret keys should be preserved");
   }
+
+  @Test
+  void recognisesSecretPropertyKeysBySegment() {
+    assertTrue(SecretRedactionGuard.isSecretKey("sql.service.orderDb.password"));
+    assertTrue(SecretRedactionGuard.isSecretKey("config.vault.token"));
+    assertTrue(SecretRedactionGuard.isSecretKey("config.consul.acl-token"));
+    assertFalse(SecretRedactionGuard.isSecretKey("api.service.order-api.host"));
+    assertFalse(SecretRedactionGuard.isSecretKey("elasticsearch.service.x.requireAuthentication"));
+    assertEquals("[REDACTED]", SecretRedactionGuard.redactValue("test.user.password", "secret_sauce"));
+    assertEquals("localhost", SecretRedactionGuard.redactValue("db.host", "localhost"));
+  }
 }

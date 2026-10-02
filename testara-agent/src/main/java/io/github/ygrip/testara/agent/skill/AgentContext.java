@@ -13,4 +13,12 @@ public record AgentContext(
     AgentMode mode,
     LlmClient llmClient,
     Map<String, String> options
-) {}
+) {
+  public boolean allowsWrite() {
+    return mode == AgentMode.APPLY;
+  }
+
+  public boolean allowsExecution() {
+    return mode == AgentMode.APPLY;
+  }
+}

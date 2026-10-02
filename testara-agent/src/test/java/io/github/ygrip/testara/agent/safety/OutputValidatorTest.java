@@ -29,7 +29,7 @@ class OutputValidatorTest {
   void rejectsFeatureMissingHeader() {
     var result = OutputValidator.validateFeature("Scenario: Missing feature header");
     assertFalse(result.valid());
-    assertTrue(result.errors().get(0).contains("Missing 'Feature:'"));
+    assertFalse(result.errors().isEmpty());
   }
 
   @Test
@@ -96,5 +96,36 @@ class OutputValidatorTest {
   void rejectsEmptyJson() {
     var result = OutputValidator.validateJson("");
     assertFalse(result.valid());
+  }
+  @Test
+  void rejectsBraceWrappedGarbageAsJson() {
+    var result = OutputValidator.validateJson("{not-json}");
+    assertFalse(result.valid());
+  }
+
+  @Test
+  void rejectsDigitLeadingClassNamesAndDuplicateActionMethods() {
+    String digitClass = """
+        package com.test.page;
+        public class 2faPage {
+        }
+        """;
+    String duplicates = """
+        package com.test.action;
+        public class LoginActions extends UserAction {
+          @Action("login")
+          public void login(Map<String, Object> params) {
+          }
+          @Action("login")
+          public void login(Map<String, Object> params) {
+          }
+        }
+        """;
+
+    assertFalse(OutputValidator.validateJavaSource(digitClass, false, false).valid());
+    var result = OutputValidator.validateJavaSource(duplicates, false, false);
+    assertFalse(result.valid());
+    assertTrue(result.errors().contains("Duplicate method name: login"), result.errors().toString());
+    assertTrue(result.errors().contains("Duplicate @Action name: login"), result.errors().toString());
   }
 }

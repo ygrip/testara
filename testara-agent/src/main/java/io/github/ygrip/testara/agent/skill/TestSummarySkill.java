@@ -2,6 +2,8 @@ package io.github.ygrip.testara.agent.skill;
 
 import io.github.ygrip.testara.agent.index.*;
 import io.github.ygrip.testara.agent.parser.FeatureParser;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -17,6 +19,8 @@ public class TestSummarySkill implements AgentSkill<TestSummarySkill.Input, Stri
 
   public record Input(Path target, String scenarioFilter) {}
 
+  private static final ObjectMapper MAPPER = new ObjectMapper();
+  private static final Set<String> IGNORED_DIRS = Set.of("target", ".git", ".testara-agent", "node_modules");
   private final FeatureParser parser = new FeatureParser();
 
   @Override
@@ -24,17 +28,22 @@ public class TestSummarySkill implements AgentSkill<TestSummarySkill.Input, Stri
 
   @Override
   public String execute(Input input, AgentContext context) {
-    List<FeatureIndex> features = loadFeatures(input.target());
-    if (features.isEmpty()) return "No feature files found at: " + input.target();
+    Path target = input.target() == null ? context.projectRoot() : input.target();
+    if (!target.isAbsolute()) target = context.projectRoot().resolve(target).normalize();
+    List<FeatureIndex> features = loadFeatures(target);
+    if (features.isEmpty()) return "No feature files found at: " + target;
 
     List<FeatureIndex> filtered = input.scenarioFilter() != null && !input.scenarioFilter().isBlank()
-        ? features.stream().map(f -> filterScenarios(f, input.scenarioFilter())).toList()
+        ? features.stream()
+            .map(f -> filterScenarios(f, input.scenarioFilter()))
+            .filter(f -> !f.scenarios().isEmpty())
+            .toList()
         : features;
 
     boolean concise = "true".equals(context.options().getOrDefault("concise", "false"));
     boolean asJson  = "json".equals(context.options().getOrDefault("format", ""));
-    if (asJson) return renderJson(filtered, input.target());
-    return concise ? renderConcise(filtered, input.target()) : renderMarkdown(filtered, input.target());
+    if (asJson) return renderJson(filtered, target);
+    return concise ? renderConcise(filtered, target) : renderMarkdown(filtered, target);
   }
 
   private List<FeatureIndex> loadFeatures(Path target) {
@@ -44,10 +53,13 @@ public class TestSummarySkill implements AgentSkill<TestSummarySkill.Input, Stri
         out.add(parser.parse(target));
       } else if (Files.isDirectory(target)) {
         try (Stream<Path> walk = Files.walk(target)) {
-          walk.filter(p -> p.toString().endsWith(".feature"))
+          walk.filter(Files::isRegularFile)
+              .filter(p -> p.toString().endsWith(".feature"))
+              .filter(p -> !containsIgnoredDirectory(target, p))
+              .sorted()
               .forEach(p -> {
                 try { out.add(parser.parse(p)); }
-                catch (IOException e) { /* skip */ }
+                catch (IOException e) { /* malformed files are skipped by summary; review surfaces details */ }
               });
         }
       }
@@ -55,6 +67,19 @@ public class TestSummarySkill implements AgentSkill<TestSummarySkill.Input, Stri
       // return what we have
     }
     return out;
+  }
+
+  private boolean containsIgnoredDirectory(Path root, Path candidate) {
+    Path relative;
+    try {
+      relative = root.toAbsolutePath().normalize().relativize(candidate.toAbsolutePath().normalize());
+    } catch (IllegalArgumentException e) {
+      relative = candidate;
+    }
+    for (Path part : relative) {
+      if (IGNORED_DIRS.contains(part.toString())) return true;
+    }
+    return false;
   }
 
   private FeatureIndex filterScenarios(FeatureIndex f, String filter) {
@@ -85,7 +110,10 @@ public class TestSummarySkill implements AgentSkill<TestSummarySkill.Input, Stri
     Set<String> allTags = new TreeSet<>();
     features.forEach(f -> {
       allTags.addAll(f.tags());
-      f.scenarios().forEach(s -> allTags.addAll(s.tags()));
+      f.scenarios().forEach(s -> {
+        allTags.addAll(s.tags());
+        s.examples().forEach(ex -> allTags.addAll(ex.tags()));
+      });
     });
     if (!allTags.isEmpty()) {
       sb.append("**Tags:** ").append(String.join(", ", allTags)).append("  \n");
@@ -101,39 +129,45 @@ public class TestSummarySkill implements AgentSkill<TestSummarySkill.Input, Stri
 
       if (!f.backgroundSteps().isEmpty()) {
         sb.append("**Background steps:**\n");
-        f.backgroundSteps().forEach(s -> {
-            sb.append("- ").append(s.keyword()).append(" ").append(s.text()).append("\n");
-            if (!s.dataTable().isEmpty()) {
-              for (List<String> row : s.dataTable()) {
-                sb.append("    | ").append(String.join(" | ", row)).append(" |\n");
-              }
-            }
-          });
+        appendSteps(sb, f.backgroundSteps());
         sb.append("\n");
       }
 
+      List<StepIndex> printedRuleBackground = List.of();
       for (ScenarioIndex s : f.scenarios()) {
+        // A Rule's Background runs before each of its scenarios; print it once per rule
+        if (!s.ruleBackgroundSteps().isEmpty() && !s.ruleBackgroundSteps().equals(printedRuleBackground)) {
+          sb.append("**Rule background steps:**\n");
+          appendSteps(sb, s.ruleBackgroundSteps());
+          sb.append("\n");
+          printedRuleBackground = s.ruleBackgroundSteps();
+        }
         sb.append("### ").append(s.name());
         if (s.type() == ScenarioType.SCENARIO_OUTLINE) sb.append(" *(Outline)*");
         sb.append("\n");
         if (!s.tags().isEmpty()) {
           sb.append("Tags: ").append(String.join(" ", s.tags())).append("\n");
         }
-        s.steps().forEach(step -> {
-            sb.append("- ").append(step.keyword()).append(" ").append(step.text()).append("\n");
-            if (!step.dataTable().isEmpty()) {
-              for (List<String> row : step.dataTable()) {
-                sb.append("    | ").append(String.join(" | ", row)).append(" |\n");
-              }
-            }
-          });
-        s.examples().forEach(ex ->
-            sb.append("  - Examples: ").append(ex.rowCount()).append(" rows (")
-                .append(String.join(", ", ex.headers())).append(")\n"));
+        appendSteps(sb, s.steps());
+        s.examples().forEach(ex -> {
+          sb.append("  - Examples: ").append(ex.rowCount()).append(" rows (")
+              .append(String.join(", ", ex.headers())).append(")");
+          if (!ex.tags().isEmpty()) sb.append(" tags=").append(String.join(" ", ex.tags()));
+          sb.append("\n");
+        });
         sb.append("\n");
       }
     }
     return sb.toString();
+  }
+
+  private void appendSteps(StringBuilder sb, List<StepIndex> steps) {
+    steps.forEach(step -> {
+      sb.append("- ").append(step.keyword()).append(" ").append(step.text()).append("\n");
+      for (List<String> row : step.dataTable()) {
+        sb.append("    | ").append(String.join(" | ", row)).append(" |\n");
+      }
+    });
   }
 
   /** Minimal token-efficient output. */
@@ -164,29 +198,34 @@ public class TestSummarySkill implements AgentSkill<TestSummarySkill.Input, Stri
   }
 
   private String renderJson(List<FeatureIndex> features, Path target) {
-    List<Map<String, Object>> list = new ArrayList<>();
-    for (FeatureIndex f : features) {
-      Map<String, Object> m = new LinkedHashMap<>();
-      m.put("feature", f.featureName());
-      m.put("file", f.path().toString());
-      m.put("tags", f.tags());
-      m.put("scenarios", f.scenarios().stream().map(s -> {
-        Map<String, Object> sm = new LinkedHashMap<>();
-        sm.put("name", s.name());
-        sm.put("type", s.type().name());
-        sm.put("tags", s.tags());
-        sm.put("steps", s.steps().size());
-        return sm;
+    Map<String, Object> out = new LinkedHashMap<>();
+    out.put("target", target.toString());
+    out.put("featureFiles", features.size());
+    out.put("scenarios", features.stream().mapToInt(f -> f.scenarios().size()).sum());
+    out.put("features", features.stream().map(f -> {
+      Map<String, Object> feature = new LinkedHashMap<>();
+      feature.put("feature", f.featureName());
+      feature.put("file", f.path().toString());
+      feature.put("tags", f.tags());
+      feature.put("scenarios", f.scenarios().stream().map(s -> {
+        Map<String, Object> scenario = new LinkedHashMap<>();
+        scenario.put("name", s.name());
+        scenario.put("type", s.type().name());
+        scenario.put("tags", s.tags());
+        scenario.put("steps", s.steps().size());
+        scenario.put("examples", s.examples().stream().map(ex -> Map.of(
+            "tags", ex.tags(),
+            "headers", ex.headers(),
+            "rows", ex.rowCount()
+        )).toList());
+        return scenario;
       }).toList());
-      list.add(m);
+      return feature;
+    }).toList());
+    try {
+      return MAPPER.writeValueAsString(out);
+    } catch (JsonProcessingException e) {
+      throw new IllegalStateException("Cannot serialize test summary", e);
     }
-    // Simple JSON
-    return "[" + list.stream().map(m -> {
-      StringBuilder js = new StringBuilder("{");
-      m.forEach((k, v) -> js.append("\"").append(k).append("\":")
-          .append(v instanceof List ? v.toString() : "\"" + v + "\"").append(","));
-      if (js.charAt(js.length()-1) == ',') js.setLength(js.length()-1);
-      return js.append("}").toString();
-    }).collect(java.util.stream.Collectors.joining(",")) + "]";
   }
 }

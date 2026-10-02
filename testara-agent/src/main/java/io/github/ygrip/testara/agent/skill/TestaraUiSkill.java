@@ -38,17 +38,27 @@ public class TestaraUiSkill implements AgentSkill<TestaraUiSkill.Input, String> 
         ? input.basePackage()
         : PackageInference.inferBasePackage(context.projectRoot()).orElse("io.github.ygrip.automation");
     boolean concise = "concise".equals(context.options().get("format"));
-    boolean write = "true".equals(context.options().get("write"));
+    boolean write = context.allowsWrite() && "true".equals(context.options().get("write"));
 
     return switch (mode) {
-      case "page"         -> generatePage(input.pageName(), input.engine(), basePkg, context.projectRoot(), write, concise);
-      case "action"       -> generateAction(input.pageName(), input.actionName(), basePkg, context.projectRoot(), write, concise);
+      case "page"         -> withCompileGate(generatePage(input.pageName(), input.engine(), basePkg, context, write, concise),
+          context, write);
+      case "action"       -> withCompileGate(generateAction(input.pageName(), input.actionName(), basePkg, context, write, concise),
+          context, write);
       case "config"       -> generateUiConfig(input.engine(), basePkg, concise);
       case "interactions" -> renderInteractionCatalog(concise);
       case "validate-page", "validate" -> validatePage(input.pageName(), basePkg, context.projectRoot(),
           input.htmlSnapshot(), concise);
       default             -> explainUi(concise);
     };
+  }
+
+  /** Appends the optional compile gate ({@code compile=true}) result after a write. */
+  private String withCompileGate(String output, AgentContext context, boolean write) {
+    if (!write) return output;
+    String compile = ArtifactFiles.compileLine(context);
+    if (compile == null) return output;
+    return output + "\n" + compile;
   }
 
   private String explainUi(boolean concise) {
@@ -73,7 +83,7 @@ public class TestaraUiSkill implements AgentSkill<TestaraUiSkill.Input, String> 
           Then  user element "element name" should contains text "text"
           Then  user see that
                 | actual        | validation | expectation |
-                | error message | DISPLAYED  | true        |
+                | error message | IS_VISIBLE | true        |
 
           ## UserAction — correct imports (only import what you actually use)
           import io.github.ygrip.testara.ui.model.Action;        // @Action
@@ -152,32 +162,57 @@ public class TestaraUiSkill implements AgentSkill<TestaraUiSkill.Input, String> 
         """;
   }
 
-  private String generatePage(String pageName, String engine, String basePkg, Path root, boolean write,
+  /** Page base class import for an engine; appium pages extend {@code AppiumPage}, not a web page. */
+  static String pageBaseImport(String engine) {
+    return switch (normalizeEngine(engine)) {
+      case "playwright" -> "io.github.ygrip.testara.ui.playwright.page.PlaywrightPage";
+      case "vibium"     -> "io.github.ygrip.testara.ui.vibium.page.VibiumPage";
+      case "appium"     -> "io.github.ygrip.testara.ui.appium.page.AppiumPage";
+      default           -> "io.github.ygrip.testara.ui.selenium.page.SeleniumPage";
+    };
+  }
+
+  static String pageBaseClass(String engine) {
+    String qualified = pageBaseImport(engine);
+    return qualified.substring(qualified.lastIndexOf('.') + 1);
+  }
+
+  /** {@code @Page} platforms: mobile devices for appium, web devices otherwise. */
+  static String pagePlatforms(String engine) {
+    if ("appium".equals(normalizeEngine(engine))) {
+      return "DeviceType.DEFAULT, DeviceType.ANDROID, DeviceType.IOS";
+    }
+    return "DeviceType.DEFAULT, DeviceType.DESKTOP";
+  }
+
+  private static String normalizeEngine(String engine) {
+    if (engine == null) return "selenium";
+    return engine.toLowerCase(Locale.ROOT);
+  }
+
+  /**
+   * {@code web.page.<device>.<page>.url} entries for application.properties. A FULL absolute URL is
+   * required — relative paths silently break page-transition detection ("user is in X page").
+   */
+  static List<String> pageUrlEntries(String pageKey) {
+    return List.of(
+        PropertyKeys.pageUrl("default", pageKey) + "=http://localhost:3000/" + pageKey,
+        PropertyKeys.pageUrl("desktop", pageKey) + "=http://localhost:3000/" + pageKey);
+  }
+
+  private String generatePage(String pageName, String engine, String basePkg, AgentContext context, boolean write,
       boolean concise) {
     if (pageName == null) pageName = "sample";
+    Path root = context.projectRoot();
     String pName = toPropertyKey(pageName);
     String pClass = toClassName(pageName) + "Page";
     String pkgPath = basePkg.replace('.', '/');
-    String uiEngine = engine == null ? "selenium" : engine.toLowerCase(Locale.ROOT);
-    String pageBaseClass = switch (uiEngine) {
-      case "playwright" -> "PlaywrightPage";
-      case "vibium"     -> "VibiumPage";
-      default           -> "SeleniumPage";
-    };
-    String pageBaseImport = switch (uiEngine) {
-      case "playwright" -> "io.github.ygrip.testara.ui.playwright.page.PlaywrightPage";
-      case "vibium"     -> "io.github.ygrip.testara.ui.vibium.page.VibiumPage";
-      default           -> "io.github.ygrip.testara.ui.selenium.page.SeleniumPage";
-    };
+    String pageBaseClass = pageBaseClass(engine);
+    String pageBaseImport = pageBaseImport(engine);
     String locators = pageLocators(pName);
 
-    // application.properties (or application-{env}.properties): FULL absolute URL required.
-    // Relative paths (/path) silently break page-transition detection ("user is in X page").
     // Replace http://localhost:3000/... with the real absolute URL of this page.
-    List<String> pageUrlEntries = List.of(
-        "web.page.default." + pName + ".url=http://localhost:3000/" + pName,
-        "web.page.desktop." + pName + ".url=http://localhost:3000/" + pName
-    );
+    List<String> pageUrlEntries = pageUrlEntries(pName);
     String pageUrlEntry = String.join("\n", pageUrlEntries); // display block
 
     String source = """
@@ -195,11 +230,12 @@ public class TestaraUiSkill implements AgentSkill<TestaraUiSkill.Input, String> 
          *   web.page.desktop.%s.url=https://your-site.com/%s
          * Element names resolve from Locator field names, e.g. USERNAME_FIELD -> "username field".
          */
-        @Page(name = "%s", url = "", platforms = {DeviceType.DEFAULT, DeviceType.DESKTOP})
+        @Page(name = "%s", url = "", platforms = {%s})
         public class %s extends %s {
         %s
         }
-        """.formatted(basePkg, pageBaseImport, pageName, pName, pName, pName, pName, pName, pClass, pageBaseClass, locators);
+        """.formatted(basePkg, pageBaseImport, pageName, pName, pName, pName, pName, pName, pagePlatforms(engine),
+        pClass, pageBaseClass, locators);
 
     String relativePath = "src/main/java/" + pkgPath + "/page/" + pClass + ".java";
     boolean hasTodo = locators.contains("TODO");
@@ -209,14 +245,12 @@ public class TestaraUiSkill implements AgentSkill<TestaraUiSkill.Input, String> 
 
     if (write) {
       try {
-        Path target = root.resolve(relativePath);
-        Files.createDirectories(target.getParent());
-        Files.writeString(target, source, StandardCharsets.UTF_8);
-        boolean anyWritten = false;
-        for (String entry : pageUrlEntries) {
-          anyWritten |= appendPropertyIfMissing(root, "src/test/resources/application.properties", entry);
-        }
-        String status = anyWritten ? "updated application.properties" : "application.properties unchanged";
+        ArtifactFiles.Written written = ArtifactFiles.writeJava(root, relativePath, source,
+            ArtifactFiles.overwrite(context), false, false);
+        ArtifactFiles.PropertyMerge merge = ArtifactFiles.mergeProperties(root,
+            ArtifactFiles.APPLICATION_PROPERTIES, pageUrlEntry);
+        String status = merge.addedKeys().isEmpty() ? "application.properties unchanged" : "updated application.properties";
+        if (!written.changed()) return "exists: " + relativePath + " (pass overwrite=true to replace)\n" + status;
         return concise ? "written: " + relativePath + "\n" + status + todoWarning
             : "## Page Written\n\n`" + relativePath + "`\n\n```java\n" + source + "```\n\n**Add to application.properties (" + status + "):**\n```properties\n" + pageUrlEntry + "\n```\n"
                 + (hasTodo ? "\n> **Next:** replace `TODO` selectors with actual CSS/XPath selectors from the target app before using UI assertion steps.\n" : "");
@@ -234,7 +268,9 @@ public class TestaraUiSkill implements AgentSkill<TestaraUiSkill.Input, String> 
         + "\n> Write the source block to `" + relativePath + "` and add the properties entry above.";
   }
 
-  private String generateAction(String pageName, String actionName, String basePkg, Path root, boolean write, boolean concise) {
+  private String generateAction(String pageName, String actionName, String basePkg, AgentContext context,
+      boolean write, boolean concise) {
+    Path root = context.projectRoot();
     if (actionName == null || actionName.isBlank()) actionName = "perform action";
     String normalizedAction = normalizeActionName(actionName);
     if (pageName == null || pageName.isBlank()) pageName = inferPageName(normalizedAction);
@@ -275,9 +311,11 @@ public class TestaraUiSkill implements AgentSkill<TestaraUiSkill.Input, String> 
 
     if (write) {
       try {
-        Path target = root.resolve(relativePath);
-        Files.createDirectories(target.getParent());
-        Files.writeString(target, source, StandardCharsets.UTF_8);
+        ArtifactFiles.Written written = ArtifactFiles.writeJava(root, relativePath, source,
+            ArtifactFiles.overwrite(context), false, false);
+        if (!written.changed()) {
+          return "exists: " + relativePath + " (pass overwrite=true to replace)\nstep: " + featureStep;
+        }
         return concise ? "written: " + relativePath + "\nstep: " + featureStep
             : "## Action Written\n\n`" + relativePath + "`\n\n```java\n" + source + "```\n\n**Feature step:**\n```gherkin\n" + featureStep + "\n```\n";
       } catch (IOException e) {
@@ -298,20 +336,6 @@ public class TestaraUiSkill implements AgentSkill<TestaraUiSkill.Input, String> 
     return "## UserAction: " + aClass + "\n\n**Path:** `" + relativePath + "`\n\n```java\n" + source + "```\n\n**Feature step:**\n```gherkin\n" + featureStep + "\n```\n"
         + "\n> " + interactionHint + "\n"
         + "> Write the source block to `" + relativePath + "`.";
-  }
-
-  private boolean appendPropertyIfMissing(Path root, String relPath, String propertyLine) throws IOException {
-    Path target = root.resolve(relPath);
-    Files.createDirectories(target.getParent());
-    String content = Files.exists(target)
-        ? Files.readString(target, StandardCharsets.UTF_8)
-        : "";
-    if (content.lines().anyMatch(line -> line.strip().startsWith(propertyLine.split("=")[0].strip() + "="))) {
-      return false; // key already present
-    }
-    String separator = content.isBlank() || content.endsWith("\n") ? "" : "\n";
-    Files.writeString(target, content + separator + propertyLine + "\n", StandardCharsets.UTF_8);
-    return true;
   }
 
   private String validatePage(String pageName, String basePkg, Path root, String htmlSnapshot, boolean concise) {
@@ -489,6 +513,28 @@ public class TestaraUiSkill implements AgentSkill<TestaraUiSkill.Input, String> 
         .collect(Collectors.joining("\n")) + "\n";
   }
 
+  /**
+   * Appium driver config ({@code AppiumDriverProperties}): capabilities and the remote Appium
+   * server are keyed by device type and capability name, e.g. {@code capabilities.android.android.*}
+   * for {@code user using android in android}.
+   */
+  static String appiumDriverBlock(String basePkg) {
+    return """
+        automation.engine.default-engine=appium
+        automation.engine.active-engines=appium
+        appium.driver.owner=testara
+        appium.driver.headless=false
+        appium.driver.scan-locations=io.github.ygrip.testara,%s
+        appium.driver.page-scan-locations=io.github.ygrip.testara,%s
+        appium.driver.action-scan-locations=io.github.ygrip.testara,%s
+        appium.driver.remote-driver.android.enabled=true
+        appium.driver.remote-driver.android.uri=${APPIUM_SERVER_URL:http://127.0.0.1:4723/}
+        appium.driver.capabilities.android.android.platformName=Android
+        appium.driver.capabilities.android.android.automationName=UiAutomator2
+        appium.driver.capabilities.android.android.deviceName=${APPIUM_DEVICE_NAME:Android Emulator}
+        """.formatted(basePkg, basePkg, basePkg);
+  }
+
   private String generateUiConfig(String engine, String basePkg, boolean concise) {
     if (engine == null) engine = "selenium";
     String block = switch (engine.toLowerCase(Locale.ROOT)) {
@@ -496,17 +542,12 @@ public class TestaraUiSkill implements AgentSkill<TestaraUiSkill.Input, String> 
           automation.engine.default-engine=playwright
           automation.engine.active-engines=playwright
           playwright.browser.headless=true
-          playwright.browser.browserType=chromium
           class.loader.default-scan-locations=io.github.ygrip.testara,%s
           playwright.browser.page-scan-locations=io.github.ygrip.testara,%s
           playwright.browser.action-scan-locations=io.github.ygrip.testara,%s
           """.formatted(basePkg, basePkg, basePkg);
-      case "appium" -> """
-          automation.engine.default-engine=appium
-          automation.engine.active-engines=appium
-          appium.driver.platformName=Android
-          appium.driver.deviceName=emulator-5554
-          """;
+      case "appium" -> "class.loader.default-scan-locations=io.github.ygrip.testara," + basePkg + "\n"
+          + appiumDriverBlock(basePkg);
       case "vibium" -> """
           automation.engine.default-engine=vibium
           automation.engine.active-engines=vibium
@@ -531,7 +572,7 @@ public class TestaraUiSkill implements AgentSkill<TestaraUiSkill.Input, String> 
     StringBuilder sb = new StringBuilder();
     for (String p : name.replaceAll("[^a-zA-Z0-9]+", " ").trim().split("\\s+"))
       if (!p.isBlank()) sb.append(Character.toUpperCase(p.charAt(0))).append(p.substring(1).toLowerCase(Locale.ROOT));
-    return sb.toString();
+    return ArtifactFiles.javaIdentifier(sb.toString(), "Sample");
   }
 
   private String toCamelCase(String name) {
@@ -541,7 +582,8 @@ public class TestaraUiSkill implements AgentSkill<TestaraUiSkill.Input, String> 
     for (int i = 1; i < parts.length; i++)
       sb.append(Character.toUpperCase(parts[i].charAt(0))).append(parts[i].substring(1).toLowerCase(Locale.ROOT));
     String method = sb.toString();
-    return method.length() <= 60 ? method : method.substring(0, 60);
+    if (method.length() > 60) method = method.substring(0, 60);
+    return ArtifactFiles.javaIdentifier(method, "performAction");
   }
 
   private String normalizeActionName(String actionName) {
@@ -627,21 +669,23 @@ public class TestaraUiSkill implements AgentSkill<TestaraUiSkill.Input, String> 
           List.of("properties(test." + toPropertyKey(pageName) + ".query)"));
     }
     return new ActionTemplate(
-        "    Click.on(\"primary action\")",
+        "    Click.on(\"" + primaryButton(toPropertyKey(pageName)) + "\")",
         List.of("value"),
         List.of("properties(test." + toPropertyKey(pageName) + ".value)"));
+  }
+
+  /** Element name of the main button {@link #pageLocators} generates for a page, e.g. BUTTON_LOGIN → "button login". */
+  static String primaryButton(String pageKey) {
+    if (pageKey.contains("login") || pageKey.contains("auth")) return "button login";
+    if (pageKey.contains("search")) return "button search";
+    if (pageKey.contains("checkout")) return "button checkout";
+    return "submit button";
   }
 
   private String toPropertyKey(String value) {
     return value.toLowerCase(Locale.ROOT)
         .replaceAll("[^a-z0-9]+", "-")
         .replaceAll("^-|-$", "");
-  }
-
-  private String toEnvKey(String value) {
-    return value.toUpperCase(Locale.ROOT)
-        .replaceAll("[^A-Z0-9]+", "_")
-        .replaceAll("^_|_$", "");
   }
 
   private record ActionTemplate(String interactions, List<String> columns, List<String> values) {

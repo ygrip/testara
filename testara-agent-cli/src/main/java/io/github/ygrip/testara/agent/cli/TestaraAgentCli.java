@@ -16,6 +16,12 @@ import io.github.ygrip.testara.agent.cli.command.TestReviewCommand;
 import io.github.ygrip.testara.agent.cli.command.TestRunCommand;
 import io.github.ygrip.testara.agent.cli.command.TestSummaryCommand;
 import io.github.ygrip.testara.agent.cli.command.TestValidationCommand;
+import io.github.ygrip.testara.agent.cli.command.TestaraApiCommand;
+import io.github.ygrip.testara.agent.cli.command.TestaraContextCommand;
+import io.github.ygrip.testara.agent.cli.command.TestaraDbCommand;
+import io.github.ygrip.testara.agent.cli.command.TestaraGuideCommand;
+import io.github.ygrip.testara.agent.cli.command.TestaraPropertyCommand;
+import io.github.ygrip.testara.agent.cli.command.TestaraUiCommand;
 import picocli.CommandLine;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.IVersionProvider;
@@ -26,7 +32,8 @@ import picocli.CommandLine.IVersionProvider;
   description = "Testara Agent — agentic skills for Testara automation projects",
   subcommands = {TestSummaryCommand.class, TestOverviewCommand.class, TestReviewCommand.class, TestRunCommand.class,
     TestCommandSkillCommand.class, TestValidationCommand.class, TestPlanCommand.class, TestInitCommand.class,
-    ListCommandsCommand.class, ListValidationsCommand.class, ListUiCatalogCommand.class, KnowledgeCommand.class,
+    TestaraGuideCommand.class, TestaraContextCommand.class, TestaraPropertyCommand.class, TestaraApiCommand.class,
+    TestaraUiCommand.class, TestaraDbCommand.class, ListCommandsCommand.class, ListValidationsCommand.class, ListUiCatalogCommand.class, KnowledgeCommand.class,
     McpCommand.class, CommandLine.HelpCommand.class}
 )
 public class TestaraAgentCli implements Runnable {

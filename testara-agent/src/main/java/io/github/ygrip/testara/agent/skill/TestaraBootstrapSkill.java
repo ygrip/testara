@@ -4,13 +4,13 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -40,7 +40,7 @@ public class TestaraBootstrapSkill implements AgentSkill<TestaraBootstrapSkill.I
   @Override
   public String execute(Input input, AgentContext context) {
     String artifact = normalize(input.artifact(), "ui");
-    boolean write = "true".equals(context.options().get("write"));
+    boolean write = context.allowsWrite() && "true".equals(context.options().get("write"));
     boolean concise = "concise".equals(context.options().get("format"));
     String basePackage;
     if (input.basePackage() != null && !input.basePackage().isBlank()) {
@@ -52,7 +52,7 @@ public class TestaraBootstrapSkill implements AgentSkill<TestaraBootstrapSkill.I
     }
 
     if ("batch".equals(artifact) || "ui-batch".equals(artifact) || "batch".equals(normalize(input.mode(), ""))) {
-      return uiBatch(input, context, basePackage);
+      return uiBatch(input, context, basePackage, write);
     }
 
     return switch (artifact) {
@@ -61,7 +61,7 @@ public class TestaraBootstrapSkill implements AgentSkill<TestaraBootstrapSkill.I
       case "action" -> uiSkill.execute(new TestaraUiSkill.Input("action",
           first(input.pageName(), inferPage(input.intent())),
           first(input.actionName(), input.intent(), "perform action"), input.engine(), basePackage), context);
-      case "ui", "ui-bundle", "page-action" -> uiBundle(input, context, basePackage);
+      case "ui", "ui-bundle", "page-action" -> uiBundle(input, context, basePackage, write);
       case "api-config" -> apiSkill.execute(new TestaraApiSkill.Input("config",
           first(input.domain(), inferDomain(input.intent())), null, null, null), context);
       case "request-spec", "api-request-spec" -> apiSkill.execute(new TestaraApiSkill.Input("request-spec",
@@ -74,28 +74,47 @@ public class TestaraBootstrapSkill implements AgentSkill<TestaraBootstrapSkill.I
     };
   }
 
-  private String uiBundle(Input input, AgentContext context, String basePackage) {
+  private String uiBundle(Input input, AgentContext context, String basePackage, boolean write) {
     String pageName = first(input.pageName(), inferPage(input.intent()));
     String actionName = first(input.actionName(), input.intent(), "perform action");
-    String page = uiSkill.execute(new TestaraUiSkill.Input("page", pageName, null, input.engine(), basePackage), context);
-    String action = uiSkill.execute(new TestaraUiSkill.Input("action", pageName, actionName, input.engine(), basePackage), context);
-    return "artifact: ui-bundle\n\n" + page + "\n\n" + action;
+    AgentContext childContext = withoutCompileGate(context);
+    String page = uiSkill.execute(new TestaraUiSkill.Input("page", pageName, null, input.engine(), basePackage),
+        childContext);
+    String action = uiSkill.execute(new TestaraUiSkill.Input("action", pageName, actionName, input.engine(),
+        basePackage), childContext);
+    String bundle = "artifact: ui-bundle\n\n" + page + "\n\n" + action;
+    if (write) {
+      String compile = ArtifactFiles.compileLine(context);
+      if (compile != null) bundle += "\n" + compile;
+    }
+    return bundle;
   }
 
-  private String uiBatch(Input input, AgentContext context, String basePackage) {
+  /**
+   * The same context without the compile gate: a batch or bundle compiles once after all its
+   * artifacts are written instead of once per generated page or action.
+   */
+  private AgentContext withoutCompileGate(AgentContext context) {
+    Map<String, String> options = new HashMap<>(context.options());
+    options.remove("compile");
+    return new AgentContext(context.projectRoot(), context.profile(), context.mode(), context.llmClient(), options);
+  }
+
+  private String uiBatch(Input input, AgentContext context, String basePackage, boolean write) {
     List<PageSpec> pages = parsePages(input);
     if (pages.isEmpty()) {
       String inferredPage = first(input.pageName(), inferPage(input.intent()));
       pages = List.of(new PageSpec(inferredPage, actionsFor(input.actionName(), input.actions())));
     }
 
-    List<String> createdFiles = new ArrayList<>();
+    List<String> files = new ArrayList<>();
     List<String> actionCatalog = new ArrayList<>();
     List<String> pageCatalog = new ArrayList<>();
     List<String> locatorCatalog = new ArrayList<>();
     List<String> warnings = new ArrayList<>();
     List<String> filesChanged = new ArrayList<>();
     StringBuilder raw = new StringBuilder();
+    AgentContext childContext = withoutCompileGate(context);
 
     for (PageSpec pageSpec : pages) {
       String pageName = first(pageSpec.name(), "page");
@@ -103,11 +122,11 @@ public class TestaraBootstrapSkill implements AgentSkill<TestaraBootstrapSkill.I
       String pageClass = toClassName(pageKey) + "Page";
       pageCatalog.add(pageKey + " -> " + pageClass);
       String pageOutput = uiSkill.execute(new TestaraUiSkill.Input("page", pageName, null, input.engine(), basePackage,
-          null), context);
+          null), childContext);
       raw.append("\n--- page ").append(pageKey).append(" ---\n").append(pageOutput).append("\n");
       String pagePath = "src/main/java/" + basePackage.replace('.', '/') + "/page/" + pageClass + ".java";
-      createdFiles.add(pagePath);
-      filesChanged.add("created " + pagePath + " [class:" + pageClass + "]");
+      files.add(pagePath);
+      if (write) filesChanged.add(writeStatus(pageOutput) + " " + pagePath + " [class:" + pageClass + "]");
       locatorCatalog.add(pageKey + ": see generated " + pageClass + " locator fields");
       if (pageOutput.contains("TODO")) warnings.add(pageKey + " has low-confidence TODO locators");
 
@@ -117,13 +136,13 @@ public class TestaraBootstrapSkill implements AgentSkill<TestaraBootstrapSkill.I
       if (!actionNames.isEmpty()) {
         String actionClass = toClassName(pageKey) + "Actions";
         String actionPath = "src/main/java/" + basePackage.replace('.', '/') + "/action/" + actionClass + ".java";
-        createdFiles.add(actionPath);
+        files.add(actionPath);
         ActionWrite actionWrite = writeBatchActions(pageName, pageClass, actionClass, actionNames,
-            basePackage, context.projectRoot(), "true".equals(context.options().get("write")));
+            basePackage, context, write);
         raw.append("\n--- actions ").append(pageKey).append(" ---\n").append(actionWrite.summary()).append("\n");
         actionCatalog.addAll(actionWrite.catalog());
         String actionSymbols = actionWrite.catalog().isEmpty() ? "" : "; actions:" + String.join(",", actionWrite.catalog());
-        filesChanged.add("created " + actionPath + " [class:" + actionClass + actionSymbols + "]");
+        if (write) filesChanged.add(writeStatus(actionWrite.summary()) + " " + actionPath + " [class:" + actionClass + actionSymbols + "]");
       }
     }
 
@@ -133,8 +152,13 @@ public class TestaraBootstrapSkill implements AgentSkill<TestaraBootstrapSkill.I
     sb.append("mode: batch\n");
     sb.append("pages: ").append(pages.size()).append("\n");
     sb.append("actions: ").append(actionCatalog.size()).append("\n");
-    sb.append("createdFiles:\n");
-    createdFiles.stream().distinct().forEach(path -> sb.append("- ").append(path).append("\n"));
+    // Preview mode lists what would be written; only a write reports files as created.
+    if (write) {
+      sb.append("createdFiles:\n");
+    } else {
+      sb.append("plannedFiles:\n");
+    }
+    files.stream().distinct().forEach(path -> sb.append("- ").append(path).append("\n"));
     sb.append("pageCatalog:\n");
     pageCatalog.forEach(page -> sb.append("- ").append(page).append("\n"));
     sb.append("actionCatalog:\n");
@@ -148,11 +172,15 @@ public class TestaraBootstrapSkill implements AgentSkill<TestaraBootstrapSkill.I
     if (filesChanged.isEmpty()) sb.append("- none\n");
     else filesChanged.forEach(entry -> sb.append("- ").append(entry).append("\n"));
     sb.append("nextRecommendedCommand: testara_run --tags ").append(recommendedRun).append("\n");
+    if (write) {
+      String compile = ArtifactFiles.compileLine(context);
+      if (compile != null) sb.append(compile).append("\n");
+    }
     if (input.generateFeatures()) {
       String featureFiles = first(input.featureFiles(), defaultFeatureFiles(pages));
       String planOutput = planSkill.execute(new TestPlanSkill.Input(first(input.intent(), "generated ui flow"),
           "ui", first(input.domain(), "ui"), List.of(), "batch", featureFiles,
-          input.createFiles() || "true".equals(context.options().get("write")), true), context);
+          input.createFiles() || write, true), context);
       sb.append("featureGeneration:\n").append(indent(planOutput)).append("\n");
     }
     if (!"summary".equals(context.options().get("format"))) {
@@ -192,13 +220,15 @@ public class TestaraBootstrapSkill implements AgentSkill<TestaraBootstrapSkill.I
         }
         """.formatted(pkg, commandName, className);
     return renderArtifact("command", relativePath, source,
-        "command.executor.scan-locations=io.github.ygrip.testara," + pkg, context.projectRoot(), write, concise);
+        "command.executor.scan-locations=io.github.ygrip.testara," + pkg, context, write, concise);
   }
 
   private String validation(Input input, AgentContext context, String basePackage, boolean write, boolean concise) {
     String description = first(input.intent(), input.actionName(), "custom validation");
-    String validationName = toKebab(description);
-    String className = toClassName(validationName) + "Validator";
+    String kebab = toKebab(description);
+    // Validation names are UPPER_SNAKE like the built-ins (EQUAL, NOT_EMPTY, IS_VISIBLE)
+    String validationName = kebab.toUpperCase(Locale.ROOT).replace('-', '_');
+    String className = toClassName(kebab) + "Validator";
     String pkg = basePackage + ".validation";
     String relativePath = "src/main/java/" + pkg.replace('.', '/') + "/" + className + ".java";
     String source = """
@@ -221,22 +251,31 @@ public class TestaraBootstrapSkill implements AgentSkill<TestaraBootstrapSkill.I
             return false;
           }
         }
-        """.formatted(pkg, validationName, className, validationName);
+        """.formatted(pkg, validationName, className, kebab.replace('-', ' '));
     return renderArtifact("validation", relativePath, source,
-        "validator.helper.scan-locations=io.github.ygrip.testara," + pkg, context.projectRoot(), write, concise);
+        "validator.helper.scan-locations=io.github.ygrip.testara," + pkg, context, write, concise);
   }
 
   private String renderArtifact(String artifact, String relativePath, String source, String scanHint,
-      Path root, boolean write, boolean concise) {
+      AgentContext context, boolean write, boolean concise) {
     if (write) {
       try {
-        Path target = root.resolve(relativePath);
-        Files.createDirectories(target.getParent());
-        Files.writeString(target, source, StandardCharsets.UTF_8);
-        String className = target.getFileName().toString().replace(".java", "");
-        return "artifact: " + artifact + "\nwritten: " + relativePath
-            + "\nfilesChanged:\n- created " + relativePath + " [class:" + className + "; type:" + artifact + "]"
+        ArtifactFiles.Written written = ArtifactFiles.writeJava(context.projectRoot(), relativePath, source,
+            ArtifactFiles.overwrite(context), "command".equals(artifact), "validation".equals(artifact));
+        if (!written.changed()) {
+          return "artifact: " + artifact + "\nexists: " + relativePath + " (pass overwrite=true to replace)"
+              + "\nscan-location: " + scanHint;
+        }
+        String className = Path.of(relativePath).getFileName().toString().replace(".java", "");
+        String result = "artifact: " + artifact + "\nwritten: " + relativePath
+            + "\nfilesChanged:\n- " + written.status().label() + " " + relativePath + " [class:" + className
+            + "; type:" + artifact + "]"
             + "\nscan-location: " + scanHint;
+        String compile = ArtifactFiles.compileLine(context);
+        if (compile != null) {
+          result += "\n" + compile;
+        }
+        return result;
       } catch (IOException e) {
         return "Error: " + e.getMessage();
       }
@@ -294,7 +333,8 @@ public class TestaraBootstrapSkill implements AgentSkill<TestaraBootstrapSkill.I
     for (String part : value.split("[-_]")) {
       if (!part.isBlank()) sb.append(Character.toUpperCase(part.charAt(0))).append(part.substring(1));
     }
-    return sb.isEmpty() ? "CustomArtifact" : sb.toString();
+    if (sb.isEmpty()) return "CustomArtifact";
+    return ArtifactFiles.javaIdentifier(sb.toString(), "CustomArtifact");
   }
 
   private List<PageSpec> parsePages(Input input) {
@@ -364,13 +404,22 @@ public class TestaraBootstrapSkill implements AgentSkill<TestaraBootstrapSkill.I
     return actions.stream().filter(a -> !a.isBlank()).toList();
   }
 
+  /** "exists" when the UI skill kept an existing file, otherwise "created". */
+  private String writeStatus(String output) {
+    if (output.startsWith("exists: ")) return "exists";
+    return "created";
+  }
+
   private ActionWrite writeBatchActions(String pageName, String pageClass, String actionClass,
-      List<String> actionNames, String basePackage, Path root, boolean write) {
+      List<String> actionNames, String basePackage, AgentContext context, boolean write) {
     StringBuilder methods = new StringBuilder();
     List<String> catalog = new ArrayList<>();
+    Set<String> methodNames = new LinkedHashSet<>();
     for (String actionName : actionNames) {
       String normalizedAction = semanticActionName(actionName);
       String methodName = toCamelCase(normalizedAction);
+      // Two action names that normalize to the same method would not compile (and duplicate @Action)
+      if (!methodNames.add(methodName)) continue;
       catalog.add(normalizedAction + " -> " + methodName);
       methods.append("""
 
@@ -402,9 +451,11 @@ public class TestaraBootstrapSkill implements AgentSkill<TestaraBootstrapSkill.I
     String relativePath = "src/main/java/" + basePackage.replace('.', '/') + "/action/" + actionClass + ".java";
     if (!write) return new ActionWrite("file_path: " + relativePath + "\n```java\n" + source.strip() + "\n```", catalog);
     try {
-      Path target = root.resolve(relativePath);
-      Files.createDirectories(target.getParent());
-      Files.writeString(target, source, StandardCharsets.UTF_8);
+      ArtifactFiles.Written written = ArtifactFiles.writeJava(context.projectRoot(), relativePath, source,
+          ArtifactFiles.overwrite(context), false, false);
+      if (!written.changed()) {
+        return new ActionWrite("exists: " + relativePath + " (pass overwrite=true to replace)", catalog);
+      }
       return new ActionWrite("written: " + relativePath + "\nactions: " + catalog.size(), catalog);
     } catch (IOException e) {
       return new ActionWrite("Error: " + e.getMessage(), catalog);
@@ -426,10 +477,8 @@ public class TestaraBootstrapSkill implements AgentSkill<TestaraBootstrapSkill.I
               Click.on("button search")
           """.stripTrailing();
     }
-    if (lower.contains("cart")) {
-      return "        Click.on(\"button cart\")";
-    }
-    return "        Click.on(\"primary action\")";
+    // Click the main button the generated page declares, so the element name resolves at runtime
+    return "        Click.on(\"" + TestaraUiSkill.primaryButton(toKebab(pageName)) + "\")";
   }
 
   private String semanticActionName(String actionName) {
@@ -452,7 +501,8 @@ public class TestaraBootstrapSkill implements AgentSkill<TestaraBootstrapSkill.I
       }
     }
     String method = sb.toString();
-    return method.length() <= 60 ? method : method.substring(0, 60);
+    if (method.length() > 60) method = method.substring(0, 60);
+    return ArtifactFiles.javaIdentifier(method, "performAction");
   }
 
   private record PageSpec(String name, List<String> actions) {}

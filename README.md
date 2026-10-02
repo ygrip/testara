@@ -73,8 +73,8 @@ testara-agent test-init
 # 2. Generate a Testara-flavor Cucumber feature
 testara-agent test-plan 'test the payment refund approval' --write
 
-# 3. Run the tests
-TESTARA_AGENT_RUN_ENABLED=true testara-agent test-run 'payment refund' --execute
+# 3. Run the tests (test execution is enabled by default)
+testara-agent test-run 'payment refund' --execute
 ```
 
 ### Skills
@@ -117,7 +117,7 @@ See **[Testara Agent documentation](docs/agentic-skills.md)** for full skill ref
 
 **Reference:**
 
-- **[Testara Agent](docs/agentic-skills.md)** — All 8 agentic skills, MCP tools+prompts, knowledge store, YAML config, Docker, security model
+- **[Testara Agent](docs/agentic-skills.md)** — All 14 agentic skills, MCP tools+prompts, knowledge store, YAML config, security model
 - **[Command Engine](testara-command/README.md)** — All 50+ built-in commands, syntax reference, and how to create custom commands
 - **[Validation](testara-validation/README.md)** — All 40+ validators, usage patterns, and how to create custom validations
 - **[API Testing](testara-api/README.md)** — Service configuration, request building, load testing, and interceptors

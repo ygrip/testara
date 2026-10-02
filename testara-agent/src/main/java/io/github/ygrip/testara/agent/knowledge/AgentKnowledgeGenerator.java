@@ -115,7 +115,7 @@ public class AgentKnowledgeGenerator {
           String pattern = m.group(1);
           String methodName = m.group(2);
           if (methodName != null && !registry.containsKey(methodName)) {
-            registry.put(methodName, pattern);
+            registry.put(methodName, TestaraFlavorIndexer.unescapeAnnotation(pattern));
           }
         }
       } catch (IOException ignored) {}

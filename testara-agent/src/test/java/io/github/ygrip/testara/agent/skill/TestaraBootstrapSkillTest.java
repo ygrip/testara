@@ -12,6 +12,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -121,9 +122,27 @@ class TestaraBootstrapSkillTest {
         context());
 
     assertTrue(output.contains("file_path: src/main/java/com/acme/tests/validation/ValidOrderStatusValidator.java"));
-    assertTrue(output.contains("@ValidationTag(command = \"valid-order-status\")"));
+    assertTrue(output.contains("@ValidationTag(command = \"VALID_ORDER_STATUS\")"), output);
     assertTrue(output.contains("extends ValidatorLogic<Object, Object>"));
     assertTrue(output.contains("validator.helper.scan-locations=io.github.ygrip.testara,com.acme.tests.validation"));
+  }
+
+  @Test
+  void batchPreviewListsPlannedFilesWithoutReportingThemCreated() {
+    String pages = """
+        [{"name":"login","actions":["login with valid credentials","Login with valid credentials!"]}]
+        """;
+
+    String output = new TestaraBootstrapSkill().execute(
+        new TestaraBootstrapSkill.Input("batch", null, null, null,
+            null, null, null, null, "io.github.ygrip.automation", "selenium",
+            "batch", pages, null, null, false, null, false),
+        context());
+
+    assertTrue(output.contains("plannedFiles:"), output);
+    assertFalse(output.contains("createdFiles:"), output);
+    assertTrue(output.contains("filesChanged:\n- none"), output);
+    assertEquals(1, output.lines().filter(line -> line.contains("@Action(\"login with valid credentials\")")).count(), output);
   }
 
   private AgentContext context() {
@@ -131,7 +150,7 @@ class TestaraBootstrapSkillTest {
   }
 
   private AgentContext writeContext() {
-    return new AgentContext(projectRoot, profile(), AgentMode.READ_ONLY, null,
+    return new AgentContext(projectRoot, profile(), AgentMode.APPLY, null,
         Map.of("format", "concise", "write", "true"));
   }
 

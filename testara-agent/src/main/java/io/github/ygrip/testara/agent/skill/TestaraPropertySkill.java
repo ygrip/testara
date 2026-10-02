@@ -1,6 +1,7 @@
 package io.github.ygrip.testara.agent.skill;
 
 import io.github.ygrip.testara.agent.catalog.PropertyRuleEngine;
+import io.github.ygrip.testara.agent.safety.SecretRedactionGuard;
 import io.github.ygrip.testara.agent.catalog.RuntimeCatalogEntry;
 
 import java.io.IOException;
@@ -40,7 +41,12 @@ public class TestaraPropertySkill implements AgentSkill<TestaraPropertySkill.Inp
   // ── List ──────────────────────────────────────────────────────────────────
 
   private String listProperties(Path projectRoot, boolean concise) {
-    Map<String, String> props = readProps(projectRoot);
+    Map<String, String> props;
+    try {
+      props = readProps(projectRoot);
+    } catch (IOException e) {
+      return "error: cannot read configuration.properties: " + e.getMessage();
+    }
     if (props.isEmpty()) {
       return concise ? "no configuration.properties found" : "No `configuration.properties` found at " + projectRoot;
     }
@@ -48,7 +54,8 @@ public class TestaraPropertySkill implements AgentSkill<TestaraPropertySkill.Inp
     Map<String, List<String>> byPrefix = new LinkedHashMap<>();
     props.forEach((k, v) -> {
       String prefix = k.contains(".") ? k.substring(0, k.indexOf('.')) : k;
-      byPrefix.computeIfAbsent(prefix, x -> new ArrayList<>()).add(k + "=" + v);
+      // Never echo credentials back into the agent transcript
+      byPrefix.computeIfAbsent(prefix, x -> new ArrayList<>()).add(k + "=" + SecretRedactionGuard.redactValue(k, v));
     });
 
     if (concise) {
@@ -80,7 +87,7 @@ public class TestaraPropertySkill implements AgentSkill<TestaraPropertySkill.Inp
     PropertyRuleEngine.Classification cls = PropertyRuleEngine.classify(value);
     String suggested = PropertyRuleEngine.suggestKey(value, domain != null ? domain : "app", null);
     String expr = "properties(" + suggested + ")";
-    String env = toEnvKey(suggested);
+    String env = PropertyKeys.toEnvKey(suggested);
 
     if (concise) {
       return cls == PropertyRuleEngine.Classification.ALLOWED_HARDCODED
@@ -105,10 +112,10 @@ public class TestaraPropertySkill implements AgentSkill<TestaraPropertySkill.Inp
     String s = slice.toLowerCase(Locale.ROOT);
     String block = switch (s) {
       case "api" -> generateApiBlock(d);
-      case "ui", "ui-selenium" -> generateUiSeleniumBlock(d);
-      case "sql", "database-sql" -> generateSqlBlock(d);
-      case "mongo", "database-mongo" -> generateMongoBlock(d);
-      case "kafka", "streaming" -> generateKafkaBlock(d);
+      case "ui", "ui-selenium" -> generateUiSeleniumBlock(d, basePackage(context));
+      case "sql", "database-sql" -> TestaraDbSkill.sqlConfigBlock(d) + "\n";
+      case "mongo", "database-mongo" -> TestaraDbSkill.mongoConfigBlock(d) + "\n";
+      case "kafka", "streaming" -> TestaraDbSkill.kafkaConfigBlock(d) + "\n";
       default -> "# No template for slice: " + s;
     };
     if (concise) return block;
@@ -116,74 +123,34 @@ public class TestaraPropertySkill implements AgentSkill<TestaraPropertySkill.Inp
   }
 
   private String generateApiBlock(String domain) {
-    String env = toEnvKey(domain);
-    return """
-        # API service — %s
-        api.service.%s-api.host=${%s_API_HOST:http://localhost:8080}
-        api.service.%s-api.basePath=${%s_API_BASE_PATH:/api/v1}
-        api.service.%s-api.default_specification=%s-api
-        spec.api.%s-api.header.Content-Type=application/json
-        spec.api.%s-api.header.Accept=application/json
+    return TestaraApiSkill.serviceConfigBlock(domain) + """
 
         # Application values referenced from features/request specs
-        %s.api.endpoint=/sample/{id}
-        """.formatted(domain, domain, env, domain, env,
-        domain, domain, domain, domain, domain);
+        %s=/%s/{id}
+        """.formatted(PropertyKeys.apiEndpoint(domain), domain);
   }
 
-  private String generateUiSeleniumBlock(String domain) {
-    String key = toPropertyKey(domain);
+  private String basePackage(AgentContext context) {
+    String explicit = context.options().get("package");
+    if (explicit != null && !explicit.isBlank()) return explicit;
+    return PackageInference.inferBasePackage(context.projectRoot()).orElse("io.github.ygrip.automation");
+  }
+
+  private String generateUiSeleniumBlock(String domain, String basePackage) {
+    String key = PropertyKeys.toPropertyKey(domain);
     return """
         # UI engine config
         automation.engine.default-engine=selenium
         automation.engine.active-engines=selenium
-        class.loader.default-scan-locations=io.github.ygrip.testara,{basePackage}
+        class.loader.default-scan-locations=io.github.ygrip.testara,%s
         selenium.driver.headless=false
-        selenium.driver.page-scan-locations=io.github.ygrip.testara,{basePackage}
-        selenium.driver.action-scan-locations=io.github.ygrip.testara,{basePackage}
+        selenium.driver.page-scan-locations=io.github.ygrip.testara,%s
+        selenium.driver.action-scan-locations=io.github.ygrip.testara,%s
 
         # Page URLs — %s
-        web.page.desktop.%s.url=${APP_WEB_%s_URL:http://localhost:3000/%s}
-        """.formatted(domain, key, toEnvKey(key), key);
-  }
-
-  private String generateSqlBlock(String domain) {
-    return """
-        # SQL database — %s
-        sql.service.%sDb.host-name=${DB_%s_HOST:localhost}
-        sql.service.%sDb.port=5432
-        sql.service.%sDb.username=${DB_%s_USERNAME:postgres}
-        sql.service.%sDb.password=${DB_%s_PASSWORD:postgres}
-        sql.service.%sDb.db-name=${DB_%s_NAME:%s}
-        sql.service.%sDb.db-type=POSTGRESQL
-        sql.service.%sDb.timeout=3
-
-        """.formatted(domain, domain, toEnvKey(domain), domain, domain, toEnvKey(domain),
-        domain, toEnvKey(domain), domain, toEnvKey(domain), domain, domain, domain);
-  }
-
-  private String generateMongoBlock(String domain) {
-    return """
-        # MongoDB — %s
-        mongo.service.%sDb.hosts=${MONGO_%s_HOSTS:localhost:27017}
-        mongo.service.%sDb.db-name=${MONGO_%s_NAME:%s}
-        mongo.service.%sDb.username=${MONGO_%s_USERNAME:}
-        mongo.service.%sDb.password=${MONGO_%s_PASSWORD:}
-        mongo.service.%sDb.ssl-enabled=false
-
-        """.formatted(domain, domain, toEnvKey(domain), domain, toEnvKey(domain), domain,
-        domain, toEnvKey(domain), domain, toEnvKey(domain));
-  }
-
-  private String generateKafkaBlock(String domain) {
-    return """
-        # Kafka — %s
-        kafka.service.%sKafka.servers=${KAFKA_%s_SERVERS:localhost:9092}
-        kafka.service.%sKafka.group-id=${KAFKA_%s_GROUP_ID:testara-%s-test}
-        kafka.service.%sKafka.topics.%sEvent=${KAFKA_TOPIC_%s_EVENT:%s.event.v1}
-
-        """.formatted(domain, domain, toEnvKey(domain), domain, toEnvKey(domain), domain,
-        domain, domain, toEnvKey(domain), domain);
+        %s=${APP_WEB_%s_URL:http://localhost:3000/%s}
+        """.formatted(basePackage, basePackage, basePackage, domain, PropertyKeys.pageUrl("desktop", key),
+        PropertyKeys.toEnvKey(key), key);
   }
 
   // ── Rules ─────────────────────────────────────────────────────────────────
@@ -230,31 +197,17 @@ public class TestaraPropertySkill implements AgentSkill<TestaraPropertySkill.Inp
         """;
   }
 
-  private Map<String, String> readProps(Path root) {
+  private Map<String, String> readProps(Path root) throws IOException {
     Map<String, String> props = new LinkedHashMap<>();
     for (String c : List.of("src/test/resources/configuration.properties", "configuration.properties")) {
       Path p = root.resolve(c);
       if (Files.exists(p)) {
-        try {
-          Files.readAllLines(p, StandardCharsets.UTF_8).stream()
-              .filter(l -> !l.isBlank() && !l.startsWith("#") && l.contains("="))
-              .forEach(l -> { int i = l.indexOf('='); props.put(l.substring(0, i).trim(), l.substring(i + 1).trim()); });
-        } catch (IOException ignored) {}
+        Files.readAllLines(p, StandardCharsets.UTF_8).stream()
+            .filter(l -> !l.isBlank() && !l.startsWith("#") && l.contains("="))
+            .forEach(l -> { int i = l.indexOf('='); props.put(l.substring(0, i).trim(), l.substring(i + 1).trim()); });
         break;
       }
     }
     return props;
-  }
-
-  private String toPropertyKey(String value) {
-    return value.toLowerCase(Locale.ROOT)
-        .replaceAll("[^a-z0-9]+", "-")
-        .replaceAll("^-|-$", "");
-  }
-
-  private String toEnvKey(String value) {
-    return value.toUpperCase(Locale.ROOT)
-        .replaceAll("[^A-Z0-9]+", "_")
-        .replaceAll("^_|_$", "");
   }
 }

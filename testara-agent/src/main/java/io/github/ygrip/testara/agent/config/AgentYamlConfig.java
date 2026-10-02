@@ -1,33 +1,35 @@
 package io.github.ygrip.testara.agent.config;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
+
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
 import java.util.logging.Logger;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 /**
  * Parses an optional {@code testara-agent.yaml} file at the project root.
  *
- * <p>Simple line-based YAML parser that avoids heavy dependencies.
- * Supports scalar keys, list values, and nested maps up to 2 levels deep.
+ * <p>Parsed with Jackson YAML into a tree; only scalar values of the known sections and string
+ * lists (or a single scalar) for list keys are read.
  *
  * <p>Config priority: CLI flags > env vars > testara-agent.yaml > properties > defaults.
+ * {@code write.enabled} (or a scalar {@code write}) may only <em>disable</em> writes: enabling them
+ * requires an explicit tool argument or CLI flag, and {@code TESTARA_AGENT_WRITE_ENABLED=false}
+ * always wins.
  */
 public final class AgentYamlConfig {
 
   private static final Logger LOG = Logger.getLogger(AgentYamlConfig.class.getName());
   private static final String CONFIG_FILE = "testara-agent.yaml";
-
-  // Top-level sections
-  private static final Pattern TOP_KEY = Pattern.compile("^(\\w+)\\s*:\\s*$");
-  // Nested key: value
-  private static final Pattern NESTED_KV = Pattern.compile("^\\s{2,}(\\w[\\w-]*)\\s*:\\s*(.+)$");
-  // List item
-  private static final Pattern LIST_ITEM = Pattern.compile("^\\s{4,}-\\s+\"([^\"]+)\"$|^\\s{4,}-\\s+([^-].*)$");
+  /** Options that grant writes; a checked-in file must never turn them on (per-call args only). */
+  private static final Set<String> CALL_ONLY_KEYS = Set.of("write", "overwrite", "createFiles");
+  private static final ObjectMapper YAML = new ObjectMapper(new YAMLFactory());
 
   public record AgentConfig(
       Map<String, String> general,
@@ -46,13 +48,33 @@ public final class AgentYamlConfig {
 
     /** Apply config overrides to a mutable options map. */
     public void apply(Map<String, String> opts) {
-      general.forEach((k, v) -> opts.putIfAbsent("agent." + k, v));
-      run.forEach((k, v) -> opts.putIfAbsent("run." + k, v));
+      putSafely(general, opts);
+      putSafely(run, opts);
+      write.forEach((k, v) -> {
+        if (!"enabled".equals(k)) {
+          putSafely(Map.of(k, v), opts);
+        } else if ("false".equalsIgnoreCase(v.strip())) {
+          // A checked-in file may switch writes off, never on (no silent APPLY mode).
+          opts.put("write", "false");
+        }
+      });
       llm.forEach((k, v) -> opts.putIfAbsent("llm." + k, v));
       tagAliases.forEach((alias, tags) -> {
         if (!tags.isEmpty()) {
-          opts.putIfAbsent("tag-alias." + alias, String.join(",", tags));
+          String expression = tags.size() == 1 ? tags.get(0) : "(" + String.join(" or ", tags) + ")";
+          opts.putIfAbsent("tag-alias." + alias, expression);
         }
+      });
+    }
+
+    /** Copies settings except the ones only an explicit call may set (see {@link #CALL_ONLY_KEYS}). */
+    private static void putSafely(Map<String, String> source, Map<String, String> opts) {
+      source.forEach((k, v) -> {
+        if (CALL_ONLY_KEYS.contains(k)) {
+          LOG.warning("Ignoring '" + k + "' in " + CONFIG_FILE + ": it can only be set per call");
+          return;
+        }
+        opts.putIfAbsent(k, v);
       });
     }
   }
@@ -72,8 +94,23 @@ public final class AgentYamlConfig {
     }
   }
 
-  @SuppressWarnings("java:S3776")
   static AgentConfig parse(String yaml) {
+    JsonNode root;
+    try {
+      root = YAML.readTree(yaml);
+    } catch (JsonProcessingException e) {
+      LOG.warning("Ignoring invalid " + CONFIG_FILE + ": " + e.getOriginalMessage());
+      return AgentConfig.empty();
+    }
+    if (root == null || root.isMissingNode() || root.isNull()) {
+      LOG.warning("Ignoring empty " + CONFIG_FILE);
+      return AgentConfig.empty();
+    }
+    if (!root.isObject()) {
+      LOG.warning("Ignoring " + CONFIG_FILE + ": expected a mapping at the top level");
+      return AgentConfig.empty();
+    }
+
     Map<String, String> general = new LinkedHashMap<>();
     Map<String, String> run = new LinkedHashMap<>();
     Map<String, String> write = new LinkedHashMap<>();
@@ -83,99 +120,62 @@ public final class AgentYamlConfig {
     List<String> requestSpecRoots = new ArrayList<>();
     List<String> validationRoots = new ArrayList<>();
 
-    String section = null;
-    String subSection = null;
-    boolean inList = false;
-    String listKey = null;
-    List<String> currentList = new ArrayList<>();
-
-    for (String line : yaml.split("\n")) {
-      String stripped = line.strip();
-      if (stripped.isEmpty() || stripped.startsWith("#")) continue;
-
-      // Top-level section
-      Matcher topKey = TOP_KEY.matcher(stripped);
-      if (topKey.matches() && !stripped.startsWith(" ")) {
-        flushList(listKey, currentList, tagAliases, featureRoots,
-            requestSpecRoots, validationRoots);
-        section = topKey.group(1);
-        subSection = null;
-        inList = false;
-        listKey = null;
-        currentList = new ArrayList<>();
-        continue;
+    root.properties().forEach(section -> {
+      String name = section.getKey();
+      JsonNode value = section.getValue();
+      if (value.isValueNode() && "write".equals(name)) {
+        // Scalar "write: false" is the same off switch as "write.enabled: false"; "true" never enables
+        putScalar(write, "enabled", value);
+        return;
       }
-
-      // Nested key: value
-      Matcher nested = NESTED_KV.matcher(stripped);
-      if (nested.matches()) {
-        String key = nested.group(1);
-        String value = nested.group(2).strip();
-        if (value.endsWith("\"")) value = value.substring(1, value.length() - 1);
-
-        if ("project".equals(section)) {
-          if ("featureRoots".equals(key)) { inList = true; listKey = "featureRoots"; continue; }
-          if ("requestSpecRoots".equals(key)) { inList = true; listKey = "requestSpecRoots"; continue; }
-          if ("validationRoots".equals(key)) { inList = true; listKey = "validationRoots"; continue; }
+      if (value.isValueNode()) {
+        putScalar(general, name, value);
+        return;
+      }
+      switch (name) {
+        case "run" -> putScalars(run, value);
+        case "write" -> putScalars(write, value);
+        case "llm" -> putScalars(llm, value);
+        case "tagAliases" -> value.properties().forEach(alias ->
+            tagAliases.put(alias.getKey(), stringList(alias.getValue())));
+        case "project" -> {
+          featureRoots.addAll(stringList(value.path("featureRoots")));
+          requestSpecRoots.addAll(stringList(value.path("requestSpecRoots")));
+          validationRoots.addAll(stringList(value.path("validationRoots")));
+          putScalars(general, value);
         }
-        if ("tagAliases".equals(section)) {
-          inList = true;
-          listKey = key;
-          continue;
-        }
-
-        Map<String, String> target = sectionMap(section, general, run, write, llm);
-        if (target != null) target.put(key, value);
-        continue;
+        default -> putScalars(general, value);
       }
-
-      // List items
-      Matcher item = LIST_ITEM.matcher(line);
-      if (item.matches() && inList && listKey != null) {
-        String val = item.group(1) != null ? item.group(1) : item.group(2);
-        if (val != null) currentList.add(val.strip().replaceAll("^\"|\"$", ""));
-        continue;
-      }
-
-      // End of list
-      if (!stripped.startsWith("  -") && inList) {
-        flushList(listKey, currentList, tagAliases, featureRoots,
-            requestSpecRoots, validationRoots);
-        inList = false;
-        listKey = null;
-        currentList = new ArrayList<>();
-      }
-    }
-
-    flushList(listKey, currentList, tagAliases, featureRoots,
-        requestSpecRoots, validationRoots);
+    });
 
     return new AgentConfig(general, run, write, llm, tagAliases,
         List.copyOf(featureRoots), List.copyOf(requestSpecRoots),
         List.copyOf(validationRoots));
   }
 
-  private static Map<String, String> sectionMap(String section,
-      Map<String, String> general, Map<String, String> run,
-      Map<String, String> write, Map<String, String> llm) {
-    return switch (section) {
-      case "run" -> run;
-      case "write" -> write;
-      case "llm" -> llm;
-      default -> general;
-    };
+  private static void putScalars(Map<String, String> target, JsonNode section) {
+    section.properties().forEach(entry -> putScalar(target, entry.getKey(), entry.getValue()));
   }
 
-  private static void flushList(String key, List<String> values,
-      Map<String, List<String>> tagAliases, List<String> featureRoots,
-      List<String> requestSpecRoots, List<String> validationRoots) {
-    if (key == null || values.isEmpty()) return;
-    switch (key) {
-      case "featureRoots" -> featureRoots.addAll(values);
-      case "requestSpecRoots" -> requestSpecRoots.addAll(values);
-      case "validationRoots" -> validationRoots.addAll(values);
-      default -> tagAliases.put(key, List.copyOf(values));
+  private static void putScalar(Map<String, String> target, String key, JsonNode value) {
+    if (value.isNull()) return;
+    if (value.isValueNode()) {
+      target.put(key, value.asText());
+    } else {
+      LOG.fine("Ignoring non-scalar " + CONFIG_FILE + " key '" + key + "'");
     }
-    values.clear();
+  }
+
+  /** A YAML list of scalars, or a single scalar treated as a one-element list. */
+  private static List<String> stringList(JsonNode node) {
+    if (node.isArray()) {
+      List<String> values = new ArrayList<>();
+      node.forEach(item -> {
+        if (item.isValueNode() && !item.isNull() && !item.asText().isBlank()) values.add(item.asText());
+      });
+      return List.copyOf(values);
+    }
+    if (node.isValueNode() && !node.isNull() && !node.asText().isBlank()) return List.of(node.asText());
+    return List.of();
   }
 }

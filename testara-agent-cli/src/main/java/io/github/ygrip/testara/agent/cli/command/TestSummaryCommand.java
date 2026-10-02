@@ -2,12 +2,9 @@ package io.github.ygrip.testara.agent.cli.command;
 
 import java.nio.file.Path;
 import java.util.Map;
+import java.util.concurrent.Callable;
 
 import io.github.ygrip.testara.agent.AgentMode;
-import io.github.ygrip.testara.agent.index.TestaraProjectProfile;
-import io.github.ygrip.testara.agent.knowledge.JsonlKnowledgeStore;
-import io.github.ygrip.testara.agent.llm.DisabledLlmClient;
-import io.github.ygrip.testara.agent.skill.AgentContext;
 import io.github.ygrip.testara.agent.skill.TestSummarySkill;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
@@ -18,9 +15,9 @@ import picocli.CommandLine.Parameters;
   description = "Summarize feature files at scenario, feature, or directory level",
   mixinStandardHelpOptions = true
 )
-public class TestSummaryCommand implements Runnable {
+public class TestSummaryCommand implements Callable<Integer> {
 
-  @Parameters(index = "0", description = "Path to a .feature file or directory")
+  @Parameters(index = "0", description = "Path to a .feature file or directory (absolute, or relative to --project)")
   private Path target;
 
   @Option(names = "--scenario", description = "Filter to a specific scenario name (substring match)")
@@ -29,22 +26,16 @@ public class TestSummaryCommand implements Runnable {
   @Option(names = "--concise", defaultValue = "false", description = "Token-efficient output for AI assistants")
   private boolean concise;
 
+  @Option(names = "--project", defaultValue = ".", description = "Project root (default: current directory)")
+  private Path projectRoot;
+
   @Override
-  public void run() {
-    Path projectRoot = target.toAbsolutePath()
-      .normalize();
-    TestaraProjectProfile profile = JsonlKnowledgeStore.loadProfile(projectRoot);
-
-    AgentContext context = new AgentContext(
-      projectRoot,
-      profile,
-      AgentMode.READ_ONLY,
-      new DisabledLlmClient(),
-      Map.of("concise", String.valueOf(concise))
-    );
-
-    TestSummarySkill skill = new TestSummarySkill();
-    String result = skill.execute(new TestSummarySkill.Input(target, scenarioFilter), context);
-    System.out.println(result);
+  public Integer call() {
+    Path root = CliSupport.root(projectRoot);
+    Map<String, String> opts = Map.of("concise", String.valueOf(concise));
+    // The summary parses the target itself; no project index (and no .testara-agent/ cache) is needed.
+    return CliSupport.print(new TestSummarySkill().execute(
+      new TestSummarySkill.Input(target, scenarioFilter), CliSupport.contextWithoutIndex(root, AgentMode.READ_ONLY, opts)
+    ));
   }
 }

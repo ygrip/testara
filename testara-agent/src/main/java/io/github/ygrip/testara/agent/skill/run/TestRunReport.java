@@ -1,5 +1,8 @@
 package io.github.ygrip.testara.agent.skill.run;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 import java.util.List;
 
 public record TestRunReport(
@@ -10,9 +13,34 @@ public record TestRunReport(
     int passed,
     int failed,
     int skipped,
-    List<FailedScenario> failedScenarios
+    List<FailedScenario> failedScenarios,
+    String logFile,
+    String reportFile
 ) {
+  private static final ObjectMapper MAPPER = new ObjectMapper();
+
   public record FailedScenario(String feature, String scenario, String error) {}
+
+  /** A report parsed from a result file, before it is attached to a concrete run. */
+  public TestRunReport(String status, long durationMs, String tagExpression, int total, int passed,
+      int failed, int skipped, List<FailedScenario> failedScenarios) {
+    this(status, durationMs, tagExpression, total, passed, failed, skipped, failedScenarios, null, null);
+  }
+
+  /** A run whose result file is missing: counts are zero and {@code reportFile} is {@code null}. */
+  public static TestRunReport withoutReport(String status, long durationMs, String tagExpression,
+      String logFile) {
+    return new TestRunReport(status, durationMs, tagExpression, 0, 0, 0, 0, List.of(), logFile, null);
+  }
+
+  /**
+   * Attach this parsed report to the run that produced it. The run status wins over the parsed one
+   * because a non-zero exit or timeout is a failure even when every parsed scenario passed.
+   */
+  public TestRunReport forRun(String runStatus, long runDurationMs, String runLogFile, String runReportFile) {
+    return new TestRunReport(runStatus, runDurationMs, tagExpression, total, passed, failed, skipped,
+        failedScenarios, runLogFile, runReportFile);
+  }
 
   public String toMarkdown() {
     return toMarkdown(false);
@@ -57,24 +85,10 @@ public record TestRunReport(
   }
 
   public String toJson() {
-    StringBuilder sb = new StringBuilder("{\n");
-    sb.append("  \"status\": \"").append(status).append("\",\n");
-    sb.append("  \"durationMs\": ").append(durationMs).append(",\n");
-    sb.append("  \"tagExpression\": \"").append(tagExpression.replace("\"", "\\\"")).append("\",\n");
-    sb.append("  \"total\": ").append(total).append(",\n");
-    sb.append("  \"passed\": ").append(passed).append(",\n");
-    sb.append("  \"failed\": ").append(failed).append(",\n");
-    sb.append("  \"skipped\": ").append(skipped).append(",\n");
-    sb.append("  \"failedScenarios\": [");
-    for (int i = 0; i < failedScenarios.size(); i++) {
-      FailedScenario s = failedScenarios.get(i);
-      if (i > 0) sb.append(",");
-      sb.append("\n    {\"feature\": \"").append(s.feature().replace("\"", "\\\""))
-          .append("\", \"scenario\": \"").append(s.scenario().replace("\"", "\\\""))
-          .append("\", \"error\": \"").append(s.error().replace("\"", "\\\"")).append("\"}");
+    try {
+      return MAPPER.writeValueAsString(this);
+    } catch (JsonProcessingException e) {
+      throw new IllegalStateException("Cannot serialize test run report", e);
     }
-    sb.append(failedScenarios.isEmpty() ? "]\n}" : "\n  ]\n}");
-    return sb.toString();
   }
-
 }

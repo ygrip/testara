@@ -77,31 +77,39 @@ public class TestaraDbSkill implements AgentSkill<TestaraDbSkill.Input, String> 
   }
 
   private String sqlConfig(String name, boolean concise) {
-    String block = """
-        sql.service.%sDb.host-name=${DB_%s_HOST:localhost}
-        sql.service.%sDb.port=5432
-        sql.service.%sDb.username=${DB_%s_USERNAME:postgres}
-        sql.service.%sDb.password=${DB_%s_PASSWORD:postgres}
-        sql.service.%sDb.db-name=${DB_%s_NAME:%s}
-        sql.service.%sDb.db-type=POSTGRESQL
-        sql.service.%sDb.timeout=3
-        """.formatted(name, toEnvKey(name), name, name, toEnvKey(name), name, toEnvKey(name),
-        name, toEnvKey(name), toPropertyKey(name), name, name);
+    String block = sqlConfigBlock(name);
     return concise ? block : "```properties\n" + block + "```";
+  }
+
+  /** {@code sql.service.<name>Db.*} for {@code [sql] connect to database with name <name>Db}. */
+  static String sqlConfigBlock(String name) {
+    String alias = PropertyKeys.databaseAlias(name);
+    String env = PropertyKeys.toEnvKey(name);
+    return """
+        # SQL database — %s
+        sql.service.%s.host-name=${DB_%s_HOST:localhost}
+        sql.service.%s.port=5432
+        sql.service.%s.username=${DB_%s_USERNAME:postgres}
+        sql.service.%s.password=${DB_%s_PASSWORD:postgres}
+        sql.service.%s.db-name=${DB_%s_NAME:%s}
+        sql.service.%s.db-type=POSTGRESQL
+        sql.service.%s.timeout=3
+        """.formatted(name, alias, env, alias, alias, env, alias, env,
+        alias, env, PropertyKeys.toPropertyKey(name), alias, alias);
   }
 
   private String sqlFeature(String name, boolean concise) {
     String feature = """
-        Given [sql] connect to database with name %sDb
+        Given [sql] connect to database with name %s
         Given [sql] prepare query with value :
           \"\"\"
           select *
           from %s
-          where id = 'properties(test.%s.id)'
+          where id = 'properties(%s)'
           \"\"\"
         When [sql] execute database query
         Then [sql] assign previous database response to %sRows
-        """.formatted(name, name, name, name);
+        """.formatted(PropertyKeys.databaseAlias(name), name, PropertyKeys.testData(name, "id"), name);
     return concise ? feature : "```gherkin\n" + feature + "```";
   }
 
@@ -140,34 +148,42 @@ public class TestaraDbSkill implements AgentSkill<TestaraDbSkill.Input, String> 
   }
 
   private String mongoConfig(String name, boolean concise) {
-    String block = """
-        mongo.service.%sDb.hosts=${MONGO_%s_HOSTS:localhost:27017}
-        mongo.service.%sDb.db-name=${MONGO_%s_NAME:%s}
-        mongo.service.%sDb.username=${MONGO_%s_USERNAME:}
-        mongo.service.%sDb.password=${MONGO_%s_PASSWORD:}
-        mongo.service.%sDb.ssl-enabled=false
-        """.formatted(name, toEnvKey(name), name, toEnvKey(name), toPropertyKey(name),
-        name, toEnvKey(name), name, toEnvKey(name), name);
+    String block = mongoConfigBlock(name);
     return concise ? block : "```properties\n" + block + "```";
+  }
+
+  /** {@code mongo.service.<name>Db.*} for {@code [mongo] connect to database with name <name>Db}. */
+  static String mongoConfigBlock(String name) {
+    String alias = PropertyKeys.databaseAlias(name);
+    String env = PropertyKeys.toEnvKey(name);
+    return """
+        # MongoDB — %s
+        mongo.service.%s.hosts=${MONGO_%s_HOSTS:localhost:27017}
+        mongo.service.%s.db-name=${MONGO_%s_NAME:%s}
+        mongo.service.%s.username=${MONGO_%s_USERNAME:}
+        mongo.service.%s.password=${MONGO_%s_PASSWORD:}
+        mongo.service.%s.ssl-enabled=false
+        """.formatted(name, alias, env, alias, env, PropertyKeys.toPropertyKey(name),
+        alias, env, alias, env, alias);
   }
 
   private String mongoFeature(String name, boolean concise) {
     String feature = """
-        Given [mongo] connect to database with name %sDb
+        Given [mongo] connect to database with name %s
         Given [mongo] select collection with name %s
         When [mongo] select data with query :
           | key    | value                              |
-          | query  | {"_id": "properties(test.%s.id)"} |
+          | query  | {"_id": "properties(%s)"} |
           | limit  | 1                                  |
         Then [mongo] assign previous database response to %sRows
-        """.formatted(name, name, name, name);
+        """.formatted(PropertyKeys.databaseAlias(name), name, PropertyKeys.testData(name, "id"), name);
     return concise ? feature : "```gherkin\n" + feature + "```";
   }
 
   // ── Kafka ─────────────────────────────────────────────────────────────────
 
   private String kafkaExplain(boolean concise) {
-    if (concise) return "kafka steps: [kafka] start kafka producer for {name} | [kafka] send kafka message to topic \"properties(kafka.topic.*)\" with key \"uuid()\" or properties(test.*.id) and data \"request($['event'])\" | [kafka] stop kafka producer. Config uses ${ENV:fallback}.";
+    if (concise) return "kafka steps: [kafka] start kafka producer for {name} | [kafka] send kafka message to topic \"{topicAlias}\" with key \"uuid()\" or properties(test.*.id) and data \"request($['event'])\" | [kafka] stop kafka producer. Topic alias = key under kafka.service.{name}.topics.{topicAlias} (a raw topic name also works). Config uses ${ENV:fallback}.";
     return """
         ## Kafka Guide
 
@@ -181,7 +197,7 @@ public class TestaraDbSkill implements AgentSkill<TestaraDbSkill.Input, String> 
         Producer feature:
         ```gherkin
         Given [kafka] start kafka producer for {name}
-        When [kafka] send kafka message to topic "properties(kafka.topic.{alias})" with key "properties(test.{domain}.id)" and data "properties(test.{domain}.payload)"
+        When [kafka] send kafka message to topic "{alias}" with key "properties(test.{domain}.id)" and data "properties(test.{domain}.payload)"
         Then [kafka] stop kafka producer
         ```
 
@@ -189,44 +205,55 @@ public class TestaraDbSkill implements AgentSkill<TestaraDbSkill.Input, String> 
         ```gherkin
         Given [kafka] start kafka consumer for {name}
         Given [kafka] listen kafka from topic {alias}
-        When [kafka] assign 5 latest records from topic "properties(kafka.topic.{alias})" to {domain}Events
+        When [kafka] assign 5 latest records from topic "{alias}" to {domain}Events
         Then [kafka] stop kafka consumer
         ```
         """;
   }
 
   private String kafkaConfig(String name, boolean concise) {
-    String block = """
-        kafka.service.%sKafka.servers=${KAFKA_%s_SERVERS:localhost:9092}
-        kafka.service.%sKafka.group-id=${KAFKA_%s_GROUP_ID:testara-%s-test}
-        kafka.service.%sKafka.topics.%sEvent=${KAFKA_TOPIC_%s_EVENT:%s.event.v1}
-        """.formatted(name, toEnvKey(name), name, toEnvKey(name), toPropertyKey(name),
-        name, name, toEnvKey(name), toPropertyKey(name));
+    String block = kafkaConfigBlock(name);
     return concise ? block : "```properties\n" + block + "```";
+  }
+
+  /** {@code kafka.service.<name>Kafka.*} with topic alias {@code <name>Event}, which Kafka steps resolve. */
+  static String kafkaConfigBlock(String name) {
+    String alias = PropertyKeys.kafkaAlias(name);
+    String env = PropertyKeys.toEnvKey(name);
+    return """
+        # Kafka — %s
+        kafka.service.%s.servers=${KAFKA_%s_SERVERS:localhost:9092}
+        kafka.service.%s.group-id=${KAFKA_%s_GROUP_ID:testara-%s-test}
+        kafka.service.%s.topics.%s=${KAFKA_TOPIC_%s_EVENT:%s.event.v1}
+        """.formatted(name, alias, env, alias, env, PropertyKeys.toPropertyKey(name),
+        alias, PropertyKeys.kafkaTopicAlias(name), env, PropertyKeys.toPropertyKey(name));
   }
 
   private String kafkaFeature(String name, boolean concise) {
     String feature = """
         # Producer
-        Given [kafka] start kafka producer for %sKafka
-        When [kafka] send kafka message to topic "properties(kafka.topic.%s-event)" with key "properties(test.%s.id)" and data "properties(test.%s.payload)"
+        Given [kafka] start kafka producer for %s
+        When [kafka] send kafka message to topic "%s" with key "properties(%s)" and data "properties(%s)"
         Then [kafka] stop kafka producer
-        """.formatted(name, name, name, name);
+        """.formatted(PropertyKeys.kafkaAlias(name), PropertyKeys.kafkaTopicAlias(name),
+        PropertyKeys.testData(name, "id"), PropertyKeys.testData(name, "payload"));
     return concise ? feature : "```gherkin\n" + feature + "```";
   }
 
   // ── Elastic ───────────────────────────────────────────────────────────────
 
   private String elasticExplain(boolean concise) {
-    if (concise) return "elastic steps: [elastic-search] connect to elastic search with name {name} | assign data {alias} from index {index} with query : (|key|value| table — keys: luceneQuery/routing/type/sortBy/from/size) | insert to index \"{index}\" with data : (horizontal single-row doc) | assign previous elastic search response to {alias}. Config: elastic-search.service.{name}.* IMPORTANT: search query DataTable MUST use |key|value| headers.";
+    if (concise) return "elastic steps: [elastic-search] connect to elastic search with name {name} | assign data {alias} from index {index} with query : (|key|value| table — keys: luceneQuery/routing/type/sortBy/from/size) | insert to index \"{index}\" with data : (horizontal single-row doc) | assign previous elastic search response to {alias}. Config: elasticsearch.service.{name}.hosts[0]/username/password/secured/requireAuthentication. IMPORTANT: search query DataTable MUST use |key|value| headers.";
     return """
         ## ElasticSearch Guide
 
         Config:
         ```properties
-        elastic-search.service.{name}.host=${ELASTIC_NAME_HOST:localhost}
-        elastic-search.service.{name}.port=${ELASTIC_NAME_PORT:9200}
-        elastic-search.service.{name}.scheme=https
+        elasticsearch.service.{name}.hosts[0]=${ELASTICSEARCH_NAME_HOST:http://localhost:9200}
+        elasticsearch.service.{name}.username=${ELASTICSEARCH_NAME_USERNAME:}
+        elasticsearch.service.{name}.password=${ELASTICSEARCH_NAME_PASSWORD:}
+        elasticsearch.service.{name}.secured=false
+        elasticsearch.service.{name}.requireAuthentication=false
         ```
 
         DataTable format for search/assign steps — MUST use |key|value| headers:
@@ -255,12 +282,21 @@ public class TestaraDbSkill implements AgentSkill<TestaraDbSkill.Input, String> 
   }
 
   private String elasticConfig(String name, boolean concise) {
-    String block = """
-        elastic-search.service.%s.host=${ELASTIC_%s_HOST:localhost}
-        elastic-search.service.%s.port=${ELASTIC_%s_PORT:9200}
-        elastic-search.service.%s.scheme=https
-        """.formatted(name, toEnvKey(name), name, toEnvKey(name), name);
+    String block = elasticConfigBlock(name);
     return concise ? block : "```properties\n" + block + "```";
+  }
+
+  /** {@code elasticsearch.service.<name>.*} ({@code ElasticSearchProperties}/{@code ElasticSearchModel}). */
+  static String elasticConfigBlock(String name) {
+    String env = PropertyKeys.toEnvKey(name);
+    return """
+        # ElasticSearch — %s
+        elasticsearch.service.%s.hosts[0]=${ELASTICSEARCH_%s_HOST:http://localhost:9200}
+        elasticsearch.service.%s.username=${ELASTICSEARCH_%s_USERNAME:}
+        elasticsearch.service.%s.password=${ELASTICSEARCH_%s_PASSWORD:}
+        elasticsearch.service.%s.secured=false
+        elasticsearch.service.%s.requireAuthentication=false
+        """.formatted(name, name, env, name, env, name, env, name, name);
   }
 
   private String elasticFeature(String name, boolean concise) {
@@ -273,17 +309,5 @@ public class TestaraDbSkill implements AgentSkill<TestaraDbSkill.Input, String> 
         Then [elastic-search] assign previous elastic search response to %sResults
         """.formatted(name, name, name, name, name);
     return concise ? feature : "```gherkin\n" + feature + "```";
-  }
-
-  private String toPropertyKey(String value) {
-    return value.toLowerCase(Locale.ROOT)
-        .replaceAll("[^a-z0-9]+", "-")
-        .replaceAll("^-|-$", "");
-  }
-
-  private String toEnvKey(String value) {
-    return value.toUpperCase(Locale.ROOT)
-        .replaceAll("[^A-Z0-9]+", "_")
-        .replaceAll("^_|_$", "");
   }
 }

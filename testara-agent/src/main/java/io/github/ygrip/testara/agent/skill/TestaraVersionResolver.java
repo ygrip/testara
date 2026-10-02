@@ -16,6 +16,7 @@ import java.nio.file.Paths;
 import java.util.List;
 import java.util.Optional;
 import java.util.Properties;
+import java.util.logging.Logger;
 import java.util.regex.Pattern;
 
 /**
@@ -23,16 +24,20 @@ import java.util.regex.Pattern;
  */
 final class TestaraVersionResolver {
 
+  private static final Logger LOG = Logger.getLogger(TestaraVersionResolver.class.getName());
   private static final String VERSION_PROPERTY = "testara.agent.version";
   private static final Pattern RELEASE_VERSION = Pattern.compile("\\d+(?:\\.\\d+)+(?:[-.][A-Za-z0-9]+)*");
 
   String resolve(Path projectRoot) {
-    return explicitVersion()
+    Optional<String> version = explicitVersion()
         .or(this::packagedAgentVersion)
         .or(() -> checkoutVersion(projectRoot))
         .or(this::localMavenVersion)
-        .or(this::bundledPropertiesVersion)
-        .orElse("UNKNOWN");
+        .or(this::bundledPropertiesVersion);
+    if (version.isPresent()) return version.get();
+    LOG.warning("Cannot resolve the Testara version; generated poms will use UNKNOWN. Set -D"
+        + VERSION_PROPERTY + "=<version>.");
+    return "UNKNOWN";
   }
 
   private Optional<String> explicitVersion() {
@@ -57,14 +62,20 @@ final class TestaraVersionResolver {
   }
 
   private Optional<String> readPomPropertiesVersion(String resource) {
+    return readPropertiesValue(resource, "version");
+  }
+
+  /** Reads {@code key} from an absolute classpath resource ({@code /...}). */
+  private Optional<String> readPropertiesValue(String resource, String key) {
     try (InputStream is = TestaraVersionResolver.class.getResourceAsStream(resource)) {
       if (is == null) {
         return Optional.empty();
       }
       Properties properties = new Properties();
       properties.load(is);
-      return valid(properties.getProperty("version"));
-    } catch (Exception ignored) {
+      return valid(properties.getProperty(key));
+    } catch (Exception e) {
+      LOG.fine("Cannot read " + resource + ": " + e.getMessage());
       return Optional.empty();
     }
   }
@@ -156,12 +167,17 @@ final class TestaraVersionResolver {
     }
   }
 
-  private Optional<String> bundledPropertiesVersion() {
-    return readPomPropertiesVersion("agent-context/agent.properties");
+  /** {@code agent-context/agent.properties} is filtered at build time with {@code testara.version}. */
+  Optional<String> bundledPropertiesVersion() {
+    return readPropertiesValue("/agent-context/agent.properties", "testara.version");
   }
 
   private Optional<String> valid(String version) {
     if (version == null || version.isBlank() || "unknown".equalsIgnoreCase(version)) {
+      return Optional.empty();
+    }
+    // An unfiltered resource still holds the build placeholder
+    if (version.contains("@") || version.contains("${")) {
       return Optional.empty();
     }
     return Optional.of(version.trim());

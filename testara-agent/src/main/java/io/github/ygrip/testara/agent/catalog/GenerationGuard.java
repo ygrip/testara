@@ -11,9 +11,7 @@ import java.util.regex.Pattern;
  *
  * Catches common guardrail violations:
  *  - hardcoded env-specific values that should use properties()
- *  - missing scan-location config for new commands/validators
- *  - request body inline instead of request spec
- *  - custom steps for behavior covered by Testara built-ins
+ *  - steps that do not link to any indexed Testara built-in or project glue
  */
 public final class GenerationGuard {
 
@@ -68,61 +66,6 @@ public final class GenerationGuard {
             "line " + link.lineNumber() + ": " + link.stepLine(),
             "Use an indexed Testara built-in step, generate a UserAction and call it with the built-in action step, or add a project step definition.")));
     return violations;
-  }
-
-  /** Validate configuration.properties content for required scan locations. */
-  public static List<Violation> validateProperties(String props) {
-    List<Violation> violations = new ArrayList<>();
-    if (props == null || props.isBlank()) return violations;
-
-    boolean hasCommandScan = props.contains("command.executor.scan-locations");
-    boolean hasValidatorScan = props.contains("validator.helper.scan-locations");
-    if (!hasCommandScan) {
-      violations.add(new Violation(Violation.Severity.WARN, "7", "command.executor.scan-locations missing",
-          "Add: command.executor.scan-locations=io.github.ygrip.testara,{basePackage}.command"));
-    }
-    if (!hasValidatorScan) {
-      violations.add(new Violation(Violation.Severity.WARN, "7", "validator.helper.scan-locations missing",
-          "Add: validator.helper.scan-locations=io.github.ygrip.testara,{basePackage}.validation"));
-    }
-    return violations;
-  }
-
-  /** Validate generated pom.xml dependency scopes for scaffolded Testara modules. */
-  public static List<Violation> validatePom(String pom) {
-    List<Violation> violations = new ArrayList<>();
-    if (pom == null || pom.isBlank()) return violations;
-
-    for (String artifact : List.of("testara-command", "testara-validation", "testara-api", "testara-ui",
-        "testara-ui-selenium", "testara-ui-playwright", "testara-ui-appium", "testara-ui-vibium", "testara-database",
-        "testara-streaming", "testara-elastic")) {
-      if (hasDependencyWithScope(pom, artifact, "test")) {
-        violations.add(new Violation(Violation.Severity.ERROR, "POM",
-            artifact + " has test scope",
-            "Use compile scope because project code under src/main/java may import " + artifact));
-      }
-    }
-
-    for (String artifact : List.of("testara-api-cucumber", "testara-ui-cucumber", "testara-database-cucumber",
-        "testara-streaming-cucumber", "testara-elastic-cucumber", "testara-junit5")) {
-      if (hasDependency(pom, artifact) && !hasDependencyWithScope(pom, artifact, "test")) {
-        violations.add(new Violation(Violation.Severity.WARN, "POM",
-            artifact + " is not test scoped",
-            "Use test scope for Cucumber/JUnit runner dependencies"));
-      }
-    }
-    return violations;
-  }
-
-  private static boolean hasDependency(String pom, String artifact) {
-    return Pattern.compile("<dependency>.*?<artifactId>" + Pattern.quote(artifact) + "</artifactId>.*?</dependency>",
-        Pattern.DOTALL).matcher(pom).find();
-  }
-
-  private static boolean hasDependencyWithScope(String pom, String artifact, String scope) {
-    return Pattern.compile("<dependency>.*?<artifactId>" + Pattern.quote(artifact)
-        + "</artifactId>.*?<scope>" + Pattern.quote(scope) + "</scope>.*?</dependency>", Pattern.DOTALL)
-        .matcher(pom).find();
   }
 
   /**

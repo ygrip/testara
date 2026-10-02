@@ -51,6 +51,22 @@ class StepLinkerTest {
     assertEquals(StepLinker.Source.UNMATCHED, links.get(1).source());
   }
 
+  @Test
+  void ignoresGherkinKeywordLikeCucumberAndSurvivesInvalidPatterns() {
+    String feature = """
+        Scenario: keyword independent
+          Then user has a project-only step
+        """;
+    List<StepDefinitionIndex> projectSteps = List.of(
+        new StepDefinitionIndex("Given", "^broken (unclosed$", Path.of("Steps.java"), "Steps", ""),
+        new StepDefinitionIndex("When", "user has a project-only step", Path.of("Steps.java"), "Steps", ""));
+
+    var links = StepLinker.linkFeature(feature, List.of(), projectSteps);
+
+    assertEquals(StepLinker.Source.PROJECT, links.get(0).source());
+    assertEquals("user has a project-only step", links.get(0).expression());
+  }
+
   private FlavorEntry flavor(String keyword, String expression) {
     return new FlavorEntry("ui", keyword, expression, "", expression,
         "testara-ui-cucumber", "UIBaseSteps");

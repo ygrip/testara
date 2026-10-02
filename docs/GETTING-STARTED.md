@@ -179,8 +179,8 @@ testara-agent test-init
 # 2. Generate a Testara-flavor feature (uses properties() + request specs automatically)
 testara-agent test-plan 'test the payment refund approval' --write
 
-# 3. Run it
-TESTARA_AGENT_RUN_ENABLED=true testara-agent test-run 'payment refund' --execute
+# 3. Run it (test execution is enabled by default)
+testara-agent test-run 'payment refund' --execute
 ```
 
 Generated features report a **Testara Flavor Score** (% of steps using built-in steps) and a

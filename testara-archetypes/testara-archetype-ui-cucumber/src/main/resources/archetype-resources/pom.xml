@@ -140,6 +140,7 @@
                 <configuration>
                   <reportTemplate>testara-style-report</reportTemplate>
                   <reportName>test-report</reportName>
+                  <outputLocation>/target/testara-report/</outputLocation>
                 </configuration>
               </execution>
             </executions>

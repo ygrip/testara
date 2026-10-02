@@ -3,14 +3,12 @@ package io.github.ygrip.testara.agent.cli.command;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.nio.file.Path;
-import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.concurrent.Callable;
 
 import io.github.ygrip.testara.agent.AgentMode;
-import io.github.ygrip.testara.agent.knowledge.JsonlKnowledgeStore;
-import io.github.ygrip.testara.agent.llm.DisabledLlmClient;
-import io.github.ygrip.testara.agent.skill.AgentContext;
 import io.github.ygrip.testara.agent.skill.TestInitSkill;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
@@ -20,10 +18,16 @@ import picocli.CommandLine.Option;
   description = "Bootstrap a new Testara project or integrate into an existing one",
   mixinStandardHelpOptions = true
 )
-public class TestInitCommand implements Runnable {
+public class TestInitCommand implements Callable<Integer> {
 
-  @Option(names = "--type", description = "Project type: api, ui, sql, mongo, kafka, fullstack")
+  @Option(names = "--type",
+    description = "Project type: api, ui, sql, mongo, kafka, fullstack (combined with --slices; default api)"
+  )
   private String type;
+
+  @Option(names = {"--slices", "--capabilities"}, split = ",",
+    description = "Comma-separated capabilities: api,ui,sql,mongo,kafka,elastic")
+  private List<String> slices;
 
   @Option(names = "--group-id", description = "Maven group ID (e.g. com.company)")
   private String groupId;
@@ -36,7 +40,7 @@ public class TestInitCommand implements Runnable {
 
   @Option(names = "--engine",
     defaultValue = "selenium",
-    description = "UI engine (ui type only): selenium, playwright, appium"
+    description = "UI engine (ui type only): selenium, playwright, appium, vibium"
   )
   private String engine;
 
@@ -73,10 +77,15 @@ public class TestInitCommand implements Runnable {
   )
   private boolean forceInteractive;
 
+  @Option(names = "--no-compile",
+    defaultValue = "false",
+    description = "Skip the test-compile gate that runs after files are written"
+  )
+  private boolean skipCompile;
+
   @Override
-  public void run() {
-    Path root = projectRoot.toAbsolutePath()
-      .normalize();
+  public Integer call() {
+    Path root = CliSupport.root(projectRoot);
 
     boolean interactive = !nonInteractive && (forceInteractive || System.console() != null);
     if (interactive) {
@@ -85,21 +94,32 @@ public class TestInitCommand implements Runnable {
       applyDefaults(root);
     }
 
-    Map<String, String> opts = new LinkedHashMap<>();
-    opts.put("write", Boolean.toString(!preview));
+    Map<String, String> opts = CliSupport.projectOptions(root);
+    String blocked = CliSupport.requestWrite("test-init", opts, !preview);
+    if (blocked != null) {
+      return CliSupport.print(blocked);
+    }
     opts.put("includeExamples", Boolean.toString(includeExamples));
-    AgentContext ctx =
-      new AgentContext(root, JsonlKnowledgeStore.loadProfile(root), AgentMode.PATCH, new DisabledLlmClient(), opts);
-    System.out.println(new TestInitSkill().execute(
+    if (skipCompile) {
+      opts.put("compile", "false");
+    }
+    AgentMode mode = AgentMode.APPLY;
+    if (preview) {
+      mode = AgentMode.PATCH;
+    }
+    // A null type lets the skill combine --slices without an implied api type.
+    String output = new TestInitSkill().execute(
       new TestInitSkill.Input(
         type,
         basePackage,
         engine,
         integrateExisting,
         groupId,
-        artifactId
-      ), ctx
-    ));
+        artifactId,
+        slices
+      ), CliSupport.context(root, mode, opts)
+    );
+    return CliSupport.print(output, TestInitSkill::exitCode);
   }
 
   private void applyDefaults(Path root) {
@@ -111,8 +131,6 @@ public class TestInitCommand implements Runnable {
       groupId = "io.github.ygrip";
     if (artifactId == null)
       artifactId = toKebab(dirName);
-    if (type == null)
-      type = "api";
     if (basePackage == null)
       basePackage = groupId + "." + toPackage(artifactId);
   }
@@ -146,6 +164,8 @@ public class TestInitCommand implements Runnable {
         defaultType,
         new String[] {"api", "ui", "sql", "mongo", "kafka", "fullstack"}
       );
+      String selected = ask(reader, "Additional capabilities (comma-separated: api,ui,sql,mongo,kafka,elastic; blank keeps type)", "");
+      if (!selected.isBlank()) slices = List.of(selected.split(","));
 
       String defaultPkg = groupId + "." + toPackage(artifactId);
       basePackage = ask(reader, "Base package", defaultPkg);
@@ -163,11 +183,13 @@ public class TestInitCommand implements Runnable {
       System.out.printf("  groupId:    %s%n", groupId);
       System.out.printf("  artifactId: %s%n", artifactId);
       System.out.printf("  type:       %s%n", type);
+      if (slices != null && !slices.isEmpty()) System.out.printf("  capabilities: %s%n", String.join(", ", slices));
       System.out.printf("  package:    %s%n", basePackage);
       System.out.println();
 
     } catch (Exception e) {
-      // Fall back to defaults on any I/O issue
+      // Fall back to defaults on any I/O issue, but tell the user their answers were not used.
+      System.err.println("Interactive prompt failed (" + e.getMessage() + "); using defaults.");
       applyDefaults(root);
     }
   }
